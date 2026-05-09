@@ -545,6 +545,52 @@ describe("importDxfToKairo", () => {
     ]);
   });
 
+  it("imports insert-rotation-basic.dxf fixture: LINE at (100,200) rotated 90 degrees", async () => {
+    const result = await importDxfToKairo(path.join(fixturesDir, "insert-rotation-basic.dxf"));
+
+    expect(validateScenePackage(result.scenePackage).valid).toBe(true);
+    expect(result.summary).toEqual({
+      supportedEntityCount: 1,
+      unsupportedEntityCount: 0,
+      layerCount: 1,
+      warningCount: 0
+    });
+
+    const geometry = result.scenePackage.geometry[0].geometries[0];
+    expect(geometry.kind).toBe("curve-set");
+    if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+      expectPointClose(geometry.entities[0].start, [100, 200, 0]);
+      expectPointClose(geometry.entities[0].end, [100, 210, 0]);
+      expect(geometry.entities[0].layerId).toBe("layer-symbols");
+    }
+
+    expect(result.scenePackage.sourceMap.sources).toContainEqual(
+      expect.objectContaining({
+        id: "src-dxf-insert-i1-block-linesymbol-child-l1",
+        entityType: "LINE",
+        entityId: "L1",
+        note: "Expanded from INSERT I1, BLOCK LINESYMBOL."
+      })
+    );
+  });
+
+  it("expands a block LINE with rotation 90 and uniform scale 2", async () => {
+    const content = blockScene([...blockHeader("SCALEDROT"), ...blockLine("L1"), ...blockFooter], blockInsert("SCALEDROT", "I1", "CUT", ["41", "2", "42", "2", "43", "2", "50", "90"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.summary.unsupportedEntityCount).toBe(0);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [5, 26, 0]);
+      }
+    });
+  });
+
   it("writes an exploded scene folder that the CLI loader and validator can read", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "kairo-dxf-import-"));
     try {
