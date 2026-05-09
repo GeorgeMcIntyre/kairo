@@ -1,0 +1,46 @@
+{
+  "sources": [
+    {
+      "id": "src-assembly",
+      "path": "examples/source/bracket-demo.jt",
+      "format": "JT",
+      "entityType": "assembly",
+      "entityId": "asm-001"
+    },
+    {
+      "id": "src-bracket",
+      "path": "examples/source/bracket-demo.jt",
+      "format": "JT",
+      "entityType": "part",
+      "entityId": "part-body-001"
+    },
+    {
+      "id": "src-outline",
+      "path": "examples/source/bracket-reference.dxf",
+      "format": "DXF",
+      "entityType": "LWPOLYLINE",
+      "entityId": "10"
+    },
+    {
+      "id": "src-left-hole",
+      "path": "examples/source/bracket-reference.dxf",
+      "format": "DXF",
+      "entityType": "CIRCLE",
+      "entityId": "11"
+    },
+    {
+      "id": "src-right-hole",
+      "path": "examples/source/bracket-reference.dxf",
+      "format": "DXF",
+      "entityType": "CIRCLE",
+      "entityId": "12"
+    },
+    {
+      "id": "src-bend-arc",
+      "path": "examples/source/bracket-reference.dxf",
+      "format": "DXF",
+      "entityType": "ARC",
+      "entityId": "13"
+    }
+  ]
+}

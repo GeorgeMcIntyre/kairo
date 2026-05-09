@@ -1,0 +1,47 @@
+{
+  "rootNodeId": "node-root",
+  "nodes": [
+    {
+      "id": "node-root",
+      "displayName": "Bracket Exchange Sample",
+      "type": "assembly",
+      "children": ["node-bracket", "node-outline"],
+      "localTransform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "metadata": {
+        "partNumber": "KAIRO-POC-001",
+        "revision": "A",
+        "description": "Synthetic CAD-derived scene with mesh and drawing geometry."
+      },
+      "sourceRef": "src-assembly"
+    },
+    {
+      "id": "node-bracket",
+      "displayName": "Machined Bracket Body",
+      "type": "part",
+      "children": [],
+      "localTransform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "geometryRefs": ["geom-bracket-body"],
+      "layerId": "layer-solids",
+      "metadata": {
+        "material": "Aluminium 6061",
+        "massKg": 1.82,
+        "sourceEntity": "JT part occurrence placeholder"
+      },
+      "sourceRef": "src-bracket"
+    },
+    {
+      "id": "node-outline",
+      "displayName": "DXF Reference Outline",
+      "type": "drawing",
+      "children": [],
+      "localTransform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -75, 2, 1],
+      "geometryRefs": ["geom-reference-outline"],
+      "layerId": "layer-reference",
+      "metadata": {
+        "drawingPurpose": "Manufacturing reference",
+        "supportedEntities": "LINE, CIRCLE, ARC, LWPOLYLINE"
+      },
+      "sourceRef": "src-outline"
+    }
+  ]
+}

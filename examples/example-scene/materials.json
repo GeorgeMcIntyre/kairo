@@ -1,0 +1,16 @@
+{
+  "materials": [
+    {
+      "id": "mat-aluminium",
+      "name": "Aluminium 6061",
+      "baseColor": {
+        "r": 0.68,
+        "g": 0.72,
+        "b": 0.74,
+        "a": 1
+      },
+      "metallic": 0.3,
+      "roughness": 0.55
+    }
+  ]
+}

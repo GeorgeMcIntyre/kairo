@@ -1,0 +1,46 @@
+{
+  "geometries": [
+    {
+      "id": "geom-reference-outline",
+      "kind": "curve-set",
+      "layerId": "layer-reference",
+      "sourceRef": "src-outline",
+      "entities": [
+        {
+          "id": "outline-polyline",
+          "type": "polyline",
+          "points": [[-50, -28, 0], [50, -28, 0], [50, 28, 0], [-50, 28, 0]],
+          "closed": true,
+          "layerId": "layer-reference",
+          "sourceRef": "src-outline"
+        },
+        {
+          "id": "left-hole",
+          "type": "circle",
+          "center": [-25, 0, 0],
+          "radius": 8,
+          "layerId": "layer-reference",
+          "sourceRef": "src-left-hole"
+        },
+        {
+          "id": "right-hole",
+          "type": "circle",
+          "center": [25, 0, 0],
+          "radius": 8,
+          "layerId": "layer-reference",
+          "sourceRef": "src-right-hole"
+        },
+        {
+          "id": "bend-arc",
+          "type": "arc",
+          "center": [0, 0, 0],
+          "radius": 36,
+          "startAngleDeg": 20,
+          "endAngleDeg": 160,
+          "layerId": "layer-reference",
+          "sourceRef": "src-bend-arc"
+        }
+      ]
+    }
+  ]
+}

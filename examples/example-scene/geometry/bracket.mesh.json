@@ -1,0 +1,39 @@
+{
+  "geometries": [
+    {
+      "id": "geom-bracket-body",
+      "kind": "mesh",
+      "vertices": [
+        -40, -20, 0,
+        40, -20, 0,
+        40, 20, 0,
+        -40, 20, 0,
+        -40, -20, 12,
+        40, -20, 12,
+        40, 20, 12,
+        -40, 20, 12
+      ],
+      "indices": [
+        0, 1, 2,
+        0, 2, 3,
+        4, 6, 5,
+        4, 7, 6,
+        0, 4, 5,
+        0, 5, 1,
+        1, 5, 6,
+        1, 6, 2,
+        2, 6, 7,
+        2, 7, 3,
+        3, 7, 4,
+        3, 4, 0
+      ],
+      "materialId": "mat-aluminium",
+      "layerId": "layer-solids",
+      "boundingBox": {
+        "min": [-40, -20, 0],
+        "max": [40, 20, 12]
+      },
+      "sourceRef": "src-bracket"
+    }
+  ]
+}
