@@ -203,4 +203,60 @@ describe("analyzeDxfBlocks", () => {
       });
     });
   });
+
+  it("textAudit counts TEXT entities in block definitions", async () => {
+    const attdef = ["0", "ATTDEF", "5", "AD1", "100", "AcDbEntity", "8", "0", "100", "AcDbText", "10", "0", "20", "0", "30", "0", "40", "1", "1", "DEFAULT", "100", "AcDbAttributeDefinition", "70", "0", "2", "TAG1", "3", "Prompt1"];
+    const content = scene(
+      [...blockHeader("LABELED"), ...textEntity, ...attdef, ...lineEntity("L1"), ...blockFooter],
+      insertEntity("LABELED", "I1")
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.textAudit.totalTextCount).toBe(1);
+      expect(inventory.textAudit.totalAttdefCount).toBe(1);
+      expect(inventory.textAudit.inBlockDefinitions.TEXT).toBe(1);
+      expect(inventory.textAudit.inBlockDefinitions.ATTDEF).toBe(1);
+      expect(inventory.textAudit.inDirectEntities.TEXT).toBe(0);
+      expect(inventory.textAudit.topTextBlocks).toHaveLength(1);
+      expect(inventory.textAudit.topTextBlocks[0]).toMatchObject({
+        blockName: "LABELED",
+        usageCount: 1,
+        textCount: 1,
+        attdefCount: 1
+      });
+      expect(inventory.textAudit.sampleTextStrings.length).toBeGreaterThan(0);
+      expect(inventory.textAudit.sampleTextStrings[0].source).toContain("LABELED");
+      // LABELED has LINE + TEXT + ATTDEF → partial-expand skips text
+      expect(inventory.textAudit.partialExpandTextSkipped).toHaveLength(1);
+      expect(inventory.textAudit.partialExpandTextSkipped[0].blockName).toBe("LABELED");
+    });
+  });
+
+  it("textAudit detects equipment block name patterns", async () => {
+    const content = scene(
+      [...blockHeader("FANUC_ROBOT_ARM"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("FANUC_ROBOT_ARM", "I1")
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.textAudit.equipmentBlockMatches).toHaveLength(1);
+      expect(inventory.textAudit.equipmentBlockMatches[0].blockName).toBe("FANUC_ROBOT_ARM");
+      expect(inventory.textAudit.equipmentBlockMatches[0].matchedPattern).toBe("FANUC");
+      expect(inventory.textAudit.equipmentBlockMatches[0].insertCount).toBe(1);
+    });
+  });
+
+  it("textAudit empty when no text entities exist", async () => {
+    await withDxf(scene([...blockHeader("SIMPLE"), ...lineEntity("L1"), ...blockFooter], insertEntity("SIMPLE", "I1")), async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.textAudit.totalTextCount).toBe(0);
+      expect(inventory.textAudit.totalAttdefCount).toBe(0);
+      expect(inventory.textAudit.topTextBlocks).toHaveLength(0);
+      expect(inventory.textAudit.equipmentBlockMatches).toHaveLength(0);
+      expect(inventory.textAudit.partialExpandTextSkipped).toHaveLength(0);
+    });
+  });
 });

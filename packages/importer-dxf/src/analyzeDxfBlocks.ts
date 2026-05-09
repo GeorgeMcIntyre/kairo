@@ -11,6 +11,29 @@ export type DxfBlockExpansionClassification =
   | "blocked by transform complexity"
   | "missing block definition";
 
+export type DxfEquipmentBlockMatch = {
+  blockName: string;
+  matchedPattern: string;
+  insertCount: number;
+  entityTypeCounts: Record<string, number>;
+  classification: DxfBlockExpansionClassification;
+};
+
+export type DxfTextAuditSummary = {
+  totalTextCount: number;
+  totalMTextCount: number;
+  totalAttdefCount: number;
+  totalAttribCount: number;
+  inDirectEntities: { TEXT: number; MTEXT: number; ATTDEF: number; ATTRIB: number };
+  inBlockDefinitions: { TEXT: number; MTEXT: number; ATTDEF: number; ATTRIB: number };
+  topTextBlocks: Array<{ blockName: string; usageCount: number; textCount: number; attdefCount: number; attribCount: number; mtextCount: number }>;
+  topTextLayers: Array<{ layerName: string; count: number }>;
+  sampleTextStrings: Array<{ source: string; text: string }>;
+  equipmentBlockMatches: DxfEquipmentBlockMatch[];
+  hardTransformTextBlocks: Array<{ blockName: string; insertCount: number; textCount: number; attdefCount: number }>;
+  partialExpandTextSkipped: Array<{ blockName: string; insertCount: number; textCount: number; attdefCount: number }>;
+};
+
 export type DxfBlockTransformComplexity = {
   nonUniformScale: number;
   negativeScale: number;
@@ -67,6 +90,14 @@ export type DxfBlockInsertInventory = {
   nestedInsertCountInsideBlocks: number;
   safeExpansionClassificationCounts: Record<DxfBlockExpansionClassification, number>;
   topInsertedBlockNames: DxfInsertedBlockSummary[];
+  textAudit: DxfTextAuditSummary;
+};
+
+type ParsedTextLike = {
+  text?: string;
+  value?: string;
+  tag?: string;
+  layerName?: string;
 };
 
 type ParsedEntity = {
@@ -368,6 +399,189 @@ function summarizeBlockDefinitions(blocks: ParsedBlock[], usage: Map<string, Par
   return summaries;
 }
 
+const EQUIPMENT_PATTERNS = ["FANUC", "ROBOT", "CONTROLLER", "RBT", "HENROB", "PV-R", "PDP", "LIFT", "TILT", "SPAC", "RESPOT"];
+const supportedGeometryForPartialExpand = new Set(["LINE", "LWPOLYLINE", "CIRCLE", "ARC", "POLYLINE"]);
+
+const emptyTextAudit = (): DxfTextAuditSummary => ({
+  totalTextCount: 0,
+  totalMTextCount: 0,
+  totalAttdefCount: 0,
+  totalAttribCount: 0,
+  inDirectEntities: { TEXT: 0, MTEXT: 0, ATTDEF: 0, ATTRIB: 0 },
+  inBlockDefinitions: { TEXT: 0, MTEXT: 0, ATTDEF: 0, ATTRIB: 0 },
+  topTextBlocks: [],
+  topTextLayers: [],
+  sampleTextStrings: [],
+  equipmentBlockMatches: [],
+  hardTransformTextBlocks: [],
+  partialExpandTextSkipped: []
+});
+
+function textEntitiesFor(entities: ParsedEntities | undefined, key: string): ParsedTextLike[] {
+  return (entities?.[key] ?? []) as unknown as ParsedTextLike[];
+}
+
+function computeTextAudit(
+  blocks: ParsedBlock[],
+  entities: ParsedEntities,
+  usage: Map<string, ParsedEntity[]>,
+  blocksByName: Map<string, ParsedBlock>,
+  blockDefinitionsByName: Record<string, DxfBlockDefinitionSummary>
+): DxfTextAuditSummary {
+  // Direct entity counts
+  const directText = textEntitiesFor(entities, "texts");
+  const directMText = textEntitiesFor(entities, "mtexts");
+  const directAttdef = textEntitiesFor(entities, "attdefs");
+  const directAttrib = textEntitiesFor(entities, "attribs");
+
+  // Layer text counts (across all block definitions)
+  const layerCounts = new Map<string, number>();
+  const sampleTextStrings: Array<{ source: string; text: string }> = [];
+
+  // Block-level text accumulation
+  const topTextBlocks: DxfTextAuditSummary["topTextBlocks"] = [];
+  let blockTotalText = 0, blockTotalMText = 0, blockTotalAttdef = 0, blockTotalAttrib = 0;
+
+  for (const block of [...blocks].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))) {
+    const blockName = block.name ?? "<unnamed-block>";
+    const blockTexts = textEntitiesFor(block.entities, "texts");
+    const blockMTexts = textEntitiesFor(block.entities, "mtexts");
+    const blockAttdefs = textEntitiesFor(block.entities, "attdefs");
+    const blockAttribs = textEntitiesFor(block.entities, "attribs");
+
+    const blockTextTotal = blockTexts.length + blockMTexts.length + blockAttdefs.length + blockAttribs.length;
+    if (blockTextTotal === 0) {
+      continue;
+    }
+
+    blockTotalText += blockTexts.length;
+    blockTotalMText += blockMTexts.length;
+    blockTotalAttdef += blockAttdefs.length;
+    blockTotalAttrib += blockAttribs.length;
+
+    topTextBlocks.push({
+      blockName,
+      usageCount: usage.get(blockName)?.length ?? 0,
+      textCount: blockTexts.length,
+      attdefCount: blockAttdefs.length,
+      attribCount: blockAttribs.length,
+      mtextCount: blockMTexts.length
+    });
+
+    // Layer counts
+    for (const t of [...blockTexts, ...blockAttdefs, ...blockAttribs]) {
+      const layer = t.layerName ?? "0";
+      layerCounts.set(layer, (layerCounts.get(layer) ?? 0) + 1);
+    }
+
+    // Sample text strings (up to 10)
+    for (const t of blockTexts) {
+      if (sampleTextStrings.length < 10 && t.text) {
+        sampleTextStrings.push({ source: `BLOCK:${blockName}/TEXT`, text: t.text.slice(0, 80) });
+      }
+    }
+    for (const t of blockAttdefs) {
+      if (sampleTextStrings.length < 10 && (t.tag ?? t.value)) {
+        sampleTextStrings.push({ source: `BLOCK:${blockName}/ATTDEF`, text: `${t.tag ?? ""}=${t.value ?? ""}`.slice(0, 80) });
+      }
+    }
+  }
+
+  // Direct entity samples
+  for (const t of directText) {
+    if (sampleTextStrings.length < 10 && t.text) {
+      sampleTextStrings.push({ source: "ENTITIES/TEXT", text: t.text.slice(0, 80) });
+    }
+  }
+
+  // Equipment block matches
+  const equipmentBlockMatches: DxfEquipmentBlockMatch[] = [];
+  for (const [blockName, inserts] of usage.entries()) {
+    const upper = blockName.toUpperCase();
+    for (const pattern of EQUIPMENT_PATTERNS) {
+      if (upper.includes(pattern)) {
+        const blockDef = blocksByName.get(blockName);
+        equipmentBlockMatches.push({
+          blockName,
+          matchedPattern: pattern,
+          insertCount: inserts.length,
+          entityTypeCounts: entityCountMap(blockDef?.entities),
+          classification: blockDefinitionsByName[blockName]?.classification ?? "missing block definition"
+        });
+        break;
+      }
+    }
+  }
+
+  // Hard-transform-blocked blocks that also contain text/attributes
+  const hardTransformTextBlocks: DxfTextAuditSummary["hardTransformTextBlocks"] = [];
+  for (const [blockName, summary] of Object.entries(blockDefinitionsByName)) {
+    if (summary.classification === "blocked by transform complexity" && summary.hasAttdefAttribTextMtext) {
+      const c = summary.containedEntityTypeCounts;
+      hardTransformTextBlocks.push({
+        blockName,
+        insertCount: summary.usageCount,
+        textCount: (c.TEXT ?? 0) + (c.MTEXT ?? 0),
+        attdefCount: c.ATTDEF ?? 0
+      });
+    }
+  }
+
+  // Partial-expand blocks where text was skipped (has text AND has supported geometry AND used)
+  const partialExpandTextSkipped: DxfTextAuditSummary["partialExpandTextSkipped"] = [];
+  for (const [blockName, summary] of Object.entries(blockDefinitionsByName)) {
+    if (!summary.hasAttdefAttribTextMtext || summary.usageCount === 0) {
+      continue;
+    }
+    const c = summary.containedEntityTypeCounts;
+    const hasSupportedGeometry = Object.keys(c).some((t) => supportedGeometryForPartialExpand.has(t) && (c[t] ?? 0) > 0);
+    if (hasSupportedGeometry) {
+      partialExpandTextSkipped.push({
+        blockName,
+        insertCount: summary.usageCount,
+        textCount: (c.TEXT ?? 0) + (c.MTEXT ?? 0),
+        attdefCount: c.ATTDEF ?? 0
+      });
+    }
+  }
+
+  return {
+    totalTextCount: directText.length + blockTotalText,
+    totalMTextCount: directMText.length + blockTotalMText,
+    totalAttdefCount: directAttdef.length + blockTotalAttdef,
+    totalAttribCount: directAttrib.length + blockTotalAttrib,
+    inDirectEntities: {
+      TEXT: directText.length,
+      MTEXT: directMText.length,
+      ATTDEF: directAttdef.length,
+      ATTRIB: directAttrib.length
+    },
+    inBlockDefinitions: {
+      TEXT: blockTotalText,
+      MTEXT: blockTotalMText,
+      ATTDEF: blockTotalAttdef,
+      ATTRIB: blockTotalAttrib
+    },
+    topTextBlocks: topTextBlocks
+      .sort((a, b) => (b.textCount + b.attdefCount + b.attribCount + b.mtextCount) - (a.textCount + a.attdefCount + a.attribCount + a.mtextCount) || a.blockName.localeCompare(b.blockName))
+      .slice(0, 20),
+    topTextLayers: [...layerCounts.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([layerName, count]) => ({ layerName, count })),
+    sampleTextStrings,
+    equipmentBlockMatches: equipmentBlockMatches
+      .sort((a, b) => b.insertCount - a.insertCount || a.blockName.localeCompare(b.blockName))
+      .slice(0, 25),
+    hardTransformTextBlocks: hardTransformTextBlocks
+      .sort((a, b) => b.insertCount - a.insertCount || a.blockName.localeCompare(b.blockName))
+      .slice(0, 20),
+    partialExpandTextSkipped: partialExpandTextSkipped
+      .sort((a, b) => b.insertCount - a.insertCount || a.blockName.localeCompare(b.blockName))
+      .slice(0, 20)
+  };
+}
+
 function inventoryFromParsed(filePath: string, preCleanReport: DxfPreCleanReport, parsed: DxfGlobalObject): DxfBlockInsertInventory {
   const entities = parsedEntities(parsed);
   const inserts = entities.inserts ?? [];
@@ -386,6 +600,8 @@ function inventoryFromParsed(filePath: string, preCleanReport: DxfPreCleanReport
   const insertCountsByBlockName = Object.fromEntries(
     [...usage.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([blockName, blockInserts]) => [blockName, blockInserts.length])
   );
+
+  const blockDefinitionsByName = summarizeBlockDefinitions(blocks, usage);
 
   return {
     filePath,
@@ -406,11 +622,12 @@ function inventoryFromParsed(filePath: string, preCleanReport: DxfPreCleanReport
     uniqueInsertBlockNameCount: usage.size,
     insertCountsByBlockName,
     blockDefinitionCount: blocks.length,
-    blockDefinitionsByName: summarizeBlockDefinitions(blocks, usage),
+    blockDefinitionsByName: blockDefinitionsByName,
     missingBlockDefinitions: [...usage.keys()].filter((blockName) => !blocksByName.has(blockName)).sort(sortAlpha),
     nestedInsertCountInsideBlocks: blocks.reduce((count, block) => count + (block.entities?.inserts?.length ?? 0), 0),
     safeExpansionClassificationCounts,
-    topInsertedBlockNames: topInsertedBlockNames.slice(0, 25)
+    topInsertedBlockNames: topInsertedBlockNames.slice(0, 25),
+    textAudit: computeTextAudit(blocks, entities, usage, blocksByName, blockDefinitionsByName)
   };
 }
 
@@ -451,7 +668,8 @@ export async function analyzeDxfBlocks(inputPath: string): Promise<DxfBlockInser
       missingBlockDefinitions: [],
       nestedInsertCountInsideBlocks: 0,
       safeExpansionClassificationCounts: emptyClassificationCounts(),
-      topInsertedBlockNames: []
+      topInsertedBlockNames: [],
+      textAudit: emptyTextAudit()
     };
   }
 }
@@ -504,6 +722,54 @@ export function renderDxfBlockInventoryMarkdown(inventory: DxfBlockInsertInvento
         .join(" | ")
     ).map((row) => `| ${row} |`)
   ];
+
+  const ta = inventory.textAudit;
+  lines.push(
+    "",
+    "## Text and Attribute Audit",
+    "",
+    `- TEXT: ${ta.totalTextCount} total (${ta.inDirectEntities.TEXT} direct + ${ta.inBlockDefinitions.TEXT} in blocks)`,
+    `- MTEXT: ${ta.totalMTextCount} total (${ta.inDirectEntities.MTEXT} direct + ${ta.inBlockDefinitions.MTEXT} in blocks)`,
+    `- ATTDEF: ${ta.totalAttdefCount} total (${ta.inDirectEntities.ATTDEF} direct + ${ta.inBlockDefinitions.ATTDEF} in blocks)`,
+    `- ATTRIB: ${ta.totalAttribCount} total (${ta.inDirectEntities.ATTRIB} direct + ${ta.inBlockDefinitions.ATTRIB} in blocks)`,
+    "",
+    "### Top 20 Blocks by Text/Attribute Count",
+    "",
+    "| block | usageCount | TEXT | ATTDEF | ATTRIB | MTEXT |",
+    "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ...ta.topTextBlocks.map((b) => `| ${b.blockName} | ${b.usageCount} | ${b.textCount} | ${b.attdefCount} | ${b.attribCount} | ${b.mtextCount} |`),
+    "",
+    "### Top 10 Layers by Text Entity Count",
+    "",
+    ...ta.topTextLayers.map((l) => `- ${l.layerName}: ${l.count}`),
+    ta.topTextLayers.length === 0 ? "None." : "",
+    "",
+    "### Sample Text Strings",
+    "",
+    ...ta.sampleTextStrings.map((s) => `- [${s.source}] ${s.text}`),
+    ta.sampleTextStrings.length === 0 ? "None." : "",
+    "",
+    "### Equipment / Robot Block Matches",
+    "",
+    "| block | pattern | inserts | classification | entity types |",
+    "| --- | --- | ---: | --- | --- |",
+    ...ta.equipmentBlockMatches.map((m) => `| ${m.blockName} | ${m.matchedPattern} | ${m.insertCount} | ${m.classification} | ${JSON.stringify(m.entityTypeCounts).replace(/\|/g, "\\|")} |`),
+    ta.equipmentBlockMatches.length === 0 ? "None." : "",
+    "",
+    "### Hard-Transform-Blocked Blocks Containing Text",
+    "",
+    "| block | inserts | TEXT | ATTDEF |",
+    "| --- | ---: | ---: | ---: |",
+    ...ta.hardTransformTextBlocks.map((b) => `| ${b.blockName} | ${b.insertCount} | ${b.textCount} | ${b.attdefCount} |`),
+    ta.hardTransformTextBlocks.length === 0 ? "None." : "",
+    "",
+    "### Partial-Expand Blocks Where Text Was Skipped",
+    "",
+    "| block | inserts | TEXT | ATTDEF |",
+    "| --- | ---: | ---: | ---: |",
+    ...ta.partialExpandTextSkipped.map((b) => `| ${b.blockName} | ${b.insertCount} | ${b.textCount} | ${b.attdefCount} |`),
+    ta.partialExpandTextSkipped.length === 0 ? "None." : ""
+  );
 
   if (!inventory.parser.ok && inventory.parser.error) {
     lines.push("", "## Parser Error", "", `- ${inventory.parser.error.name}: ${inventory.parser.error.message}`);

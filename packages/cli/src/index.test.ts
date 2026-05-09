@@ -182,16 +182,30 @@ describe("kairo validate", () => {
     expect(result.stdout).toContain("Kairo DXF inspection passed\n");
     expect(result.stdout).toContain("INSERT entities: 0\n");
     expect(result.stdout).toContain("BLOCK definitions: 0\n");
+    expect(result.stdout).toContain("Text / Attribute Audit:\n");
 
     const inventory = JSON.parse(await readFile(`${outputBasePath}.json`, "utf8")) as {
       parser: { ok: boolean };
       totalInsertCount: number;
       blockDefinitionCount: number;
+      textAudit: { totalTextCount: number };
     };
     expect(inventory.parser.ok).toBe(true);
     expect(inventory.totalInsertCount).toBe(0);
     expect(inventory.blockDefinitionCount).toBe(0);
-    expect(await readFile(`${outputBasePath}.md`, "utf8")).toContain("# DXF Block/Insert Inventory");
+    expect(inventory.textAudit.totalTextCount).toBe(0);
+    expect(await readFile(`${outputBasePath}.md`, "utf8")).toContain("## Text and Attribute Audit");
+  });
+
+  it("inspects a DXF fixture without writing files when output path is omitted", async () => {
+    const result = await captureCli(["inspect-dxf", dxfFixturePath]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo DXF inspection passed\n");
+    expect(result.stdout).toContain("Text / Attribute Audit:\n");
+    // No output-path line when not provided
+    expect(result.stdout).not.toContain(".json / .md");
   });
 
   it("stages a validated exploded scene for the viewer public scene loader", async () => {

@@ -263,14 +263,17 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
 async function inspectDxfCommand(args: string[], io: CliIo): Promise<number> {
   const [inputPath, outputBasePath] = args;
 
-  if (!inputPath || !outputBasePath) {
-    io.stderr("Kairo DXF inspection failed\n- ERROR MISSING_INSPECT_ARGS: Usage: kairo inspect-dxf <input.dxf> <output-base-path>\n");
+  if (!inputPath) {
+    io.stderr("Kairo DXF inspection failed\n- ERROR MISSING_INSPECT_ARGS: Usage: kairo inspect-dxf <input.dxf> [output-base-path]\n");
     return 1;
   }
 
   try {
     const inventory = await analyzeDxfBlocks(inputPath);
-    await writeDxfBlockInventoryReports(inventory, outputBasePath);
+
+    if (outputBasePath) {
+      await writeDxfBlockInventoryReports(inventory, outputBasePath);
+    }
 
     if (!inventory.parser.ok) {
       io.stderr(
@@ -278,25 +281,60 @@ async function inspectDxfCommand(args: string[], io: CliIo): Promise<number> {
           "Kairo DXF inspection failed",
           `Input: ${path.resolve(inputPath)}`,
           `Parser error: ${inventory.parser.error?.name ?? "Error"}: ${inventory.parser.error?.message ?? "Unknown parser error"}`,
-          `Output: ${path.resolve(outputBasePath)}.json / .md`
-        ].join("\n") + "\n"
+          outputBasePath ? `Output: ${path.resolve(outputBasePath)}.json / .md` : ""
+        ]
+          .filter(Boolean)
+          .join("\n") + "\n"
       );
       return 1;
     }
 
-    io.stdout(
-      [
-        "Kairo DXF inspection passed",
-        `Input: ${path.resolve(inputPath)}`,
-        `Output: ${path.resolve(outputBasePath)}.json / .md`,
-        `Layers: ${inventory.layerCount}`,
-        `INSERT entities: ${inventory.totalInsertCount}`,
-        `Unique INSERT block names: ${inventory.uniqueInsertBlockNameCount}`,
-        `BLOCK definitions: ${inventory.blockDefinitionCount}`,
-        `Missing block definitions: ${inventory.missingBlockDefinitions.length}`,
-        `Nested INSERTs inside blocks: ${inventory.nestedInsertCountInsideBlocks}`
-      ].join("\n") + "\n"
-    );
+    const ta = inventory.textAudit;
+    const summaryLines = [
+      "Kairo DXF inspection passed",
+      `Input: ${path.resolve(inputPath)}`,
+      outputBasePath ? `Output: ${path.resolve(outputBasePath)}.json / .md` : "",
+      `Layers: ${inventory.layerCount}`,
+      `INSERT entities: ${inventory.totalInsertCount}`,
+      `Unique INSERT block names: ${inventory.uniqueInsertBlockNameCount}`,
+      `BLOCK definitions: ${inventory.blockDefinitionCount}`,
+      `Missing block definitions: ${inventory.missingBlockDefinitions.length}`,
+      `Nested INSERTs inside blocks: ${inventory.nestedInsertCountInsideBlocks}`,
+      "",
+      "Text / Attribute Audit:",
+      `  TEXT:   ${ta.totalTextCount} (${ta.inDirectEntities.TEXT} direct + ${ta.inBlockDefinitions.TEXT} in blocks)`,
+      `  MTEXT:  ${ta.totalMTextCount} (${ta.inDirectEntities.MTEXT} direct + ${ta.inBlockDefinitions.MTEXT} in blocks)`,
+      `  ATTDEF: ${ta.totalAttdefCount} (${ta.inDirectEntities.ATTDEF} direct + ${ta.inBlockDefinitions.ATTDEF} in blocks)`,
+      `  ATTRIB: ${ta.totalAttribCount} (${ta.inDirectEntities.ATTRIB} direct + ${ta.inBlockDefinitions.ATTRIB} in blocks)`,
+      "",
+      `Equipment / robot blocks matched (${ta.equipmentBlockMatches.length}):`,
+      ...ta.equipmentBlockMatches.slice(0, 10).map((m) => `  ${m.blockName} (pattern: ${m.matchedPattern}, inserts: ${m.insertCount}, classification: ${m.classification})`),
+      ta.equipmentBlockMatches.length === 0 ? "  None." : "",
+      "",
+      `Hard-transform blocks with text (${ta.hardTransformTextBlocks.length}):`,
+      ...ta.hardTransformTextBlocks.slice(0, 10).map((b) => `  ${b.blockName} (inserts: ${b.insertCount}, TEXT: ${b.textCount}, ATTDEF: ${b.attdefCount})`),
+      ta.hardTransformTextBlocks.length === 0 ? "  None." : "",
+      "",
+      `Partial-expand blocks where text was skipped (${ta.partialExpandTextSkipped.length}):`,
+      ...ta.partialExpandTextSkipped.slice(0, 10).map((b) => `  ${b.blockName} (inserts: ${b.insertCount}, TEXT: ${b.textCount}, ATTDEF: ${b.attdefCount})`),
+      ta.partialExpandTextSkipped.length === 0 ? "  None." : "",
+      "",
+      "Top blocks by text/attr count (up to 10):",
+      ...ta.topTextBlocks.slice(0, 10).map((b) => `  ${b.blockName}: TEXT=${b.textCount} ATTDEF=${b.attdefCount} ATTRIB=${b.attribCount} MTEXT=${b.mtextCount} (used ${b.usageCount}×)`),
+      ta.topTextBlocks.length === 0 ? "  None." : "",
+      "",
+      "Top text layers (up to 5):",
+      ...ta.topTextLayers.slice(0, 5).map((l) => `  ${l.layerName}: ${l.count}`),
+      ta.topTextLayers.length === 0 ? "  None." : "",
+      "",
+      "Sample text strings:",
+      ...ta.sampleTextStrings.slice(0, 5).map((s) => `  [${s.source}] ${s.text}`),
+      ta.sampleTextStrings.length === 0 ? "  None." : ""
+    ]
+      .filter((line) => line !== undefined)
+      .join("\n");
+
+    io.stdout(`${summaryLines}\n`);
     return 0;
   } catch (error) {
     const normalized = normalizeError(error);
@@ -379,7 +417,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   }
 
   const message =
-    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> <output-base-path> | kairo stage-viewer-scene <scene-path> <scene-name>";
+    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name>";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }
