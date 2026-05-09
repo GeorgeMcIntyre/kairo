@@ -335,35 +335,63 @@ function hasUnsupportedInsertTransform(insert: DxfInsertEntity) {
   return unsupportedInsertTransformReason(insert) !== "";
 }
 
-function blockUnsupportedEntityTypes(block: DxfBlockDefinition) {
-  const unsupported: string[] = [];
+function blockHasNestedInserts(block: DxfBlockDefinition) {
+  return (block.entities.inserts?.length ?? 0) > 0;
+}
+
+function blockSkippableEntityTypes(block: DxfBlockDefinition) {
+  const skippable: string[] = [];
   const entityGroups: Array<[string, EntityCommons[]]> = [
-    ["POINT", block.entities.points],
-    ["TEXT", block.entities.texts],
-    ["SPLINE", block.entities.splines],
-    ["ELLIPSE", block.entities.ellipses],
-    ["SOLID", block.entities.solids],
-    ["3DSOLID", block.entities.solid3ds],
-    ["3DFACE", block.entities.face3ds],
     ["ATTDEF", block.entities.attdefs],
-    ["ATTRIB", block.entities.attribs]
+    ["ATTRIB", block.entities.attribs],
+    ["ELLIPSE", block.entities.ellipses],
+    ["POINT", block.entities.points],
+    ["SOLID", block.entities.solids],
+    ["SPLINE", block.entities.splines],
+    ["TEXT", block.entities.texts],
+    ["3DFACE", block.entities.face3ds],
+    ["3DSOLID", block.entities.solid3ds]
   ];
 
   for (const [entityType, entities] of entityGroups) {
     if ((entities?.length ?? 0) > 0) {
-      unsupported.push(entityType);
+      skippable.push(entityType);
     }
   }
 
-  if ((block.entities.inserts?.length ?? 0) > 0) {
-    unsupported.push("INSERT");
-  }
-
   if ((block.entities.polylines ?? []).some((entity) => !isSimpleLegacyPolyline(entity))) {
-    unsupported.push("COMPLEX_POLYLINE");
+    skippable.push("COMPLEX_POLYLINE");
   }
 
-  return unsupported.sort((a, b) => a.localeCompare(b));
+  return skippable.sort((a, b) => a.localeCompare(b));
+}
+
+function blockSkippedEntityCounts(block: DxfBlockDefinition, skippableTypes: string[]) {
+  const counts: string[] = [];
+  const entityGroups: Array<[string, EntityCommons[]]> = [
+    ["ATTDEF", block.entities.attdefs],
+    ["ATTRIB", block.entities.attribs],
+    ["ELLIPSE", block.entities.ellipses],
+    ["POINT", block.entities.points],
+    ["SOLID", block.entities.solids],
+    ["SPLINE", block.entities.splines],
+    ["TEXT", block.entities.texts],
+    ["3DFACE", block.entities.face3ds],
+    ["3DSOLID", block.entities.solid3ds]
+  ];
+
+  for (const [entityType, entities] of entityGroups) {
+    if (skippableTypes.includes(entityType) && (entities?.length ?? 0) > 0) {
+      counts.push(`${entityType}×${entities.length}`);
+    }
+  }
+
+  const complexPolylineCount = (block.entities.polylines ?? []).filter((entity) => !isSimpleLegacyPolyline(entity)).length;
+  if (skippableTypes.includes("COMPLEX_POLYLINE") && complexPolylineCount > 0) {
+    counts.push(`COMPLEX_POLYLINE×${complexPolylineCount}`);
+  }
+
+  return counts.join(", ");
 }
 
 function effectiveLayerName(child: EntityCommons, insert: DxfInsertEntity) {
@@ -568,15 +596,27 @@ function convertEntities(parsed: DxfGlobalObject) {
       continue;
     }
 
-    const unsupportedTypes = blockUnsupportedEntityTypes(block);
-    if (unsupportedTypes.length > 0) {
+    if (blockHasNestedInserts(block)) {
+      const skippableTypes = blockSkippableEntityTypes(block);
+      const allUnsupported = ["INSERT", ...skippableTypes].sort((a, b) => a.localeCompare(b));
       warnings.push({
-        code: unsupportedTypes.includes("INSERT") ? "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED" : "DXF_BLOCK_UNSUPPORTED_CONTENT",
-        message: `DXF BLOCK "${blockName}" contains unsupported content (${unsupportedTypes.join(", ")}); INSERT was skipped.`,
+        code: "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED",
+        message: `DXF BLOCK "${blockName}" contains unsupported content (${allUnsupported.join(", ")}); INSERT was skipped.`,
         entityType: "INSERT",
         handle: entity.handle
       });
       continue;
+    }
+
+    const skippableTypes = blockSkippableEntityTypes(block);
+    if (skippableTypes.length > 0) {
+      const countDetail = blockSkippedEntityCounts(block, skippableTypes);
+      warnings.push({
+        code: "DXF_BLOCK_PARTIAL_EXPAND",
+        message: `DXF BLOCK "${blockName}" was partially expanded; unsupported children skipped: ${countDetail}.`,
+        entityType: "INSERT",
+        handle: entity.handle
+      });
     }
 
     for (const child of [...block.entities.lines].sort(byHandle)) {
@@ -600,6 +640,9 @@ function convertEntities(parsed: DxfGlobalObject) {
       registerSource(converted, "ARC", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
     for (const child of [...block.entities.polylines].sort(byHandle)) {
+      if (!isSimpleLegacyPolyline(child)) {
+        continue;
+      }
       const converted = expandBlockLegacyPolyline(child, entity, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);

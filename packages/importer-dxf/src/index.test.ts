@@ -419,6 +419,78 @@ describe("importDxfToKairo", () => {
     });
   });
 
+  it("partially expands block with ATTDEF+LINE: LINE expanded, ATTDEF skipped with partial expand warning", async () => {
+    const blockAttdefLine = (lineHandle: string) => [
+      "0", "ATTDEF", "5", "AD1", "8", "0", "10", "0", "20", "0", "30", "0", "40", "1", "1", "TAG", "2", "TAG",
+      "0", "LINE", "5", lineHandle, "8", "0", "10", "0", "20", "0", "30", "0", "11", "10", "21", "0", "31", "0"
+    ];
+    const content = blockScene([...blockHeader("MIXEDBLOCK"), ...blockAttdefLine("L1"), ...blockFooter], blockInsert("MIXEDBLOCK", "I1", "CUT"));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_PARTIAL_EXPAND",
+        message: 'DXF BLOCK "MIXEDBLOCK" was partially expanded; unsupported children skipped: ATTDEF×1.',
+        entityType: "INSERT",
+        handle: "I1"
+      });
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set") {
+        expect(geometry.entities[0]).toMatchObject({
+          type: "line",
+          start: [5, 6, 0],
+          end: [15, 6, 0]
+        });
+      }
+    });
+  });
+
+  it("partially expands block with SPLINE+CIRCLE: CIRCLE expanded, SPLINE skipped", async () => {
+    const blockSplineCircle = [
+      "0", "SPLINE", "5", "SP1", "8", "0",
+      "0", "CIRCLE", "5", "C1", "8", "0", "10", "1", "20", "1", "30", "0", "40", "2"
+    ];
+    const content = blockScene([...blockHeader("SPLINEBLOCK"), ...blockSplineCircle, ...blockFooter], blockInsert("SPLINEBLOCK", "I1", "CUT"));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const partialWarn = result.warnings.find((w) => w.code === "DXF_BLOCK_PARTIAL_EXPAND");
+      expect(partialWarn).toMatchObject({
+        message: 'DXF BLOCK "SPLINEBLOCK" was partially expanded; unsupported children skipped: SPLINE×1.',
+        entityType: "INSERT",
+        handle: "I1"
+      });
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set") {
+        expect(geometry.entities[0]).toMatchObject({ type: "circle", radius: 2 });
+      }
+    });
+  });
+
+  it("partial expand of text-only block yields no geometry and a DXF_BLOCK_PARTIAL_EXPAND warning", async () => {
+    const content = blockScene([...blockHeader("TEXTONLY"), ...blockText, ...blockFooter], blockInsert("TEXTONLY", "I1", "CUT"));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      const partialWarn = result.warnings.find((w) => w.code === "DXF_BLOCK_PARTIAL_EXPAND");
+      expect(partialWarn).toMatchObject({
+        message: 'DXF BLOCK "TEXTONLY" was partially expanded; unsupported children skipped: TEXT×1.',
+        entityType: "INSERT",
+        handle: "I1"
+      });
+    });
+  });
+
   it("still warns and skips non-uniform, negative-scale, and z-offset block INSERTs", async () => {
     const content = blockScene(
       [...blockHeader("TRANSFORMS"), ...blockLine("L1"), ...blockFooter],
@@ -456,7 +528,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("warns and skips nested, missing, and unsupported block INSERTs", async () => {
+  it("still fully skips nested and missing INSERTs; partial-expands text-only block with no geometry", async () => {
     const content = blockScene(
       [
         ...blockHeader("NESTED"),
@@ -485,7 +557,8 @@ describe("importDxfToKairo", () => {
           handle: "I1"
         }),
         expect.objectContaining({
-          code: "DXF_BLOCK_UNSUPPORTED_CONTENT",
+          code: "DXF_BLOCK_PARTIAL_EXPAND",
+          message: 'DXF BLOCK "TEXTBLOCK" was partially expanded; unsupported children skipped: TEXT×1.',
           entityType: "INSERT",
           handle: "I3"
         })
