@@ -18,6 +18,7 @@ import {
 import { validateScenePackage } from "@kairo/validator";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { preCleanDxfText, type DxfPreCleanReport } from "./preCleanDxf";
 
 export type DxfImportOptions = {
   createdBy?: string;
@@ -42,6 +43,7 @@ export type DxfImportResult = {
   scenePackage: ScenePackage;
   warnings: DxfImportWarning[];
   summary: DxfImportSummary;
+  preCleanReport: DxfPreCleanReport;
 };
 
 const identityMatrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -419,8 +421,9 @@ function buildScenePackage(inputPath: string, parsed: DxfGlobalObject, options: 
 export async function importDxfToKairo(inputPath: string, options: DxfImportOptions = {}): Promise<DxfImportResult> {
   const absolutePath = path.resolve(inputPath);
   const content = await readFile(absolutePath, "utf8");
+  const preCleaned = preCleanDxfText(content);
   const parser = new Parser();
-  const parsed = await parser.parse(content);
+  const parsed = await parser.parse(preCleaned.text);
   const warnings: DxfImportWarning[] = [];
   const scenePackage = buildScenePackage(absolutePath, parsed, options, warnings);
   const report = validateScenePackage(scenePackage);
@@ -447,7 +450,8 @@ export async function importDxfToKairo(inputPath: string, options: DxfImportOpti
       unsupportedEntityCount: warnings.length,
       layerCount: scenePackage.layers.layers.length,
       warningCount: warnings.length
-    }
+    },
+    preCleanReport: preCleaned.report
   };
 }
 

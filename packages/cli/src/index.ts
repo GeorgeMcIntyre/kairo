@@ -241,9 +241,14 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
         `Supported entities: ${result.summary.supportedEntityCount}`,
         `Unsupported entities: ${result.summary.unsupportedEntityCount}`,
         `Layers: ${result.summary.layerCount}`,
-        `Warnings: ${result.summary.warningCount}`
+        `Warnings: ${result.summary.warningCount}`,
+        `Pre-clean ACAD_REACTORS removed: ${result.preCleanReport.removedAcadReactorsCount}`,
+        `Pre-clean missing EOF appended: ${result.preCleanReport.appendedMissingEof}`
       ].join("\n") + "\n"
     );
+    for (const warning of result.preCleanReport.warnings) {
+      io.stderr(`- WARNING ${warning.code}${warning.line ? ` line ${warning.line}` : ""}: ${warning.message}\n`);
+    }
     for (const warning of result.warnings) {
       io.stderr(`- WARNING ${warning.code}${warning.entityType ? ` ${warning.entityType}` : ""}${warning.handle ? ` ${warning.handle}` : ""}: ${warning.message}\n`);
     }

@@ -126,6 +126,32 @@ describe("importDxfToKairo", () => {
     ]);
   });
 
+  it("pre-cleans ATTDEF ACAD_REACTORS duplicate 330 before parser import", async () => {
+    const result = await importDxfToKairo(path.join(fixturesDir, "attdef-acad-reactors.dxf"));
+
+    expect(validateScenePackage(result.scenePackage).valid).toBe(true);
+    expect(result.summary).toEqual({
+      supportedEntityCount: 0,
+      unsupportedEntityCount: 1,
+      layerCount: 1,
+      warningCount: 1
+    });
+    expect(result.preCleanReport).toMatchObject({
+      enabled: true,
+      removedAcadReactorsCount: 1,
+      removedAcadReactorsLineRanges: [{ startLine: 49, endLine: 54 }],
+      appendedMissingEof: false
+    });
+    expect(result.warnings).toEqual([
+      {
+        code: "DXF_ENTITY_UNSUPPORTED",
+        message: "DXF entity type ATTDEF is not supported by the minimal importer.",
+        entityType: "ATTDEF",
+        handle: "103E"
+      }
+    ]);
+  });
+
   it("writes an exploded scene folder that the CLI loader and validator can read", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "kairo-dxf-import-"));
     try {
