@@ -9,7 +9,7 @@ Phase 10 implementation notes:
 - The importer runs an audited in-memory pre-clean before parsing. It removes only scoped `102 / {ACAD_REACTORS ... 102 / }` groups and appends `0 / EOF` only when the final EOF marker is missing.
 - `kairo inspect-dxf <input.dxf> <output-base-path>` writes block/insert inventory reports as `.json` and `.md`.
 - Simple legacy `POLYLINE` vertex chains are imported as Kairo polylines. Curve-fit, spline-fit, mesh, polyface, bulged, and 3D-mode legacy polylines are skipped with explicit warnings.
-- One-level `INSERT` expansion is implemented only for matching block definitions with supported curve children, no nested inserts, no text/attribute geometry, positive uniform scale, no rotation, and no Z offset. Child layer `0` inherits the insert layer; non-`0` child layers are preserved. Expanded source-map entries retain the insert handle, block name, and child handle.
+- One-level `INSERT` expansion is implemented only for matching block definitions with supported curve children, no nested inserts, no text/attribute geometry, positive uniform scale, Z-axis rotation, and no Z offset. Child layer `0` inherits the insert layer; non-`0` child layers are preserved. Expanded source-map entries retain the insert handle, block name, and child handle.
 
 Full block expansion, hatches, dimensions, text geometry, splines, DXF export, and DWG support remain out of scope.
 

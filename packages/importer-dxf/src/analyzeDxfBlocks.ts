@@ -206,7 +206,7 @@ function addTransformComplexity(total: DxfBlockTransformComplexity, insert: Pars
 
 function hasTransformComplexity(insert: ParsedEntity) {
   const complexity = transformComplexityForInsert(insert);
-  return complexity.nonUniformScale || complexity.negativeScale || complexity.rotation || complexity.zOffset;
+  return complexity.nonUniformScale || complexity.negativeScale || complexity.zOffset;
 }
 
 function classifyInsert(insert: ParsedEntity, block: ParsedBlock | undefined): DxfBlockExpansionClassification {
@@ -250,7 +250,6 @@ function classificationForBlock(
   if (
     transformComplexity.nonUniformScale > 0 ||
     transformComplexity.negativeScale > 0 ||
-    transformComplexity.rotation > 0 ||
     transformComplexity.zOffset > 0
   ) {
     return "blocked by transform complexity";

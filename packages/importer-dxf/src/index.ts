@@ -327,7 +327,6 @@ function unsupportedInsertTransformReason(insert: DxfInsertEntity) {
   const reasons: string[] = [];
   if (Math.abs(scale.x - scale.y) > 1e-9 || Math.abs(scale.x - scale.z) > 1e-9) reasons.push("non-uniform scale");
   if (scale.x < 0 || scale.y < 0 || scale.z < 0) reasons.push("negative scale");
-  if (Math.abs(insert.rotation ?? 0) > 1e-9) reasons.push("rotation");
   if (Math.abs(insert.z ?? 0) > 1e-9) reasons.push("z offset");
   return reasons.join(", ");
 }
@@ -374,11 +373,22 @@ function effectiveLayerName(child: EntityCommons, insert: DxfInsertEntity) {
 
 function transformBlockPoint(x: number | undefined, y: number | undefined, z: number | undefined, insert: DxfInsertEntity, block: DxfBlockDefinition): [number, number, number] {
   const scale = insertScale(insert).x;
+  const radians = ((insert.rotation ?? 0) * Math.PI) / 180;
+  const localX = ((x ?? 0) - (block.basePointX ?? 0)) * scale;
+  const localY = ((y ?? 0) - (block.basePointY ?? 0)) * scale;
+  const localZ = ((z ?? 0) - (block.basePointZ ?? 0)) * scale;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
   return [
-    (x ?? 0) - (block.basePointX ?? 0),
-    (y ?? 0) - (block.basePointY ?? 0),
-    (z ?? 0) - (block.basePointZ ?? 0)
-  ].map((value, axis) => value * scale + ([insert.x ?? 0, insert.y ?? 0, insert.z ?? 0][axis] ?? 0)) as [number, number, number];
+    localX * cos - localY * sin + (insert.x ?? 0),
+    localX * sin + localY * cos + (insert.y ?? 0),
+    localZ + (insert.z ?? 0)
+  ];
+}
+
+function rotateAngle(angle: number, insert: DxfInsertEntity) {
+  return angle + (insert.rotation ?? 0);
 }
 
 function expandedEntityBase(
@@ -464,8 +474,8 @@ function expandBlockArc(entity: ArcEntity, insert: DxfInsertEntity, block: DxfBl
     type: "arc",
     center: transformBlockPoint(entity.centerX, entity.centerY, entity.centerZ, insert, block),
     radius: entity.radius * insertScale(insert).x,
-    startAngleDeg: entity.startAngle,
-    endAngleDeg: entity.endAngle
+    startAngleDeg: rotateAngle(entity.startAngle, insert),
+    endAngleDeg: rotateAngle(entity.endAngle, insert)
   };
 }
 

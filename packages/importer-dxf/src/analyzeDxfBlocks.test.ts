@@ -173,7 +173,7 @@ describe("analyzeDxfBlocks", () => {
     });
   });
 
-  it("classifies rotation and non-uniform scale as transform complexity", async () => {
+  it("allows rotation but classifies non-uniform scale as transform complexity", async () => {
     await withDxf(
       scene([...blockHeader("TRANSFORMED"), ...lineEntity("L1"), ...blockFooter], insertEntity("TRANSFORMED", "I1", ["41", "2", "42", "3", "43", "2", "50", "45"])),
       async (filePath) => {
@@ -188,5 +188,19 @@ describe("analyzeDxfBlocks", () => {
         });
       }
     );
+  });
+
+  it("classifies rotated otherwise-safe blocks as safe now", async () => {
+    await withDxf(scene([...blockHeader("ROTATED"), ...lineEntity("L1"), ...blockFooter], insertEntity("ROTATED", "I1", ["50", "45"])), async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.safeExpansionClassificationCounts["safe now"]).toBe(1);
+      expect(inventory.topInsertedBlockNames[0].transformComplexity).toEqual({
+        nonUniformScale: 0,
+        negativeScale: 0,
+        rotation: 1,
+        zOffset: 0
+      });
+    });
   });
 });

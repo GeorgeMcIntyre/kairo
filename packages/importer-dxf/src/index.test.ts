@@ -14,6 +14,31 @@ const blockHeader = (name: string) => ["0", "BLOCK", "5", `${name}-B`, "8", "0",
 const blockFooter = ["0", "ENDBLK", "5", "EB1", "8", "0"];
 const blockLine = (handle: string, layer = "0") => ["0", "LINE", "5", handle, "8", layer, "10", "0", "20", "0", "30", "0", "11", "10", "21", "0", "31", "0"];
 const blockCircle = (handle: string, layer = "0") => ["0", "CIRCLE", "5", handle, "8", layer, "10", "1", "20", "1", "30", "0", "40", "2"];
+const blockArc = (handle: string, layer = "0") => ["0", "ARC", "5", handle, "8", layer, "10", "1", "20", "0", "30", "0", "40", "2", "50", "10", "51", "80"];
+const blockLWPolyline = (handle: string, layer = "0") => [
+  "0",
+  "LWPOLYLINE",
+  "5",
+  handle,
+  "8",
+  layer,
+  "90",
+  "3",
+  "70",
+  "0",
+  "10",
+  "0",
+  "20",
+  "0",
+  "10",
+  "10",
+  "20",
+  "0",
+  "10",
+  "10",
+  "20",
+  "10"
+];
 const blockText = ["0", "TEXT", "5", "T1", "8", "0", "10", "0", "20", "0", "30", "0", "40", "1", "1", "LABEL"];
 const blockInsert = (blockName: string, handle: string, layer = "CUT", extras: string[] = []) => [
   "0",
@@ -74,6 +99,13 @@ async function withTempDxf(content: string, test: (filePath: string) => Promise<
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+function expectPointClose(actual: number[], expected: number[]) {
+  expect(actual).toHaveLength(expected.length);
+  expected.forEach((value, index) => {
+    expect(actual[index]).toBeCloseTo(value, 6);
+  });
 }
 
 describe("importDxfToKairo", () => {
@@ -292,8 +324,110 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("warns and skips rotated block INSERTs", async () => {
+  it("expands a block LINE rotated 90 degrees", async () => {
     const content = blockScene([...blockHeader("ROTATED"), ...blockLine("L1"), ...blockFooter], blockInsert("ROTATED", "I1", "CUT", ["50", "90"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.summary.unsupportedEntityCount).toBe(0);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [5, 16, 0]);
+        expect(geometry.entities[0].layerId).toBe("layer-cut");
+        expect(geometry.entities[0].sourceRef).toBe("src-dxf-insert-i1-block-rotated-child-l1");
+      }
+      expect(result.scenePackage.sourceMap.sources).toContainEqual(
+        expect.objectContaining({
+          id: "src-dxf-insert-i1-block-rotated-child-l1",
+          entityType: "LINE",
+          entityId: "L1",
+          note: "Expanded from INSERT I1, BLOCK ROTATED."
+        })
+      );
+    });
+  });
+
+  it("expands a block LINE rotated 45 degrees", async () => {
+    const content = blockScene([...blockHeader("ROTATED45"), ...blockLine("L1"), ...blockFooter], blockInsert("ROTATED45", "I1", "CUT", ["50", "45"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [12.071067811865476, 13.071067811865476, 0]);
+      }
+    });
+  });
+
+  it("keeps block CIRCLE geometry valid with rotation", async () => {
+    const content = blockScene([...blockHeader("CIRCLEROT"), ...blockCircle("C1"), ...blockFooter], blockInsert("CIRCLEROT", "I1", "CUT", ["50", "90"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "circle") {
+        expectPointClose(geometry.entities[0].center, [4, 7, 0]);
+        expect(geometry.entities[0].radius).toBe(2);
+      }
+    });
+  });
+
+  it("rotates block ARC center and angles", async () => {
+    const content = blockScene([...blockHeader("ARCROT"), ...blockArc("A1"), ...blockFooter], blockInsert("ARCROT", "I1", "CUT", ["50", "90"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "arc") {
+        expectPointClose(geometry.entities[0].center, [5, 7, 0]);
+        expect(geometry.entities[0].radius).toBe(2);
+        expect(geometry.entities[0].startAngleDeg).toBe(100);
+        expect(geometry.entities[0].endAngleDeg).toBe(170);
+      }
+    });
+  });
+
+  it("rotates block LWPOLYLINE points", async () => {
+    const content = blockScene([...blockHeader("PLINEROT"), ...blockLWPolyline("P1"), ...blockFooter], blockInsert("PLINEROT", "I1", "DETAIL", ["50", "90"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "polyline") {
+        expect(geometry.entities[0].layerId).toBe("layer-detail");
+        expectPointClose(geometry.entities[0].points[0], [5, 6, 0]);
+        expectPointClose(geometry.entities[0].points[1], [5, 16, 0]);
+        expectPointClose(geometry.entities[0].points[2], [-5, 16, 0]);
+      }
+    });
+  });
+
+  it("still warns and skips non-uniform, negative-scale, and z-offset block INSERTs", async () => {
+    const content = blockScene(
+      [...blockHeader("TRANSFORMS"), ...blockLine("L1"), ...blockFooter],
+      [
+        ...blockInsert("TRANSFORMS", "I1", "CUT", ["41", "2", "42", "3", "43", "2"]),
+        ...blockInsert("TRANSFORMS", "I2", "CUT", ["41", "-1", "42", "-1", "43", "-1"]),
+        ...blockInsert("TRANSFORMS", "I3", "CUT", ["30", "5"])
+      ]
+    );
 
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
@@ -302,9 +436,21 @@ describe("importDxfToKairo", () => {
       expect(result.warnings).toEqual([
         {
           code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-          message: "DXF INSERT transform is not supported by the simple expander (rotation); entity was skipped.",
+          message: "DXF INSERT transform is not supported by the simple expander (non-uniform scale); entity was skipped.",
           entityType: "INSERT",
           handle: "I1"
+        },
+        {
+          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+          message: "DXF INSERT transform is not supported by the simple expander (negative scale); entity was skipped.",
+          entityType: "INSERT",
+          handle: "I2"
+        },
+        {
+          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+          message: "DXF INSERT transform is not supported by the simple expander (z offset); entity was skipped.",
+          entityType: "INSERT",
+          handle: "I3"
         }
       ]);
     });

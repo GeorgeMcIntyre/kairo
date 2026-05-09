@@ -124,7 +124,7 @@ Status: import expansion partially implemented.
 - Audited DXF pre-clean handles scoped `ACAD_REACTORS` groups and missing EOF compatibility.
 - `inspect-dxf` produces reusable block/insert inventory reports.
 - Simple legacy `POLYLINE` vertex chains are imported; complex legacy polylines remain explicit warnings.
-- Strict one-level simple `INSERT` expansion is implemented for supported curve-only blocks without nested inserts or complex transforms.
+- Strict one-level simple `INSERT` expansion is implemented for supported curve-only blocks with positive uniform scale and Z-axis rotation, without nested inserts or remaining complex transforms.
 - DXF export remains not implemented.
 
 Initial export scope:
