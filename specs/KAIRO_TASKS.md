@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-05-10  
+Last updated: 2026-05-09  
 Use this file instead of GitHub Issues for now. Update section headers as tasks move.
 
 ---
@@ -12,6 +12,20 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 ---
 
 ## DONE
+
+### TASK-015: Phase 10N-B — Spline-fit POLYLINE expansion ✅ DONE
+
+**Completed:** 2026-05-09
+
+- `extractFittingVertices(entity)` filters VERTEX entities: flag & 8 (spline curve) and flag & 1 (curve-fit arc) — skips flag & 16 (frame control points).
+- Spread-override pattern `{ ...entity, vertices: fittingVertices }` reuses existing `legacyPolylineToEntity` and `expandBlockLegacyPolyline` without new function signatures.
+- `blockSkippableEntityTypes` and `blockSkippedEntityCounts` predicates updated: POLYLINEs with usable fitting vertices no longer counted as COMPLEX_POLYLINE.
+- Three-path POLYLINE loop: simple chain → direct import; spline/curve-fit with fitting vertices → import + `DXF_POLYLINE_SPLINE_APPROXIMATED`; else → `DXF_POLYLINE_UNSUPPORTED`.
+- Same pattern applied to depth-1 block expansion and depth-2 grandchild expansion loops.
+- 7 new tests; 97/97 pass.
+- Scott DXF2013: 142,378 → 142,393 entities; DXF_POLYLINE_UNSUPPORTED 15 → 0; DXF_POLYLINE_SPLINE_APPROXIMATED 0 → 15.
+
+---
 
 ### TASK-014: Phase 10N-A — POLYLINE parser investigation ✅ DONE
 

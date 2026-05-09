@@ -1134,4 +1134,168 @@ describe("importDxfToKairo", () => {
     expect(splineVertices[1].x).toBeCloseTo(2, 6);
     expect(splineVertices[1].y).toBeCloseTo(1, 6);
   });
+
+  describe("spline-fit and curve-fit POLYLINE expansion (Phase 10N-B)", () => {
+    const minimalDxfEntities = (entityLines: string[]) =>
+      dxf([
+        "0", "SECTION", "2", "HEADER", "9", "$INSUNITS", "70", "4", "0", "ENDSEC",
+        "0", "SECTION", "2", "ENTITIES",
+        ...entityLines,
+        "0", "ENDSEC",
+        "0", "EOF"
+      ]);
+
+    const polylineWithVertices = (handle: string, polyFlag: number, vertices: Array<{ handle: string; x: number; y: number; flag: number }>) => [
+      "0", "POLYLINE", "5", handle, "8", "CUT", "66", "1", "70", String(polyFlag), "10", "0", "20", "0", "30", "0",
+      ...vertices.flatMap((v) => ["0", "VERTEX", "5", v.handle, "8", "CUT", "10", String(v.x), "20", String(v.y), "30", "0", "70", String(v.flag)]),
+      "0", "SEQEND", "5", `SE-${handle}`, "8", "CUT"
+    ];
+
+    it("spline-fit POLYLINE uses only flag & 8 vertices, skips flag & 16 frame control vertices", async () => {
+      const content = minimalDxfEntities(polylineWithVertices("PL1", 4, [
+        { handle: "V1", x: 100, y: 200, flag: 16 }, // frame control — must NOT appear in output
+        { handle: "V2", x: 300, y: 400, flag: 16 }, // frame control — must NOT appear in output
+        { handle: "V3", x: 0,   y: 0,   flag: 8  }, // fitting vertex — must appear
+        { handle: "V4", x: 5,   y: 3,   flag: 8  }, // fitting vertex — must appear
+        { handle: "V5", x: 10,  y: 0,   flag: 8  }  // fitting vertex — must appear
+      ]));
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(1);
+        const geometry = result.scenePackage.geometry[0]?.geometries[0];
+        expect(geometry?.kind).toBe("curve-set");
+        if (geometry?.kind === "curve-set") {
+          expect(geometry.entities).toHaveLength(1);
+          const polyline = geometry.entities[0];
+          expect(polyline.type).toBe("polyline");
+          if (polyline.type === "polyline") {
+            expect(polyline.points).toHaveLength(3);
+            expect(polyline.points[0]).toEqual([0, 0, 0]);
+            expect(polyline.points[1]).toEqual([5, 3, 0]);
+            expect(polyline.points[2]).toEqual([10, 0, 0]);
+          }
+        }
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_SPLINE_APPROXIMATED")).toHaveLength(1);
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_UNSUPPORTED")).toHaveLength(0);
+      });
+    });
+
+    it("spline-fit POLYLINE with only flag & 16 vertices emits DXF_POLYLINE_UNSUPPORTED with no-fitting-vertices message", async () => {
+      const content = minimalDxfEntities(polylineWithVertices("PL1", 4, [
+        { handle: "V1", x: 1, y: 2, flag: 16 },
+        { handle: "V2", x: 3, y: 4, flag: 16 }
+      ]));
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(0);
+        const unsupported = result.warnings.filter((w) => w.code === "DXF_POLYLINE_UNSUPPORTED");
+        expect(unsupported).toHaveLength(1);
+        expect(unsupported[0].message).toContain("no usable fitting vertices");
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_SPLINE_APPROXIMATED")).toHaveLength(0);
+      });
+    });
+
+    it("spline-fit POLYLINE with exactly 2 flag & 8 vertices imports (boundary condition)", async () => {
+      const content = minimalDxfEntities(polylineWithVertices("PL1", 4, [
+        { handle: "V1", x: 1, y: 2, flag: 8 },
+        { handle: "V2", x: 3, y: 4, flag: 8 }
+      ]));
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(1);
+        const geometry = result.scenePackage.geometry[0]?.geometries[0];
+        if (geometry?.kind === "curve-set") {
+          const polyline = geometry.entities[0];
+          if (polyline.type === "polyline") {
+            expect(polyline.points).toHaveLength(2);
+            expect(polyline.points[0]).toEqual([1, 2, 0]);
+            expect(polyline.points[1]).toEqual([3, 4, 0]);
+          }
+        }
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_SPLINE_APPROXIMATED")).toHaveLength(1);
+      });
+    });
+
+    it("spline-fit POLYLINE with only 1 flag & 8 vertex remains unsupported", async () => {
+      const content = minimalDxfEntities(polylineWithVertices("PL1", 4, [
+        { handle: "V1", x: 5, y: 5, flag: 8 }
+      ]));
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(0);
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_UNSUPPORTED")).toHaveLength(1);
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_SPLINE_APPROXIMATED")).toHaveLength(0);
+      });
+    });
+
+    it("curve-fit POLYLINE (flag=2) uses flag & 1 generated vertices, skips untagged original vertices", async () => {
+      const content = minimalDxfEntities(polylineWithVertices("PL1", 2, [
+        { handle: "V1", x: 99, y: 99, flag: 0 }, // original untagged — must NOT appear
+        { handle: "V2", x: 2,  y: 0,  flag: 1 }, // generated arc-fit — must appear
+        { handle: "V3", x: 4,  y: 3,  flag: 1 }  // generated arc-fit — must appear
+      ]));
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(1);
+        const geometry = result.scenePackage.geometry[0]?.geometries[0];
+        if (geometry?.kind === "curve-set") {
+          const polyline = geometry.entities[0];
+          if (polyline.type === "polyline") {
+            expect(polyline.points).toHaveLength(2);
+            expect(polyline.points[0]).toEqual([2, 0, 0]);
+            expect(polyline.points[1]).toEqual([4, 3, 0]);
+          }
+        }
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_SPLINE_APPROXIMATED")).toHaveLength(1);
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_UNSUPPORTED")).toHaveLength(0);
+      });
+    });
+
+    it("mesh POLYLINE (flag=16) remains unsupported (regression guard)", async () => {
+      const content = minimalDxfEntities(polylineWithVertices("PL1", 16, [
+        { handle: "V1", x: 0,  y: 0, flag: 0 },
+        { handle: "V2", x: 10, y: 0, flag: 0 }
+      ]));
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(0);
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_UNSUPPORTED")).toHaveLength(1);
+        expect(result.warnings[0].message).toContain("mesh flag");
+      });
+    });
+
+    it("spline-fit POLYLINE inside block expansion: fitting vertices transformed to world space", async () => {
+      // Block SPBLOCK: spline-fit POLYLINE with flag=8 vertices at local (0,0) and (10,0).
+      // INSERT at (5,6), rotation=0, scale=1. Expected world points: (5,6) and (15,6).
+      const splineBlockPolyline = [
+        "0", "POLYLINE", "5", "PL1", "8", "0", "66", "1", "70", "4", "10", "0", "20", "0", "30", "0",
+        "0", "VERTEX", "5", "V1", "8", "0", "10", "0", "20", "0", "30", "0", "70", "8",
+        "0", "VERTEX", "5", "V2", "8", "0", "10", "10", "20", "0", "30", "0", "70", "8",
+        "0", "SEQEND", "5", "SE1", "8", "0"
+      ];
+      const content = blockScene(
+        [...blockHeader("SPBLOCK"), ...splineBlockPolyline, ...blockFooter],
+        [...blockInsert("SPBLOCK", "I1")]
+      );
+      await withTempDxf(content, async (filePath) => {
+        const result = await importDxfToKairo(filePath);
+        expect(result.summary.supportedEntityCount).toBe(1);
+        const allGeometries = result.scenePackage.geometry.flatMap((d) => d.geometries);
+        const curveSet = allGeometries.find((g) => g.kind === "curve-set" && g.entities.length > 0);
+        expect(curveSet?.kind).toBe("curve-set");
+        if (curveSet?.kind === "curve-set") {
+          const polyline = curveSet.entities.find((e) => e.type === "polyline");
+          expect(polyline).toBeDefined();
+          if (polyline?.type === "polyline") {
+            expect(polyline.points).toHaveLength(2);
+            expect(polyline.points[0][0]).toBeCloseTo(5, 6);
+            expect(polyline.points[0][1]).toBeCloseTo(6, 6);
+            expect(polyline.points[1][0]).toBeCloseTo(15, 6);
+            expect(polyline.points[1][1]).toBeCloseTo(6, 6);
+          }
+        }
+        expect(result.warnings.filter((w) => w.code === "DXF_POLYLINE_UNSUPPORTED")).toHaveLength(0);
+      });
+    });
+  });
 });

@@ -59,6 +59,7 @@ type LegacyPolylineVertex = {
   y?: number;
   z?: number;
   bulge?: number;
+  flag?: number;
 };
 
 type LegacyPolylineEntity = EntityCommons & {
@@ -296,6 +297,19 @@ function legacyPolylineUnsupportedReason(entity: LegacyPolylineEntity) {
   return reasons.join(", ") || "unsupported legacy POLYLINE mode";
 }
 
+function extractFittingVertices(entity: LegacyPolylineEntity): LegacyPolylineVertex[] | null {
+  const flag = entity.flag ?? 0;
+  if ((flag & 4) === 4) {
+    const fitting = entity.vertices.filter((v) => ((v.flag ?? 0) & 8) === 8 && ((v.flag ?? 0) & 16) === 0);
+    return fitting.length >= 2 ? fitting : null;
+  }
+  if ((flag & 2) === 2) {
+    const fitting = entity.vertices.filter((v) => ((v.flag ?? 0) & 1) === 1);
+    return fitting.length >= 2 ? fitting : null;
+  }
+  return null;
+}
+
 function legacyPolylineToEntity(entity: LegacyPolylineEntity, fallbackIndex: number): DrawingEntity {
   return {
     ...entityBase(entity, "polyline", fallbackIndex),
@@ -358,7 +372,7 @@ function blockSkippableEntityTypes(block: DxfBlockDefinition) {
     }
   }
 
-  if ((block.entities.polylines ?? []).some((entity) => !isSimpleLegacyPolyline(entity))) {
+  if ((block.entities.polylines ?? []).some((entity) => !isSimpleLegacyPolyline(entity) && extractFittingVertices(entity) === null)) {
     skippable.push("COMPLEX_POLYLINE");
   }
 
@@ -385,7 +399,7 @@ function blockSkippedEntityCounts(block: DxfBlockDefinition, skippableTypes: str
     }
   }
 
-  const complexPolylineCount = (block.entities.polylines ?? []).filter((entity) => !isSimpleLegacyPolyline(entity)).length;
+  const complexPolylineCount = (block.entities.polylines ?? []).filter((entity) => !isSimpleLegacyPolyline(entity) && extractFittingVertices(entity) === null).length;
   if (skippableTypes.includes("COMPLEX_POLYLINE") && complexPolylineCount > 0) {
     counts.push(`COMPLEX_POLYLINE×${complexPolylineCount}`);
   }
@@ -578,12 +592,30 @@ function convertEntities(parsed: DxfGlobalObject) {
       entities.push(converted);
       registerSource(converted, "POLYLINE", entity.handle ?? converted.id);
     } else {
-      warnings.push({
-        code: "DXF_POLYLINE_UNSUPPORTED",
-        message: `DXF POLYLINE entity is not a simple vertex chain and was skipped: ${legacyPolylineUnsupportedReason(entity)}.`,
-        entityType: "POLYLINE",
-        handle: entity.handle
-      });
+      const fittingVertices = extractFittingVertices(entity);
+      if (fittingVertices !== null) {
+        const converted = legacyPolylineToEntity({ ...entity, vertices: fittingVertices }, index++);
+        entities.push(converted);
+        registerSource(converted, "POLYLINE", entity.handle ?? converted.id);
+        warnings.push({
+          code: "DXF_POLYLINE_SPLINE_APPROXIMATED",
+          message: `DXF POLYLINE entity was expanded using pre-sampled fitting vertices from the DXF file.`,
+          entityType: "POLYLINE",
+          handle: entity.handle
+        });
+      } else {
+        const flag = entity.flag ?? 0;
+        const isSplineOrCurveFit = (flag & 4) === 4 || (flag & 2) === 2;
+        const reason = isSplineOrCurveFit
+          ? `${(flag & 4) === 4 ? "spline-fit" : "curve-fit"} POLYLINE has no usable fitting vertices`
+          : legacyPolylineUnsupportedReason(entity);
+        warnings.push({
+          code: "DXF_POLYLINE_UNSUPPORTED",
+          message: `DXF POLYLINE entity is not a simple vertex chain and was skipped: ${reason}.`,
+          entityType: "POLYLINE",
+          handle: entity.handle
+        });
+      }
     }
   }
 
@@ -653,12 +685,18 @@ function convertEntities(parsed: DxfGlobalObject) {
       registerSource(converted, "ARC", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
     for (const child of [...block.entities.polylines].sort(byHandle)) {
-      if (!isSimpleLegacyPolyline(child)) {
-        continue;
+      if (isSimpleLegacyPolyline(child)) {
+        const converted = expandBlockLegacyPolyline(child, expandInsert, block, blockName, index++);
+        entities.push(converted);
+        registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+      } else {
+        const fittingVertices = extractFittingVertices(child);
+        if (fittingVertices !== null) {
+          const converted = expandBlockLegacyPolyline({ ...child, vertices: fittingVertices }, expandInsert, block, blockName, index++);
+          entities.push(converted);
+          registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+        }
       }
-      const converted = expandBlockLegacyPolyline(child, expandInsert, block, blockName, index++);
-      entities.push(converted);
-      registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
 
     for (const childInsertRaw of [...(block.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {
@@ -740,10 +778,18 @@ function convertEntities(parsed: DxfGlobalObject) {
         registerSource(converted, "ARC", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
       }
       for (const grandchild of [...childBlock.entities.polylines].sort(byHandle)) {
-        if (!isSimpleLegacyPolyline(grandchild)) continue;
-        const converted = expandBlockLegacyPolyline(grandchild, composedInsert, childBlock, childBlockName, index++);
-        entities.push(converted);
-        registerSource(converted, "POLYLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+        if (isSimpleLegacyPolyline(grandchild)) {
+          const converted = expandBlockLegacyPolyline(grandchild, composedInsert, childBlock, childBlockName, index++);
+          entities.push(converted);
+          registerSource(converted, "POLYLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+        } else {
+          const fittingVertices = extractFittingVertices(grandchild);
+          if (fittingVertices !== null) {
+            const converted = expandBlockLegacyPolyline({ ...grandchild, vertices: fittingVertices }, composedInsert, childBlock, childBlockName, index++);
+            entities.push(converted);
+            registerSource(converted, "POLYLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+          }
+        }
       }
 
       for (const depthThreeInsert of [...(childBlock.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {

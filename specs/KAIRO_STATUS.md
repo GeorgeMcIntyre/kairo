@@ -1,18 +1,18 @@
 # Kairo Status
 
-Last updated: 2026-05-10
+Last updated: 2026-05-09
 
 ## Git
 
 - Branch: main
-- HEAD: 2fc3bdf perf: merge per-layer curve geometry to reduce draw calls
-- In sync with origin/main
+- HEAD: (pending commit) feat: expand dxf spline-fit polylines using pre-sampled fitting vertices
+- In sync with origin/main (post-commit)
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 90/90 passed |
+| `pnpm test` | 97/97 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
@@ -27,7 +27,8 @@ Last updated: 2026-05-10
 - INSERT partial expansion (Phase 10K): blocks with ATTDEF/TEXT/SPLINE/ELLIPSE now expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC) instead of being fully skipped.
 - INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position are expanded with z=0 and a DXF_INSERT_Z_FLATTENED warning. Hard failures (non-uniform/negative scale) still skip.
 - One-level nested INSERT expansion (Phase 10M): parent blocks containing child INSERTs now expand grandchild geometry via composed transform. Child z-offsets flattened. Depth guard emits DXF_BLOCK_INSERT_NESTED_UNSUPPORTED for depth-3+. Cycle detection emits DXF_BLOCK_INSERT_CYCLE.
-- Viewer performance (Phase 10P): 142,378-entity Scott scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding. See Viewer Performance section below.
+- Spline-fit POLYLINE expansion (Phase 10N-B): spline-fit (flag & 4) and curve-fit (flag & 2) POLYLINEs expanded using pre-sampled fitting vertices from the DXF file. No B-spline math required. Emits DXF_POLYLINE_SPLINE_APPROXIMATED. Works in direct entities, depth-1 block expansion, and depth-2 grandchild expansion.
+- Viewer performance (Phase 10P): 142,393-entity Scott scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding. See Viewer Performance section below.
 - Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, tree selection, source-map display, layer list, diagnostics panel. George confirmed viewer is usable.
 - Dev scene loader: reads generated scene folders from `apps/viewer/public/scenes/`.
 - Scene stats: `computeSceneStats` and `computeLayerEntityCounts` in viewer (tested).
@@ -38,20 +39,19 @@ Last updated: 2026-05-10
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
 - 130 INSERT instances blocked by hard transform failures (non-uniform/negative scale — out of scope).
 - Text, ATTDEF, ATTRIB geometry is not rendered (by design).
-- Complex POLYLINE types (all spline-fit, 15 instances) are not imported. Phase 10N-B approach confirmed viable (see ADR-010).
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.
 - No automated visual regression.
 
-## Known Import Warning Buckets (Scott DXF2013 — after Phase 10M)
+## Known Import Warning Buckets (Scott DXF2013 — after Phase 10N-B)
 
 | Warning code | Count | Notes |
 |---|---|---|
 | DXF_BLOCK_PARTIAL_EXPAND | 453 | Blocks with mixed supported/unsupported entity types |
 | DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED | 130 | Non-uniform/negative scale — hard skip |
 | DXF_INSERT_Z_FLATTENED | 110 | z-offset INSERTs expanded with z=0 |
-| DXF_POLYLINE_UNSUPPORTED | 15 | All spline-fit |
+| DXF_POLYLINE_SPLINE_APPROXIMATED | 15 | Spline-fit POLYLINEs expanded via pre-sampled fitting vertices |
 | DXF_BLOCK_INSERT_NESTED_UNSUPPORTED | 14 | Depth-3+ inserts hit depth guard |
 
 ## Scott DXF2013 Entity Progression
@@ -62,10 +62,11 @@ Last updated: 2026-05-10
 | After Phase 10K | 30,442 | Partial expansion: mixed blocks expand supported geometry |
 | After Phase 10L | 102,562 | Z-offset INSERTs expanded: SPR-CNT_TM_RIP, Fanuc controllers, etc. |
 | After Phase 10M | 142,378 | One-level nested INSERT expansion via composed transform |
+| After Phase 10N-B | 142,393 | Spline-fit POLYLINEs expanded (+15 entities, 0 DXF_POLYLINE_UNSUPPORTED) |
 
 ## Viewer Performance Baseline (after Phase 10P)
 
-Scott DXF2013: 142,378 curve entities across ~24 geometry documents.
+Scott DXF2013: 142,393 curve entities across ~24 geometry documents.
 
 | Metric | Value |
 |---|---|
