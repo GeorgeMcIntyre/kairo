@@ -6,47 +6,46 @@ Last updated: 2026-05-09
 
 ## Current Position
 
-Phase 10L complete. Scott DXF2013 now imports 102,562 supported entities (up from 30,442 after Phase 10K).
+Phase 10M complete. Scott DXF2013 now imports 142,378 supported entities (up from 102,562 after Phase 10L).
 
-Warning breakdown post-10L:
-- DXF_BLOCK_PARTIAL_EXPAND: 310
-- DXF_BLOCK_INSERT_NESTED_UNSUPPORTED: 132
-- DXF_INSERT_Z_FLATTENED: 109 (new — z-offset inserts now expand)
-- DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED: 108 (non-uniform/negative scale only)
+Warning breakdown post-10M:
+- DXF_BLOCK_PARTIAL_EXPAND: 453
+- DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED: 130 (non-uniform/negative scale only)
+- DXF_INSERT_Z_FLATTENED: 110
 - DXF_POLYLINE_UNSUPPORTED: 15
+- DXF_BLOCK_INSERT_NESTED_UNSUPPORTED: 14 (depth-3+ inserts — depth guard)
 
 ---
 
-## Recommended: Phase 10M — One-Level Nested INSERT Expansion
+## Recommended: Phase 10N — POLYLINE Spline-Fit Approximation
 
-**Status: NEXT (TASK-012)**
+**Status: NEXT**
 
 ### What
 
-Allow blocks containing one level of nested child INSERTs to expand supported geometry from those children. The parent INSERT's transform is composed with the child INSERT's transform.
+Approximate the 15 spline-fit POLYLINE entities (DXF_POLYLINE_UNSUPPORTED) as piecewise line segments by sampling the fitted curve from the POLYLINE vertex data.
 
-- **Expand:** LINE, LWPOLYLINE, CIRCLE, ARC from child blocks (one level deep only)
-- **Still skip:** grandchild INSERTs (no recursion)
-- **New warning:** DXF_BLOCK_INSERT_NESTED_PARTIAL or similar if child block has unsupported content
+- **Target:** 15 COMPLEX_POLYLINE / spline-fit instances
+- **Approach:** Use the POLYLINE fit vertices (group 10/20 vertex sequence) to produce an LWPOLYLINE-like chain
 
 ### Expected impact
 
-- 132 INSERT instances currently blocked by DXF_BLOCK_INSERT_NESTED_UNSUPPORTED may expand
-- Equipment blocks (*U104, *U133, *U239, etc.) become visible
-- Top parent blocks: *U104 (9 inserts), *U133 (6), *U239 (5)
+- 15 spline-fit entities become importable
+- DXF_POLYLINE_UNSUPPORTED drops to 0
 
 ### Risk
 
-Medium. Requires transform composition (multiply matrices or apply in sequence). Requires careful handling of z-offset + nested z-offset combinations. No viewer changes needed.
+Medium. Spline-fit POLYLINE vertex semantics in DXF can vary; needs inspection of actual vertex data.
 
 ---
 
-## After Phase 10M — Ranked Options
+## After Phase 10N — Ranked Options
 
 | Rank | Phase | Unlocks | Risk |
 |---|---|---|---|
 | 1 (done) | 10K partial expansion | mixed blocks expand | Very low |
 | 2 (done) | 10L z-offset support | 109 INSERT instances | Low |
-| 3 | 10M one-level nested INSERT | ~132 INSERT instances | Medium |
+| 3 (done) | 10M one-level nested INSERT | ~132 INSERT instances | Medium |
 | 4 | 10N POLYLINE spline-fit | 15 entities | Medium |
-| 5 | Non-uniform/negative scale | ~108 INSERT instances | High — out of scope |
+| 5 | Non-uniform/negative scale | ~130 INSERT instances | High — out of scope |
+| 6 | Depth-3+ nested INSERT | 14 instances | Low value — out of scope |

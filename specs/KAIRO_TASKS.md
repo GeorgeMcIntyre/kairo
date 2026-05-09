@@ -73,12 +73,13 @@ See `specs/SCOTT_DXF_MISSING_GEOMETRY_AUDIT.md` for full findings.
 
 ---
 
-### TASK-012: Phase 10M — One-level nested INSERT expansion
+### TASK-012: Phase 10M — One-level nested INSERT expansion ✅ DONE
 
-**Goal:** Allow blocks containing child INSERTs to expand supported geometry from the child block (one level deep only).  
-**Prerequisite:** TASK-010 + TASK-011 complete; new fixture suite.  
-**Not allowed:** Recursive nesting beyond one level; transform complexity changes.  
-**Expected impact:** ~138 additional INSERT instances expanded.
+**Completed:** 2026-05-09, commit 6111938  
+- `composeInserts()` computes world position + composed scale/rotation for child INSERT
+- Nested expansion loop: cycle detection (`DXF_BLOCK_INSERT_CYCLE`), missing block, hard transform check, z-flattening, partial expand, depth guard (`DXF_BLOCK_INSERT_NESTED_UNSUPPORTED`)
+- 10 new inline tests + 2 updated tests; 89/89 pass
+- Scott DXF2013: 102,562 → 142,378 supported entities; DXF_BLOCK_INSERT_NESTED_UNSUPPORTED dropped 132 → 14
 
 ---
 
