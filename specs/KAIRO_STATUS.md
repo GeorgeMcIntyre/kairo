@@ -1,18 +1,18 @@
 # Kairo Status
 
-Last updated: 2026-05-09
+Last updated: 2026-05-10
 
 ## Git
 
 - Branch: main
-- HEAD: (pending commit) feat: expand dxf spline-fit polylines using pre-sampled fitting vertices
+- HEAD: chore: add dxf transform complexity audit
 - In sync with origin/main (post-commit)
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 101/101 passed |
+| `pnpm test` | 108/108 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
@@ -37,12 +37,44 @@ Last updated: 2026-05-09
 ## What Is Broken / Missing
 
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
-- 130 INSERT instances blocked by hard transform failures (non-uniform/negative scale — out of scope).
+- 130 INSERT instances blocked by hard transform failures (non-uniform/negative scale).
+  - Phase 10R-A audit: 108 of these (top-level) are ALL pure X-axis mirrors (xScale=-25.4 or -1, yScale/zScale positive same magnitude). Option A (flip X geometry, apply abs scale) would unlock all 108. See Phase 10R-A findings below.
 - Text, ATTDEF, ATTRIB geometry is not rendered (by design). Phase 10O-A audit: 148 TEXT + 261 ATTDEF in block definitions; 5 equipment blocks all blocked by transform complexity; 20 partial-expand blocks skip ATTDEFs.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.
 - No automated visual regression.
+
+## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
+
+Run: `node packages/cli/dist/index.js inspect-dxf <scott.dxf>`
+
+| Metric | Value |
+|---|---|
+| Hard-blocked top-level INSERTs | 108 |
+| Category: pureNegativeUniform | 108 (100%) |
+| Category: pureNonUniformPositive | 0 |
+| Category: nonUniformNegative | 0 |
+| Negative X axis | 108 |
+| Negative Y axis | 0 |
+| Negative Z axis | 0 |
+| Non-uniform (raw values) | 108 |
+| Negative determinant | 108 |
+| Has rotation also | 66 |
+| Z offset also (handled by Phase 10L) | 30 |
+
+**Key finding:** Every top-level hard-blocked INSERT is a pure X-axis mirror. The two scale patterns are:
+- `xScale=-25.4, yScale=25.4, zScale=25.4` — imperial-to-metric with X flip (35 FENC-1525, 7 MANB-UP, 3 FENC-1025, etc.)
+- `xScale=-1, yScale=1, zScale=1` — simple X mirror (10 *U15, 9 SPR-CNT_TM_RIP, 7 BUCKET, etc.)
+
+**Option unlock estimates:**
+- Option A (negative uniform mirror — negate X of all expanded geometry points, use abs scale): unlocks all 108
+- Option B (non-uniform XY): 0 additional
+- Option C (full matrix): 108 (same as A for this file)
+
+**Implementation path for Phase 10S:** When `xScale < 0` and `|sx|=|sy|=|sz|`, expand with `abs(scale)` and then negate the X coordinate of all output points. Rotation and z-offset combine cleanly. Risk: low (single-axis flip with uniform magnitude).
+
+Note: 130 total `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED` in importer vs 108 in audit — the 22-count gap is from INSERTs inside block definitions that fail during nested expansion; same X-mirror pattern expected.
 
 ## Known Import Warning Buckets (Scott DXF2013 — after Phase 10N-B)
 

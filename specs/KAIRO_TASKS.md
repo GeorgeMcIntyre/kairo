@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-05-09  
+Last updated: 2026-05-10  
 Use this file instead of GitHub Issues for now. Update section headers as tasks move.
 
 ---
@@ -11,7 +11,40 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ---
 
+## NEXT
+
+### TASK-017: Phase 10S — Negative X mirror INSERT expansion
+
+**Goal:** Expand INSERTs where `xScale < 0` and `|xScale|=|yScale|=|zScale|` (pure X-axis mirror with uniform magnitude). Apply `abs(scale)` and negate X of all expanded geometry points.
+
+**Unlocks:** 108 top-level hard-blocked INSERTs (all pureNegativeUniform in Scott DXF2013). Expected entity count gain: large (FENC-1525 has significant geometry).
+
+**Approach:**
+- New helper `isNegativeUniformMirror(insert)`: returns true if `|sx|=|sy|=|sz|` and `sx < 0`
+- New helper `negativeAxes(insert)`: returns `{ x: sx < 0, y: sy < 0, z: sz < 0 }`
+- In expansion loop after `hardInsertTransformReason` check: if insert has uniform magnitude but some negative axes, expand with `abs(scale)` and flip point coordinates on negative axes
+- New warning code `DXF_INSERT_MIRROR_FLATTENED` (info-level)
+- Apply same pattern to depth-1 and depth-2 expansion loops
+
+**Risk:** Low-Medium. Geometry will be mirror-flipped. For 2D top-down inspection, this is acceptable — the topology and connectivity are preserved.
+
+**Acceptance criteria:** All pureNegativeUniform INSERTs expand; DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED drops by ~108; new test coverage.
+
+---
+
 ## DONE
+
+### TASK-017-PREP: Phase 10R-A — Transform complexity audit ✅ DONE
+
+**Completed:** 2026-05-10
+
+Added `DxfTransformAuditSummary` type and `computeTransformAudit()` to `analyzeDxfBlocks.ts`. Classifies hard-blocked INSERTs by cause (flag counts: negX/negY/negZ/nonUniform/negDet/hasRotation/zOffsetAlso) and exclusive category (pureNegativeUniform, pureNonUniformPositive, nonUniformNegative, other). Reports option unlock estimates (A/B/C).
+
+Scott DXF2013 findings: 108 top-level hard-blocked INSERTs, ALL pureNegativeUniform (xScale=-25.4 or -1, yScale/zScale positive, uniform magnitude). Option A unlocks all 108. No pureNonUniformPositive cases.
+
+7 new tests; 108/108 pass.
+
+---
 
 ### TASK-016: Phase 10O-A — Text/attribute/equipment audit ✅ DONE
 
