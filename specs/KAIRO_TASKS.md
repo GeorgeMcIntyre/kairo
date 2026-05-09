@@ -7,7 +7,7 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ## NOW
 
-### TASK-010: Phase 10K — Partial block expansion ← IN PROGRESS
+### TASK-010: Phase 10K — Partial block expansion ✅ DONE
 
 **Goal:** Change the importer so that blocks containing unsupported entity types (ATTDEF, TEXT, SPLINE, ELLIPSE, POINT, COMPLEX_POLYLINE) no longer cause the entire INSERT to be skipped. Expand supported curve entities (LINE, LWPOLYLINE, CIRCLE, ARC, simple POLYLINE) from the block; emit per-block warnings for skipped entity types and counts; continue to fully skip blocks containing nested INSERTs.  
 **Scope:** `packages/importer-dxf/src/index.ts` only; no viewer changes.  
@@ -62,12 +62,14 @@ See `specs/SCOTT_DXF_MISSING_GEOMETRY_AUDIT.md` for full findings.
 
 ## NEXT
 
-### TASK-011: Phase 10L — Z-offset INSERT expansion (2D projection)
+### TASK-011: Phase 10L — Z-offset INSERT expansion (2D projection) ✅ DONE
 
-**Goal:** Allow INSERTs with z ≠ 0 (but otherwise valid transform) to expand by projecting geometry to z=0 for 2D layout inspection.  
-**Prerequisite:** TASK-010 complete and Scott re-imported with visual QA.  
-**Not allowed:** Non-uniform scale; negative scale.  
-**Expected impact:** ~109 additional INSERT instances expanded.
+**Completed:** 2026-05-09, commit f40910b  
+- `hardInsertTransformReason` replaces `unsupportedInsertTransformReason` (z-offset no longer a hard failure)
+- `hasZOffset` helper; `expandInsert = {...entity, z: 0}` used for geometry expansion
+- New warning code `DXF_INSERT_Z_FLATTENED` with original Z value in message
+- 6 new inline tests + 1 updated test; 79/79 pass
+- Scott DXF2013: 30,442 → 102,562 supported entities; 109 DXF_INSERT_Z_FLATTENED warnings
 
 ---
 

@@ -5,15 +5,14 @@ Last updated: 2026-05-09
 ## Git
 
 - Branch: main
-- HEAD: 744d679 test: add dxf insert rotation coverage
-- Ahead of origin/main by 1 commit (plus 4 spec files with local edits)
-- Working tree: modified specs (KAIRO_STATUS.md, KAIRO_TASKS.md), plus untracked `.claude/`, `tmp/`
+- HEAD: f40910b feat: expand z-offset dxf inserts flattened to zero for 2d layout
+- In sync with origin/main
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 70/70 passed |
+| `pnpm test` | 79/79 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 795 kB — chunk size warning only) |
 
@@ -23,8 +22,10 @@ Last updated: 2026-05-09
 - CLI commands: `validate`, `import-dxf`, `inspect-dxf`, `stage-viewer-scene`.
 - DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains.
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
-- INSERT expansion: one-level only, curve-only blocks, positive uniform scale, Z-axis rotation.
-- INSERT rotation: verified by dedicated DXF file fixture and inline tests for 90°, 45°, rotation+scale, circle, arc, LWPOLYLINE, layer inheritance, and skip of non-uniform/negative/z-offset transforms.
+- INSERT expansion: one-level only, curve-only blocks, positive uniform scale, Z-axis rotation, z-offset flattening.
+- INSERT rotation: verified by dedicated DXF file fixture and inline tests for 90°, 45°, rotation+scale, circle, arc, LWPOLYLINE, layer inheritance.
+- INSERT partial expansion (Phase 10K): blocks with ATTDEF/TEXT/SPLINE/ELLIPSE now expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC) instead of being fully skipped.
+- INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position are expanded with z=0 and a DXF_INSERT_Z_FLATTENED warning. Hard failures (non-uniform/negative scale) still skip.
 - Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, tree selection, source-map display, layer list, diagnostics panel. George confirmed viewer is usable.
 - Dev scene loader: reads generated scene folders from `apps/viewer/public/scenes/`.
 - Scene stats: `computeSceneStats` and `computeLayerEntityCounts` in viewer (tested).
@@ -32,26 +33,32 @@ Last updated: 2026-05-09
 
 ## What Is Broken / Missing
 
-- **Large geometry gap**: 232 INSERT instances blocked by unsupported block content (mostly ATTDEF-only). These are fence panels and equipment symbols with visible geometry that should expand. Phase 10K will fix this.
-- 217 INSERT instances blocked by transform complexity (z offset, non-uniform/negative scale). Z-offset-only (109) may be safe to expand for 2D layout.
-- 138 INSERT instances blocked by nested INSERTs.
-- Text, ATTDEF, ATTRIB geometry is not rendered (by design — Phase 10K will skip ATTDEF and expand the geometry).
+- 132 INSERT instances blocked by nested INSERTs (Phase 10M would address this).
+- 108 INSERT instances blocked by hard transform failures (non-uniform/negative scale — out of scope).
+- Text, ATTDEF, ATTRIB geometry is not rendered (by design).
 - Complex POLYLINE types (all spline-fit, 15 instances) are not imported.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.
 - No automated visual regression.
 
-## Known Import Warning Buckets (Scott DXF2013 — audited 2026-05-09)
+## Known Import Warning Buckets (Scott DXF2013 — after Phase 10L)
 
-| Warning code | Count | Sub-reason |
+| Warning code | Count | Notes |
 |---|---|---|
-| DXF_BLOCK_UNSUPPORTED_CONTENT | 233 | 179 ATTDEF-only, 23 ATTDEF+TEXT, 6 TEXT-only, 6 SPLINE-only, rest mixed |
-| DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED | 217 | 109 z-offset-only, 78 non-uniform+negative scale, 30 all three |
-| DXF_BLOCK_INSERT_NESTED_UNSUPPORTED | 120 | Blocks containing child INSERTs |
+| DXF_BLOCK_PARTIAL_EXPAND | 310 | Blocks with mixed supported/unsupported entity types |
+| DXF_BLOCK_INSERT_NESTED_UNSUPPORTED | 132 | Blocks containing child INSERTs |
+| DXF_INSERT_Z_FLATTENED | 109 | z-offset INSERTs expanded with z=0 (new Phase 10L) |
+| DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED | 108 | Non-uniform/negative scale — hard skip |
 | DXF_POLYLINE_UNSUPPORTED | 15 | All spline-fit |
 
-See `specs/SCOTT_DXF_MISSING_GEOMETRY_AUDIT.md` for the full audit.
+## Scott DXF2013 Entity Progression
+
+| Phase | Supported entities | Key change |
+|---|---|---|
+| Before Phase 10K | 13,711 | Only clean curve-only blocks expanded |
+| After Phase 10K | 30,442 | Partial expansion: mixed blocks expand supported geometry |
+| After Phase 10L | 102,562 | Z-offset INSERTs expanded: SPR-CNT_TM_RIP, Fanuc controllers, etc. |
 
 ## Latest DXF Files Tested
 

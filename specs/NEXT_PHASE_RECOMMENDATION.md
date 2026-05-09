@@ -6,47 +6,47 @@ Last updated: 2026-05-09
 
 ## Current Position
 
-Phase 10J audit complete. Full missing-geometry data is in `specs/SCOTT_DXF_MISSING_GEOMETRY_AUDIT.md`.
+Phase 10L complete. Scott DXF2013 now imports 102,562 supported entities (up from 30,442 after Phase 10K).
 
-George confirmed the viewer is usable (top-2D, fit, lines, layers). The largest gap is geometry that exists inside blocks but is blocked by whole-block rejection when the block contains any unsupported entity type (ATTDEF, TEXT, SPLINE, etc.).
-
-**602 total INSERT instances. Only 32 (5.3%) are currently being expanded.**
+Warning breakdown post-10L:
+- DXF_BLOCK_PARTIAL_EXPAND: 310
+- DXF_BLOCK_INSERT_NESTED_UNSUPPORTED: 132
+- DXF_INSERT_Z_FLATTENED: 109 (new — z-offset inserts now expand)
+- DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED: 108 (non-uniform/negative scale only)
+- DXF_POLYLINE_UNSUPPORTED: 15
 
 ---
 
-## Recommended: Phase 10K — Partial Block Expansion
+## Recommended: Phase 10M — One-Level Nested INSERT Expansion
 
-**Status: In progress (TASK-010)**
+**Status: NEXT (TASK-012)**
 
 ### What
 
-Change `blockUnsupportedEntityTypes` rejection from "whole block blocked if any unsupported type present" to "expand supported entities, skip and warn about unsupported entities within the same block".
+Allow blocks containing one level of nested child INSERTs to expand supported geometry from those children. The parent INSERT's transform is composed with the child INSERT's transform.
 
-Specifically:
-- **Expand:** LINE, LWPOLYLINE, CIRCLE, ARC, simple POLYLINE from any block (regardless of other content)
-- **Skip and warn:** ATTDEF, TEXT, SPLINE, ELLIPSE, POINT, COMPLEX_POLYLINE within the block
-- **Still fully skip (whole INSERT):** blocks containing nested INSERTs
-- **New warning code:** `DXF_BLOCK_PARTIAL_EXPAND` — lists skipped entity types and counts per block instance
+- **Expand:** LINE, LWPOLYLINE, CIRCLE, ARC from child blocks (one level deep only)
+- **Still skip:** grandchild INSERTs (no recursion)
+- **New warning:** DXF_BLOCK_INSERT_NESTED_PARTIAL or similar if child block has unsupported content
 
 ### Expected impact
 
-- Scott DXF2013: supported entity count rises from 13,711 by several thousand
-- DXF_BLOCK_UNSUPPORTED_CONTENT (233 warnings) drops to near zero
-- FENC fence panels (70 inserts of FENC-1525 alone) become visible
-- Equipment blocks (*U36, *U48, controllers, etc.) become visible
+- 132 INSERT instances currently blocked by DXF_BLOCK_INSERT_NESTED_UNSUPPORTED may expand
+- Equipment blocks (*U104, *U133, *U239, etc.) become visible
+- Top parent blocks: *U104 (9 inserts), *U133 (6), *U239 (5)
 
 ### Risk
 
-Very low. No new geometry types. No new transform math. No viewer changes. Only the block rejection policy changes.
+Medium. Requires transform composition (multiply matrices or apply in sequence). Requires careful handling of z-offset + nested z-offset combinations. No viewer changes needed.
 
 ---
 
-## After Phase 10K — Ranked Options
+## After Phase 10M — Ranked Options
 
 | Rank | Phase | Unlocks | Risk |
 |---|---|---|---|
-| 1 (done) | 10K partial expansion | ~232 INSERT instances | Very low |
-| 2 | 10L z-offset support | ~109 INSERT instances | Low |
-| 3 | 10M one-level nested INSERT | ~138 INSERT instances | Medium |
-| 4 | 10N POLYLINE spline-fit | 30 entities | Medium |
+| 1 (done) | 10K partial expansion | mixed blocks expand | Very low |
+| 2 (done) | 10L z-offset support | 109 INSERT instances | Low |
+| 3 | 10M one-level nested INSERT | ~132 INSERT instances | Medium |
+| 4 | 10N POLYLINE spline-fit | 15 entities | Medium |
 | 5 | Non-uniform/negative scale | ~108 INSERT instances | High — out of scope |
