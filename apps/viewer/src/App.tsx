@@ -4,6 +4,9 @@ import { validateScenePackage } from "@kairo/validator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { Line2 } from "three/examples/jsm/lines/Line2.js";
+import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 
@@ -12,8 +15,10 @@ type RenderRecord = {
   nodeId: string;
   layerId?: string;
   baseColor: THREE.Color;
-  material: THREE.Material | THREE.Material[];
+  material: ViewerMaterial | ViewerMaterial[];
 };
+
+type ViewerMaterial = THREE.Material | LineMaterial;
 
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "selected";
@@ -164,14 +169,19 @@ function pointsForEntity(entity: DrawingEntity) {
 function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "curve-set" }>) {
   const group = new THREE.Group();
   for (const entity of geometry.entities) {
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints(pointsForEntity(entity));
-    const lineMaterial = new THREE.LineBasicMaterial({
-      color: materialColorFromEntity(scenePackage, entity, geometry.layerId),
+    const points = pointsForEntity(entity);
+    const lineGeometry = new LineGeometry();
+    lineGeometry.setPositions(points.flatMap((point) => [point.x, point.y, point.z]));
+    const lineMaterial = new LineMaterial({
+      color: materialColorFromEntity(scenePackage, entity, geometry.layerId).getHex(),
       transparent: true,
-      opacity: 0.96,
-      depthTest: false
+      opacity: 0.98,
+      depthTest: false,
+      linewidth: 2.2,
+      worldUnits: false
     });
-    const line = new THREE.Line(lineGeometry, lineMaterial);
+    const line = new Line2(lineGeometry, lineMaterial);
+    line.computeLineDistances();
     line.renderOrder = 2;
     group.add(line);
   }
@@ -180,15 +190,31 @@ function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { 
 
 function applyHighlight(records: RenderRecord[], selectedNodeId: string) {
   for (const record of records) {
+    const selected = record.nodeId === selectedNodeId;
     const color = record.nodeId === selectedNodeId ? selectedColor : record.baseColor;
-    record.object.renderOrder = record.nodeId === selectedNodeId ? 20 : 1;
+    record.object.renderOrder = selected ? 20 : 1;
     const materials = Array.isArray(record.material) ? record.material : [record.material];
     for (const material of materials) {
       if ("color" in material && material.color instanceof THREE.Color) {
         material.color.copy(color);
       }
+      if (material instanceof LineMaterial) {
+        material.linewidth = selected ? 5.5 : 2.2;
+        material.needsUpdate = true;
+      }
       if ("opacity" in material && typeof material.opacity === "number") {
-        material.opacity = record.nodeId === selectedNodeId ? 1 : 0.96;
+        material.opacity = selected ? 1 : 0.98;
+      }
+    }
+  }
+}
+
+function updateLineMaterialResolution(records: RenderRecord[], width: number, height: number) {
+  for (const record of records) {
+    const materials = Array.isArray(record.material) ? record.material : [record.material];
+    for (const material of materials) {
+      if (material instanceof LineMaterial) {
+        material.resolution.set(width, height);
       }
     }
   }
@@ -229,8 +255,9 @@ function fitCameraToBounds(
     const paddedWidth = Math.max(size.x, maxDimension * 0.04, 1) * padding;
     const paddedHeight = Math.max(size.y, maxDimension * 0.04, 1) * padding;
     const boxAspect = paddedWidth / paddedHeight;
-    const viewWidth = boxAspect > aspect ? paddedWidth : paddedHeight * aspect;
-    const viewHeight = boxAspect > aspect ? paddedWidth / aspect : paddedHeight;
+    const flatLayoutWidth = boxAspect > 6 ? paddedHeight * aspect * 1.8 : paddedWidth;
+    const viewWidth = boxAspect > aspect ? flatLayoutWidth : paddedHeight * aspect;
+    const viewHeight = boxAspect > aspect ? viewWidth / aspect : paddedHeight;
     camera.left = -viewWidth / 2;
     camera.right = viewWidth / 2;
     camera.top = viewHeight / 2;
@@ -352,6 +379,7 @@ function Viewport({
     }
 
     recordsRef.current = records;
+    updateLineMaterialResolution(records, host.clientWidth, host.clientHeight);
     applyHighlight(records, selectedNodeId);
 
     const sceneBounds = boundsForRecords(records, { hiddenLayerIds });
@@ -421,6 +449,7 @@ function Viewport({
       }
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
+      updateLineMaterialResolution(records, host.clientWidth, host.clientHeight);
     };
     window.addEventListener("resize", resize);
 
