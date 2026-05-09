@@ -1,0 +1,19 @@
+{
+  "format": "kairo-neutral-scene",
+  "version": "0.1.0",
+  "units": "millimeter",
+  "axisSystem": {
+    "up": "Z",
+    "handedness": "right"
+  },
+  "rootSceneFile": "scene.json",
+  "createdBy": {
+    "name": "kairo create-sample",
+    "version": "0.1.0"
+  },
+  "source": {
+    "format": "synthetic",
+    "path": "examples/source/bracket-demo.dxf",
+    "note": "Small deterministic sample for the first viewer and validator slice."
+  }
+}

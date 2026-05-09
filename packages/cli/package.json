@@ -1,0 +1,27 @@
+{
+  "name": "@kairo/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "kairo": "./dist/index.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kairo/core": "workspace:*",
+    "@kairo/importer-dxf": "workspace:*",
+    "@kairo/schema": "workspace:*",
+    "@kairo/validator": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8",
+    "typescript": "^5.7.3"
+  }
+}

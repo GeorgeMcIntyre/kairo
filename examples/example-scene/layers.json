@@ -1,0 +1,26 @@
+{
+  "layers": [
+    {
+      "id": "layer-solids",
+      "name": "Solids",
+      "color": {
+        "r": 0.55,
+        "g": 0.62,
+        "b": 0.68,
+        "a": 1
+      },
+      "visible": true
+    },
+    {
+      "id": "layer-reference",
+      "name": "DXF Reference",
+      "color": {
+        "r": 0.05,
+        "g": 0.48,
+        "b": 0.78,
+        "a": 1
+      },
+      "visible": true
+    }
+  ]
+}
