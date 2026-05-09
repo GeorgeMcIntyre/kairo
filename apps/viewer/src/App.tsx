@@ -4,9 +4,6 @@ import { validateScenePackage } from "@kairo/validator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Line2 } from "three/examples/jsm/lines/Line2.js";
-import { LineGeometry } from "three/examples/jsm/lines/LineGeometry.js";
-import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 
@@ -15,10 +12,8 @@ type RenderRecord = {
   nodeId: string;
   layerId?: string;
   baseColor: THREE.Color;
-  material: ViewerMaterial | ViewerMaterial[];
+  material: THREE.Material | THREE.Material[];
 };
-
-type ViewerMaterial = THREE.Material | LineMaterial;
 
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "selected";
@@ -119,8 +114,8 @@ function makeMesh(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind
 
 function pointsForCircle(entity: Extract<DrawingEntity, { type: "circle" }>) {
   const points: THREE.Vector3[] = [];
-  for (let i = 0; i <= 64; i += 1) {
-    const angle = (i / 64) * Math.PI * 2;
+  for (let i = 0; i <= 32; i += 1) {
+    const angle = (i / 32) * Math.PI * 2;
     points.push(
       new THREE.Vector3(
         entity.center[0] + Math.cos(angle) * entity.radius,
@@ -136,8 +131,8 @@ function pointsForArc(entity: Extract<DrawingEntity, { type: "arc" }>) {
   const points: THREE.Vector3[] = [];
   const start = THREE.MathUtils.degToRad(entity.startAngleDeg);
   const end = THREE.MathUtils.degToRad(entity.endAngleDeg);
-  for (let i = 0; i <= 48; i += 1) {
-    const angle = start + ((end - start) * i) / 48;
+  for (let i = 0; i <= 24; i += 1) {
+    const angle = start + ((end - start) * i) / 24;
     points.push(
       new THREE.Vector3(
         entity.center[0] + Math.cos(angle) * entity.radius,
@@ -166,59 +161,39 @@ function pointsForEntity(entity: DrawingEntity) {
   return pointsForArc(entity);
 }
 
-function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "curve-set" }>) {
-  const group = new THREE.Group();
+function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "curve-set" }>, layerId?: string) {
+  const positions: number[] = [];
   for (const entity of geometry.entities) {
     const points = pointsForEntity(entity);
-    const lineGeometry = new LineGeometry();
-    lineGeometry.setPositions(points.flatMap((point) => [point.x, point.y, point.z]));
-    const lineMaterial = new LineMaterial({
-      color: materialColorFromEntity(scenePackage, entity, geometry.layerId).getHex(),
-      transparent: true,
-      opacity: 0.98,
-      depthTest: false,
-      linewidth: 2.2,
-      worldUnits: false
-    });
-    const line = new Line2(lineGeometry, lineMaterial);
-    line.computeLineDistances();
-    line.renderOrder = 2;
-    group.add(line);
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
+    }
   }
-  return group;
+  const bufferGeometry = new THREE.BufferGeometry();
+  bufferGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const color = visibleDrawingColor(layerColor(scenePackage, layerId ?? geometry.layerId));
+  const material = new THREE.LineBasicMaterial({ color, depthTest: false });
+  const lineSegments = new THREE.LineSegments(bufferGeometry, material);
+  lineSegments.renderOrder = 2;
+  return lineSegments;
 }
 
 function applyHighlight(records: RenderRecord[], selectedNodeId: string) {
   for (const record of records) {
     const selected = record.nodeId === selectedNodeId;
-    const color = record.nodeId === selectedNodeId ? selectedColor : record.baseColor;
+    const color = selected ? selectedColor : record.baseColor;
     record.object.renderOrder = selected ? 20 : 1;
     const materials = Array.isArray(record.material) ? record.material : [record.material];
     for (const material of materials) {
       if ("color" in material && material.color instanceof THREE.Color) {
         material.color.copy(color);
       }
-      if (material instanceof LineMaterial) {
-        material.linewidth = selected ? 5.5 : 2.2;
-        material.needsUpdate = true;
-      }
-      if ("opacity" in material && typeof material.opacity === "number") {
-        material.opacity = selected ? 1 : 0.98;
-      }
     }
   }
 }
 
-function updateLineMaterialResolution(records: RenderRecord[], width: number, height: number) {
-  for (const record of records) {
-    const materials = Array.isArray(record.material) ? record.material : [record.material];
-    for (const material of materials) {
-      if (material instanceof LineMaterial) {
-        material.resolution.set(width, height);
-      }
-    }
-  }
-}
 
 function boundsForRecords(records: RenderRecord[], options?: { selectedNodeId?: string; hiddenLayerIds?: Set<string> }) {
   const bounds = new THREE.Box3();
@@ -366,7 +341,7 @@ function Viewport({
         }
 
         const effectiveLayerId = node.layerId ?? geometry.layerId;
-        const object = geometry.kind === "mesh" ? makeMesh(scenePackage, geometry) : makeCurveSet(scenePackage, geometry);
+        const object = geometry.kind === "mesh" ? makeMesh(scenePackage, geometry) : makeCurveSet(scenePackage, geometry, effectiveLayerId);
         object.name = node.displayName;
         object.userData.nodeId = node.id;
         object.userData.layerId = effectiveLayerId;
@@ -377,10 +352,7 @@ function Viewport({
         const material =
           geometry.kind === "mesh"
             ? (object as THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>).material
-            : (object as THREE.Group).children.flatMap((child) => {
-                const line = child as THREE.Line;
-                return Array.isArray(line.material) ? line.material : [line.material];
-              });
+            : (object as THREE.LineSegments<THREE.BufferGeometry, THREE.LineBasicMaterial>).material;
 
         records.push({
           object,
@@ -393,7 +365,6 @@ function Viewport({
     }
 
     recordsRef.current = records;
-    updateLineMaterialResolution(records, host.clientWidth, host.clientHeight);
     applyHighlight(records, selectedNodeIdRef.current);
 
     const sceneBounds = boundsForRecords(records, { hiddenLayerIds: hiddenLayerIdsRef.current });
@@ -459,7 +430,6 @@ function Viewport({
       }
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
-      updateLineMaterialResolution(records, host.clientWidth, host.clientHeight);
     };
     window.addEventListener("resize", resize);
 
