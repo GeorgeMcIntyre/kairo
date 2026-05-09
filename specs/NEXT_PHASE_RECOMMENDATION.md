@@ -6,71 +6,47 @@ Last updated: 2026-05-09
 
 ## Current Position
 
-Phase 10H (viewer ergonomics, fit, and line visibility) is committed and verified. All tests pass. The viewer has top-2D and perspective modes, fit-to-scene, fit-to-selection, and orbit controls. Human visual QA of the Scott DXF2013 scene has not yet been completed.
+Phase 10J audit complete. Full missing-geometry data is in `specs/SCOTT_DXF_MISSING_GEOMETRY_AUDIT.md`.
+
+George confirmed the viewer is usable (top-2D, fit, lines, layers). The largest gap is geometry that exists inside blocks but is blocked by whole-block rejection when the block contains any unsupported entity type (ATTDEF, TEXT, SPLINE, etc.).
+
+**602 total INSERT instances. Only 32 (5.3%) are currently being expanded.**
 
 ---
 
-## Options Evaluated
+## Recommended: Phase 10K — Partial Block Expansion
 
-### Option A — Continue viewer ergonomics
+**Status: In progress (TASK-010)**
 
-**Choose if:** Human cannot inspect the Scott layout comfortably after Phase 10H; fit, top-2D view, or line visibility is still poor.  
-**Risk:** If viewer is now usable, additional ergonomics work before QA is premature.  
-**Verdict:** Defer — assess in visual QA first.
+### What
 
----
+Change `blockUnsupportedEntityTypes` rejection from "whole block blocked if any unsupported type present" to "expand supported entities, skip and warn about unsupported entities within the same block".
 
-### Option B — Phase 10I: INSERT rotation tested regression (RECOMMENDED)
+Specifically:
+- **Expand:** LINE, LWPOLYLINE, CIRCLE, ARC, simple POLYLINE from any block (regardless of other content)
+- **Skip and warn:** ATTDEF, TEXT, SPLINE, ELLIPSE, POINT, COMPLEX_POLYLINE within the block
+- **Still fully skip (whole INSERT):** blocks containing nested INSERTs
+- **New warning code:** `DXF_BLOCK_PARTIAL_EXPAND` — lists skipped entity types and counts per block instance
 
-**Choose if:** Viewer is usable and many symbols are visibly missing or incorrectly placed.  
-**What this involves:**
-- Write a minimal test fixture DXF containing a block with a rotated INSERT (e.g. 45°, 90°).
-- Add importer tests that verify the rotated INSERT expands to the correct Kairo geometry coordinates.
-- Confirm no regression in existing 68 tests.
-- Scope: `packages/importer-dxf/src/` and `packages/importer-dxf/src/*.test.ts` only.  
-**Risk:** Low. Code is already written (33d4830); this adds the missing safety net.  
-**Verdict:** Do this immediately after visual QA confirms viewer is usable.
+### Expected impact
 
----
+- Scott DXF2013: supported entity count rises from 13,711 by several thousand
+- DXF_BLOCK_UNSUPPORTED_CONTENT (233 warnings) drops to near zero
+- FENC fence panels (70 inserts of FENC-1525 alone) become visible
+- Equipment blocks (*U36, *U48, controllers, etc.) become visible
 
-### Option C — Nested INSERT investigation
+### Risk
 
-**Choose if:** Rotation is proven and the largest remaining visual gap is nested block references.  
-**What this involves:** Read-only audit of `inspect-dxf` output; update design docs; no expansion code.  
-**Risk:** Low for audit; medium for actual expansion (do audit first).  
-**Verdict:** After Option B.
+Very low. No new geometry types. No new transform math. No viewer changes. Only the block rejection policy changes.
 
 ---
 
-### Option D — Text / attribute metadata
+## After Phase 10K — Ranked Options
 
-**Choose if:** Labels are the most impactful missing element after basic geometry is confirmed.  
-**What this involves:** Design decision only — no geometry code.  
-**Risk:** Low for design; medium for geometry import.  
-**Verdict:** Design decision can be made concurrently with Option B; geometry import is later.
-
----
-
-### Option E — Performance optimization
-
-**Choose if:** The viewer loads but feels unusably slow for the Scott layout.  
-**What this involves:** Profile Three.js render loop; consider geometry batching or LOD.  
-**Risk:** Medium — batching changes can affect correctness.  
-**Verdict:** Defer until visual QA confirms the issue exists.
-
----
-
-## Recommendation
-
-**Immediate (before any code):**  
-Complete TASK-002 (human visual QA via `VIEWER_QA_WORKFLOW.md`).
-
-**If viewer is usable:**  
-Proceed with Phase 10I (TASK-003) — write the INSERT rotation test fixture and verify correctness.
-
-**If viewer is not usable:**  
-Return to Option A — identify the specific ergonomics failure and fix it before any importer work.
-
-**Default next coding prompt for George:**
-
-> Phase 10I — Add a DXF test fixture containing a rotated INSERT block. Write importer tests that confirm the rotated INSERT expands to the correct Kairo curve geometry. All existing tests must continue to pass. Scope: packages/importer-dxf only. No viewer changes. No nested INSERT expansion.
+| Rank | Phase | Unlocks | Risk |
+|---|---|---|---|
+| 1 (done) | 10K partial expansion | ~232 INSERT instances | Very low |
+| 2 | 10L z-offset support | ~109 INSERT instances | Low |
+| 3 | 10M one-level nested INSERT | ~138 INSERT instances | Medium |
+| 4 | 10N POLYLINE spline-fit | 30 entities | Medium |
+| 5 | Non-uniform/negative scale | ~108 INSERT instances | High — out of scope |
