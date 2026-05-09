@@ -329,7 +329,19 @@ async function inspectDxfCommand(args: string[], io: CliIo): Promise<number> {
       "",
       "Sample text strings:",
       ...ta.sampleTextStrings.slice(0, 5).map((s) => `  [${s.source}] ${s.text}`),
-      ta.sampleTextStrings.length === 0 ? "  None." : ""
+      ta.sampleTextStrings.length === 0 ? "  None." : "",
+      "",
+      "Transform Complexity Audit:",
+      `  Hard-blocked INSERTs: ${inventory.transformAudit.totalHardBlocked}`,
+      `  Flag counts: negX=${inventory.transformAudit.flagCounts.negativeX} negY=${inventory.transformAudit.flagCounts.negativeY} negZ=${inventory.transformAudit.flagCounts.negativeZ} nonUniform=${inventory.transformAudit.flagCounts.nonUniform} negDet=${inventory.transformAudit.flagCounts.negativeDet} hasRotation=${inventory.transformAudit.flagCounts.hasRotation} zOffsetAlso=${inventory.transformAudit.flagCounts.zOffsetAlso}`,
+      `  Categories: pureNegUniform=${inventory.transformAudit.categoryCounts.pureNegativeUniform} pureNonUniformPos=${inventory.transformAudit.categoryCounts.pureNonUniformPositive} nonUniformNeg=${inventory.transformAudit.categoryCounts.nonUniformNegative} other=${inventory.transformAudit.categoryCounts.other}`,
+      `  Option unlocks: A=${inventory.transformAudit.optionUnlocks.optionA} B=${inventory.transformAudit.optionUnlocks.optionB} C=${inventory.transformAudit.optionUnlocks.optionC}`,
+      `  Top blocked blocks (${inventory.transformAudit.topBlockedBlocks.length}):`,
+      ...inventory.transformAudit.topBlockedBlocks.slice(0, 10).map((b) => `    ${b.blockName} (inserts: ${b.insertCount}, scale: ${JSON.stringify(b.sampleScale)}, category: ${b.category})`),
+      inventory.transformAudit.topBlockedBlocks.length === 0 ? "    None." : "",
+      `  Blocked equipment blocks (${inventory.transformAudit.blockedEquipmentBlocks.length}):`,
+      ...inventory.transformAudit.blockedEquipmentBlocks.slice(0, 10).map((b) => `    ${b.blockName} (pattern: ${b.matchedPattern}, inserts: ${b.insertCount}, category: ${b.category})`),
+      inventory.transformAudit.blockedEquipmentBlocks.length === 0 ? "    None." : ""
     ]
       .filter((line) => line !== undefined)
       .join("\n");

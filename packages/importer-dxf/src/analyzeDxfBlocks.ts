@@ -19,6 +19,43 @@ export type DxfEquipmentBlockMatch = {
   classification: DxfBlockExpansionClassification;
 };
 
+export type DxfTransformAuditSummary = {
+  totalHardBlocked: number;
+  flagCounts: {
+    negativeX: number;
+    negativeY: number;
+    negativeZ: number;
+    nonUniform: number;
+    negativeDet: number;
+    hasRotation: number;
+    zOffsetAlso: number;
+  };
+  categoryCounts: {
+    pureNegativeUniform: number;
+    pureNonUniformPositive: number;
+    nonUniformNegative: number;
+    other: number;
+  };
+  optionUnlocks: {
+    optionA: number;
+    optionB: number;
+    optionC: number;
+  };
+  topBlockedBlocks: Array<{
+    blockName: string;
+    insertCount: number;
+    sampleScale: { xScale: number; yScale: number; zScale: number };
+    sampleRotation: number;
+    category: string;
+  }>;
+  blockedEquipmentBlocks: Array<{
+    blockName: string;
+    matchedPattern: string;
+    insertCount: number;
+    category: string;
+  }>;
+};
+
 export type DxfTextAuditSummary = {
   totalTextCount: number;
   totalMTextCount: number;
@@ -91,6 +128,7 @@ export type DxfBlockInsertInventory = {
   safeExpansionClassificationCounts: Record<DxfBlockExpansionClassification, number>;
   topInsertedBlockNames: DxfInsertedBlockSummary[];
   textAudit: DxfTextAuditSummary;
+  transformAudit: DxfTransformAuditSummary;
 };
 
 type ParsedTextLike = {
@@ -402,6 +440,99 @@ function summarizeBlockDefinitions(blocks: ParsedBlock[], usage: Map<string, Par
 const EQUIPMENT_PATTERNS = ["FANUC", "ROBOT", "CONTROLLER", "RBT", "HENROB", "PV-R", "PDP", "LIFT", "TILT", "SPAC", "RESPOT"];
 const supportedGeometryForPartialExpand = new Set(["LINE", "LWPOLYLINE", "CIRCLE", "ARC", "POLYLINE"]);
 
+const emptyTransformAudit = (): DxfTransformAuditSummary => ({
+  totalHardBlocked: 0,
+  flagCounts: { negativeX: 0, negativeY: 0, negativeZ: 0, nonUniform: 0, negativeDet: 0, hasRotation: 0, zOffsetAlso: 0 },
+  categoryCounts: { pureNegativeUniform: 0, pureNonUniformPositive: 0, nonUniformNegative: 0, other: 0 },
+  optionUnlocks: { optionA: 0, optionB: 0, optionC: 0 },
+  topBlockedBlocks: [],
+  blockedEquipmentBlocks: []
+});
+
+function categorizeHardBlockedInsert(sx: number, sy: number, sz: number): keyof DxfTransformAuditSummary["categoryCounts"] {
+  const absSx = Math.abs(sx);
+  const absSy = Math.abs(sy);
+  const absSz = Math.abs(sz);
+  const uniformMag = Math.abs(absSx - absSy) < 1e-9 && Math.abs(absSx - absSz) < 1e-9;
+  const anyNegative = sx < 0 || sy < 0 || sz < 0;
+  const allNonNegative = sx >= 0 && sy >= 0 && sz >= 0;
+
+  if (anyNegative && uniformMag) return "pureNegativeUniform";
+  if (allNonNegative) return "pureNonUniformPositive";
+  if (anyNegative && !uniformMag) return "nonUniformNegative";
+  return "other";
+}
+
+function computeTransformAudit(inserts: ParsedEntity[]): DxfTransformAuditSummary {
+  const flagCounts: DxfTransformAuditSummary["flagCounts"] = {
+    negativeX: 0, negativeY: 0, negativeZ: 0, nonUniform: 0, negativeDet: 0, hasRotation: 0, zOffsetAlso: 0
+  };
+  const categoryCounts: DxfTransformAuditSummary["categoryCounts"] = {
+    pureNegativeUniform: 0, pureNonUniformPositive: 0, nonUniformNegative: 0, other: 0
+  };
+
+  const blockedByBlock = new Map<string, { count: number; category: string; sampleScale: { xScale: number; yScale: number; zScale: number }; sampleRotation: number }>();
+
+  for (const insert of inserts) {
+    const sx = insert.xScale ?? 1;
+    const sy = insert.yScale ?? 1;
+    const sz = insert.zScale ?? 1;
+    const isNonUniform = Math.abs(sx - sy) > 1e-9 || Math.abs(sx - sz) > 1e-9;
+    const isNegative = sx < 0 || sy < 0 || sz < 0;
+
+    if (!isNonUniform && !isNegative) continue;
+
+    if (sx < 0) flagCounts.negativeX++;
+    if (sy < 0) flagCounts.negativeY++;
+    if (sz < 0) flagCounts.negativeZ++;
+    if (isNonUniform) flagCounts.nonUniform++;
+    const negCount = (sx < 0 ? 1 : 0) + (sy < 0 ? 1 : 0) + (sz < 0 ? 1 : 0);
+    if (negCount % 2 === 1) flagCounts.negativeDet++;
+    if (Math.abs(insert.rotation ?? 0) > 1e-9) flagCounts.hasRotation++;
+    if (Math.abs(insert.z ?? 0) > 1e-9) flagCounts.zOffsetAlso++;
+
+    const category = categorizeHardBlockedInsert(sx, sy, sz);
+    categoryCounts[category]++;
+
+    const blockName = blockNameForInsert(insert);
+    if (!blockedByBlock.has(blockName)) {
+      blockedByBlock.set(blockName, { count: 0, category, sampleScale: { xScale: round(sx), yScale: round(sy), zScale: round(sz) }, sampleRotation: round(insert.rotation ?? 0) });
+    }
+    blockedByBlock.get(blockName)!.count++;
+  }
+
+  const totalHardBlocked = Object.values(categoryCounts).reduce((a, b) => a + b, 0);
+
+  const topBlockedBlocks = [...blockedByBlock.entries()]
+    .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+    .slice(0, 20)
+    .map(([blockName, info]) => ({ blockName, insertCount: info.count, sampleScale: info.sampleScale, sampleRotation: info.sampleRotation, category: info.category }));
+
+  const blockedEquipmentBlocks: DxfTransformAuditSummary["blockedEquipmentBlocks"] = [];
+  for (const [blockName, info] of blockedByBlock.entries()) {
+    const upper = blockName.toUpperCase();
+    for (const pattern of EQUIPMENT_PATTERNS) {
+      if (upper.includes(pattern)) {
+        blockedEquipmentBlocks.push({ blockName, matchedPattern: pattern, insertCount: info.count, category: info.category });
+        break;
+      }
+    }
+  }
+
+  return {
+    totalHardBlocked,
+    flagCounts,
+    categoryCounts,
+    optionUnlocks: {
+      optionA: categoryCounts.pureNegativeUniform,
+      optionB: categoryCounts.pureNonUniformPositive,
+      optionC: totalHardBlocked
+    },
+    topBlockedBlocks,
+    blockedEquipmentBlocks: blockedEquipmentBlocks.sort((a, b) => b.insertCount - a.insertCount || a.blockName.localeCompare(b.blockName)).slice(0, 25)
+  };
+}
+
 const emptyTextAudit = (): DxfTextAuditSummary => ({
   totalTextCount: 0,
   totalMTextCount: 0,
@@ -627,7 +758,8 @@ function inventoryFromParsed(filePath: string, preCleanReport: DxfPreCleanReport
     nestedInsertCountInsideBlocks: blocks.reduce((count, block) => count + (block.entities?.inserts?.length ?? 0), 0),
     safeExpansionClassificationCounts,
     topInsertedBlockNames: topInsertedBlockNames.slice(0, 25),
-    textAudit: computeTextAudit(blocks, entities, usage, blocksByName, blockDefinitionsByName)
+    textAudit: computeTextAudit(blocks, entities, usage, blocksByName, blockDefinitionsByName),
+    transformAudit: computeTransformAudit(inserts)
   };
 }
 
@@ -669,7 +801,8 @@ export async function analyzeDxfBlocks(inputPath: string): Promise<DxfBlockInser
       nestedInsertCountInsideBlocks: 0,
       safeExpansionClassificationCounts: emptyClassificationCounts(),
       topInsertedBlockNames: [],
-      textAudit: emptyTextAudit()
+      textAudit: emptyTextAudit(),
+      transformAudit: emptyTransformAudit()
     };
   }
 }
@@ -769,6 +902,51 @@ export function renderDxfBlockInventoryMarkdown(inventory: DxfBlockInsertInvento
     "| --- | ---: | ---: | ---: |",
     ...ta.partialExpandTextSkipped.map((b) => `| ${b.blockName} | ${b.insertCount} | ${b.textCount} | ${b.attdefCount} |`),
     ta.partialExpandTextSkipped.length === 0 ? "None." : ""
+  );
+
+  const xa = inventory.transformAudit;
+  lines.push(
+    "",
+    "## Transform Complexity Audit",
+    "",
+    `Total hard-blocked INSERTs (non-uniform or negative scale): ${xa.totalHardBlocked}`,
+    "",
+    "### Flag Counts (non-exclusive)",
+    "",
+    `- Negative X scale: ${xa.flagCounts.negativeX}`,
+    `- Negative Y scale: ${xa.flagCounts.negativeY}`,
+    `- Negative Z scale: ${xa.flagCounts.negativeZ}`,
+    `- Non-uniform scale: ${xa.flagCounts.nonUniform}`,
+    `- Negative determinant (odd negative axes): ${xa.flagCounts.negativeDet}`,
+    `- Has rotation: ${xa.flagCounts.hasRotation}`,
+    `- Z offset also present: ${xa.flagCounts.zOffsetAlso}`,
+    "",
+    "### Category Counts (exclusive per INSERT)",
+    "",
+    `- pureNegativeUniform (uniform magnitude, any axes negative → Option A): ${xa.categoryCounts.pureNegativeUniform}`,
+    `- pureNonUniformPositive (all positive, non-uniform → Option B): ${xa.categoryCounts.pureNonUniformPositive}`,
+    `- nonUniformNegative (non-uniform magnitude + negative → Option C): ${xa.categoryCounts.nonUniformNegative}`,
+    `- other: ${xa.categoryCounts.other}`,
+    "",
+    "### Option Unlock Estimates",
+    "",
+    `- Option A (negative uniform mirror — apply abs(scale)): ${xa.optionUnlocks.optionA} inserts`,
+    `- Option B (non-uniform XY 2D — scale x and y separately): ${xa.optionUnlocks.optionB} inserts`,
+    `- Option C (full matrix — unlocks all hard-blocked): ${xa.optionUnlocks.optionC} inserts`,
+    "",
+    "### Top 20 Blocked Blocks",
+    "",
+    "| block | inserts | sample scale | sample rotation | category |",
+    "| --- | ---: | --- | --- | --- |",
+    ...xa.topBlockedBlocks.map((b) => `| ${b.blockName.replace(/\|/g, "\\|")} | ${b.insertCount} | ${JSON.stringify(b.sampleScale)} | ${b.sampleRotation} | ${b.category} |`),
+    xa.topBlockedBlocks.length === 0 ? "None." : "",
+    "",
+    "### Blocked Equipment Blocks",
+    "",
+    "| block | pattern | inserts | category |",
+    "| --- | --- | ---: | --- |",
+    ...xa.blockedEquipmentBlocks.map((b) => `| ${b.blockName.replace(/\|/g, "\\|")} | ${b.matchedPattern} | ${b.insertCount} | ${b.category} |`),
+    xa.blockedEquipmentBlocks.length === 0 ? "None." : ""
   );
 
   if (!inventory.parser.ok && inventory.parser.error) {

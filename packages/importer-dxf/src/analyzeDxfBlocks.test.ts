@@ -248,6 +248,115 @@ describe("analyzeDxfBlocks", () => {
     });
   });
 
+  it("transformAudit counts pure negative uniform inserts", async () => {
+    const content = scene(
+      [...blockHeader("NEGBLOCK"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("NEGBLOCK", "I1", ["41", "-1", "42", "-1", "43", "-1"])
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.totalHardBlocked).toBe(1);
+      expect(inventory.transformAudit.flagCounts.negativeX).toBe(1);
+      expect(inventory.transformAudit.flagCounts.negativeY).toBe(1);
+      expect(inventory.transformAudit.flagCounts.negativeZ).toBe(1);
+      expect(inventory.transformAudit.flagCounts.nonUniform).toBe(0);
+      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(1);
+      expect(inventory.transformAudit.categoryCounts.pureNonUniformPositive).toBe(0);
+      expect(inventory.transformAudit.optionUnlocks.optionA).toBe(1);
+      expect(inventory.transformAudit.optionUnlocks.optionB).toBe(0);
+      expect(inventory.transformAudit.topBlockedBlocks).toHaveLength(1);
+      expect(inventory.transformAudit.topBlockedBlocks[0]).toMatchObject({ blockName: "NEGBLOCK", insertCount: 1, category: "pureNegativeUniform" });
+    });
+  });
+
+  it("transformAudit counts pure non-uniform positive inserts", async () => {
+    const content = scene(
+      [...blockHeader("NUPBLOCK"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("NUPBLOCK", "I1", ["41", "2", "42", "3", "43", "1"])
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.totalHardBlocked).toBe(1);
+      expect(inventory.transformAudit.flagCounts.negativeX).toBe(0);
+      expect(inventory.transformAudit.flagCounts.nonUniform).toBe(1);
+      expect(inventory.transformAudit.categoryCounts.pureNonUniformPositive).toBe(1);
+      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(0);
+      expect(inventory.transformAudit.optionUnlocks.optionA).toBe(0);
+      expect(inventory.transformAudit.optionUnlocks.optionB).toBe(1);
+      expect(inventory.transformAudit.topBlockedBlocks[0]).toMatchObject({ blockName: "NUPBLOCK", category: "pureNonUniformPositive" });
+    });
+  });
+
+  it("transformAudit counts non-uniform negative inserts", async () => {
+    const content = scene(
+      [...blockHeader("MIXBLOCK"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("MIXBLOCK", "I1", ["41", "2", "42", "-3", "43", "1"])
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.totalHardBlocked).toBe(1);
+      expect(inventory.transformAudit.flagCounts.negativeY).toBe(1);
+      expect(inventory.transformAudit.flagCounts.nonUniform).toBe(1);
+      expect(inventory.transformAudit.categoryCounts.nonUniformNegative).toBe(1);
+      expect(inventory.transformAudit.optionUnlocks.optionA).toBe(0);
+      expect(inventory.transformAudit.optionUnlocks.optionB).toBe(0);
+    });
+  });
+
+  it("transformAudit ignores z-offset-only inserts (not a hard failure)", async () => {
+    const content = scene(
+      [...blockHeader("ZBLOCK"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("ZBLOCK", "I1", ["30", "5"])
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.totalHardBlocked).toBe(0);
+      expect(inventory.transformAudit.topBlockedBlocks).toHaveLength(0);
+    });
+  });
+
+  it("transformAudit notes z-offset also present on hard-blocked inserts", async () => {
+    const content = scene(
+      [...blockHeader("ZNEG"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("ZNEG", "I1", ["30", "5", "41", "-1", "42", "-1", "43", "-1"])
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.totalHardBlocked).toBe(1);
+      expect(inventory.transformAudit.flagCounts.zOffsetAlso).toBe(1);
+      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(1);
+    });
+  });
+
+  it("transformAudit identifies blocked equipment blocks", async () => {
+    const content = scene(
+      [...blockHeader("FANUC_ARM"), ...lineEntity("L1"), ...blockFooter],
+      insertEntity("FANUC_ARM", "I1", ["41", "-1", "42", "-1", "43", "-1"])
+    );
+    await withDxf(content, async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.blockedEquipmentBlocks).toHaveLength(1);
+      expect(inventory.transformAudit.blockedEquipmentBlocks[0]).toMatchObject({ blockName: "FANUC_ARM", matchedPattern: "FANUC", insertCount: 1, category: "pureNegativeUniform" });
+    });
+  });
+
+  it("transformAudit empty when all inserts have clean transforms", async () => {
+    await withDxf(scene([...blockHeader("SIMPLE"), ...lineEntity("L1"), ...blockFooter], insertEntity("SIMPLE", "I1")), async (filePath) => {
+      const inventory = await analyzeDxfBlocks(filePath);
+
+      expect(inventory.transformAudit.totalHardBlocked).toBe(0);
+      expect(inventory.transformAudit.topBlockedBlocks).toHaveLength(0);
+      expect(inventory.transformAudit.blockedEquipmentBlocks).toHaveLength(0);
+      expect(inventory.transformAudit.optionUnlocks).toEqual({ optionA: 0, optionB: 0, optionC: 0 });
+    });
+  });
+
   it("textAudit empty when no text entities exist", async () => {
     await withDxf(scene([...blockHeader("SIMPLE"), ...lineEntity("L1"), ...blockFooter], insertEntity("SIMPLE", "I1")), async (filePath) => {
       const inventory = await analyzeDxfBlocks(filePath);
