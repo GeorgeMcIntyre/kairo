@@ -19,6 +19,14 @@ import { validateScenePackage } from "@kairo/validator";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { preCleanDxfText, type DxfPreCleanReport } from "./preCleanDxf";
+export { analyzeDxfBlocks, renderDxfBlockInventoryMarkdown, writeDxfBlockInventoryReports } from "./analyzeDxfBlocks";
+export type {
+  DxfBlockDefinitionSummary,
+  DxfBlockExpansionClassification,
+  DxfBlockInsertInventory,
+  DxfBlockTransformComplexity,
+  DxfInsertedBlockSummary
+} from "./analyzeDxfBlocks";
 
 export type DxfImportOptions = {
   createdBy?: string;
@@ -44,6 +52,57 @@ export type DxfImportResult = {
   warnings: DxfImportWarning[];
   summary: DxfImportSummary;
   preCleanReport: DxfPreCleanReport;
+};
+
+type LegacyPolylineVertex = {
+  x?: number;
+  y?: number;
+  z?: number;
+  bulge?: number;
+};
+
+type LegacyPolylineEntity = EntityCommons & {
+  flag?: number;
+  z?: number;
+  vertices: LegacyPolylineVertex[];
+};
+
+type DxfBlockEntityCollections = {
+  lines: LineEntity[];
+  lwPolylines: LWPolylineEntity[];
+  circles: CircleEntity[];
+  arcs: ArcEntity[];
+  polylines: LegacyPolylineEntity[];
+  inserts: EntityCommons[];
+  points: EntityCommons[];
+  texts: EntityCommons[];
+  splines: EntityCommons[];
+  ellipses: EntityCommons[];
+  solids: EntityCommons[];
+  solid3ds: EntityCommons[];
+  face3ds: EntityCommons[];
+  attdefs: EntityCommons[];
+  attribs: EntityCommons[];
+};
+
+type DxfBlockDefinition = EntityCommons & {
+  name?: string;
+  basePointX?: number;
+  basePointY?: number;
+  basePointZ?: number;
+  entities: DxfBlockEntityCollections;
+};
+
+type DxfInsertEntity = EntityCommons & {
+  blockName?: string;
+  name?: string;
+  x?: number;
+  y?: number;
+  z?: number;
+  xScale?: number;
+  yScale?: number;
+  zScale?: number;
+  rotation?: number;
 };
 
 const identityMatrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -88,6 +147,10 @@ function layerIdForName(layerName = defaultLayerName) {
 
 function sourceIdForEntity(entity: EntityCommons, fallbackIndex: number) {
   return `src-dxf-${slug(entity.handle || `entity-${fallbackIndex}`)}`;
+}
+
+function sourceIdForExpandedBlockEntity(insert: DxfInsertEntity, blockName: string, child: EntityCommons, fallbackIndex: number) {
+  return `src-dxf-insert-${slug(insert.handle || `insert-${fallbackIndex}`)}-block-${slug(blockName)}-child-${slug(child.handle || `child-${fallbackIndex}`)}`;
 }
 
 function colorFromAci(color?: number): Layer["color"] | undefined {
@@ -213,6 +276,126 @@ function lwPolylineToEntity(entity: LWPolylineEntity, fallbackIndex: number): Dr
   };
 }
 
+function isSimpleLegacyPolyline(entity: LegacyPolylineEntity) {
+  const flag = entity.flag ?? 0;
+  const hasComplexFlag = (flag & 2) === 2 || (flag & 4) === 4 || (flag & 8) === 8 || (flag & 16) === 16 || (flag & 64) === 64;
+  const hasBulge = entity.vertices.some((vertex) => vertex.bulge !== undefined && Math.abs(vertex.bulge) > 1e-12);
+  return entity.vertices.length >= 2 && !hasComplexFlag && !hasBulge;
+}
+
+function legacyPolylineUnsupportedReason(entity: LegacyPolylineEntity) {
+  const flag = entity.flag ?? 0;
+  const reasons: string[] = [];
+  if (entity.vertices.length < 2) reasons.push("fewer than 2 vertices");
+  if ((flag & 2) === 2) reasons.push("curve-fit flag");
+  if ((flag & 4) === 4) reasons.push("spline-fit flag");
+  if ((flag & 8) === 8) reasons.push("3D polyline flag");
+  if ((flag & 16) === 16) reasons.push("mesh flag");
+  if ((flag & 64) === 64) reasons.push("polyface flag");
+  if (entity.vertices.some((vertex) => vertex.bulge !== undefined && Math.abs(vertex.bulge) > 1e-12)) reasons.push("bulge values");
+  return reasons.join(", ") || "unsupported legacy POLYLINE mode";
+}
+
+function legacyPolylineToEntity(entity: LegacyPolylineEntity, fallbackIndex: number): DrawingEntity {
+  return {
+    ...entityBase(entity, "polyline", fallbackIndex),
+    type: "polyline",
+    points: entity.vertices.map((vertex) => point(vertex.x, vertex.y, vertex.z ?? entity.z ?? 0)),
+    closed: ((entity.flag ?? 0) & 1) === 1
+  };
+}
+
+function blockDefinitionsByName(parsed: DxfGlobalObject) {
+  const blocks = (parsed.blocks ?? []) as unknown as DxfBlockDefinition[];
+  return new Map(blocks.map((block) => [block.name ?? "", block]));
+}
+
+function blockNameForInsert(insert: DxfInsertEntity) {
+  return insert.blockName ?? insert.name ?? "";
+}
+
+function insertScale(insert: DxfInsertEntity) {
+  return {
+    x: insert.xScale ?? 1,
+    y: insert.yScale ?? 1,
+    z: insert.zScale ?? 1
+  };
+}
+
+function unsupportedInsertTransformReason(insert: DxfInsertEntity) {
+  const scale = insertScale(insert);
+  const reasons: string[] = [];
+  if (Math.abs(scale.x - scale.y) > 1e-9 || Math.abs(scale.x - scale.z) > 1e-9) reasons.push("non-uniform scale");
+  if (scale.x < 0 || scale.y < 0 || scale.z < 0) reasons.push("negative scale");
+  if (Math.abs(insert.rotation ?? 0) > 1e-9) reasons.push("rotation");
+  if (Math.abs(insert.z ?? 0) > 1e-9) reasons.push("z offset");
+  return reasons.join(", ");
+}
+
+function hasUnsupportedInsertTransform(insert: DxfInsertEntity) {
+  return unsupportedInsertTransformReason(insert) !== "";
+}
+
+function blockUnsupportedEntityTypes(block: DxfBlockDefinition) {
+  const unsupported: string[] = [];
+  const entityGroups: Array<[string, EntityCommons[]]> = [
+    ["POINT", block.entities.points],
+    ["TEXT", block.entities.texts],
+    ["SPLINE", block.entities.splines],
+    ["ELLIPSE", block.entities.ellipses],
+    ["SOLID", block.entities.solids],
+    ["3DSOLID", block.entities.solid3ds],
+    ["3DFACE", block.entities.face3ds],
+    ["ATTDEF", block.entities.attdefs],
+    ["ATTRIB", block.entities.attribs]
+  ];
+
+  for (const [entityType, entities] of entityGroups) {
+    if ((entities?.length ?? 0) > 0) {
+      unsupported.push(entityType);
+    }
+  }
+
+  if ((block.entities.inserts?.length ?? 0) > 0) {
+    unsupported.push("INSERT");
+  }
+
+  if ((block.entities.polylines ?? []).some((entity) => !isSimpleLegacyPolyline(entity))) {
+    unsupported.push("COMPLEX_POLYLINE");
+  }
+
+  return unsupported.sort((a, b) => a.localeCompare(b));
+}
+
+function effectiveLayerName(child: EntityCommons, insert: DxfInsertEntity) {
+  const childLayer = child.layerName ?? "0";
+  return childLayer === "0" ? insert.layerName ?? "0" : childLayer;
+}
+
+function transformBlockPoint(x: number | undefined, y: number | undefined, z: number | undefined, insert: DxfInsertEntity, block: DxfBlockDefinition): [number, number, number] {
+  const scale = insertScale(insert).x;
+  return [
+    (x ?? 0) - (block.basePointX ?? 0),
+    (y ?? 0) - (block.basePointY ?? 0),
+    (z ?? 0) - (block.basePointZ ?? 0)
+  ].map((value, axis) => value * scale + ([insert.x ?? 0, insert.y ?? 0, insert.z ?? 0][axis] ?? 0)) as [number, number, number];
+}
+
+function expandedEntityBase(
+  type: DrawingEntity["type"],
+  insert: DxfInsertEntity,
+  blockName: string,
+  child: EntityCommons,
+  fallbackIndex: number
+) {
+  const sourceRef = sourceIdForExpandedBlockEntity(insert, blockName, child, fallbackIndex);
+  return {
+    id: `dxf-${type}-insert-${slug(insert.handle || `insert-${fallbackIndex}`)}-child-${slug(child.handle || `child-${fallbackIndex}`)}`,
+    layerId: layerIdForName(effectiveLayerName(child, insert)),
+    sourceRef
+  };
+}
+
 function circleToEntity(entity: CircleEntity, fallbackIndex: number): DrawingEntity {
   return {
     ...entityBase(entity, "circle", fallbackIndex),
@@ -233,6 +416,59 @@ function arcToEntity(entity: ArcEntity, fallbackIndex: number): DrawingEntity {
   };
 }
 
+function expandBlockLine(entity: LineEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  return {
+    ...expandedEntityBase("line", insert, blockName, entity, fallbackIndex),
+    type: "line",
+    start: transformBlockPoint(entity.startX, entity.startY, entity.startZ, insert, block),
+    end: transformBlockPoint(entity.endX, entity.endY, entity.endZ, insert, block)
+  };
+}
+
+function expandBlockLWPolyline(entity: LWPolylineEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  return {
+    ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
+    type: "polyline",
+    points: entity.vertices.map((vertex) => transformBlockPoint(vertex.x, vertex.y, entity.elevation ?? 0, insert, block)),
+    closed: (entity.flag & 1) === 1
+  };
+}
+
+function expandBlockLegacyPolyline(
+  entity: LegacyPolylineEntity,
+  insert: DxfInsertEntity,
+  block: DxfBlockDefinition,
+  blockName: string,
+  fallbackIndex: number
+): DrawingEntity {
+  return {
+    ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
+    type: "polyline",
+    points: entity.vertices.map((vertex) => transformBlockPoint(vertex.x, vertex.y, vertex.z ?? entity.z ?? 0, insert, block)),
+    closed: ((entity.flag ?? 0) & 1) === 1
+  };
+}
+
+function expandBlockCircle(entity: CircleEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  return {
+    ...expandedEntityBase("circle", insert, blockName, entity, fallbackIndex),
+    type: "circle",
+    center: transformBlockPoint(entity.centerX, entity.centerY, entity.centerZ, insert, block),
+    radius: entity.radius * insertScale(insert).x
+  };
+}
+
+function expandBlockArc(entity: ArcEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  return {
+    ...expandedEntityBase("arc", insert, blockName, entity, fallbackIndex),
+    type: "arc",
+    center: transformBlockPoint(entity.centerX, entity.centerY, entity.centerZ, insert, block),
+    radius: entity.radius * insertScale(insert).x,
+    startAngleDeg: entity.startAngle,
+    endAngleDeg: entity.endAngle
+  };
+}
+
 function unsupportedWarning(entityType: string, entity: Partial<EntityCommons>): DxfImportWarning {
   const isBlockInsert = entityType === "INSERT";
   return {
@@ -248,23 +484,116 @@ function unsupportedWarning(entityType: string, entity: Partial<EntityCommons>):
 function convertEntities(parsed: DxfGlobalObject) {
   const warnings: DxfImportWarning[] = [];
   const entities: DrawingEntity[] = [];
+  const sourceEntityTypes = new Map<string, string>();
+  const sourceEntityIds = new Map<string, string>();
+  const sourceNotes = new Map<string, string>();
+  const blocks = blockDefinitionsByName(parsed);
   let index = 0;
+  const registerSource = (entity: DrawingEntity, entityType: string, entityId: string, note?: string) => {
+    const sourceRef = entity.sourceRef ?? entity.id;
+    sourceEntityTypes.set(sourceRef, entityType);
+    sourceEntityIds.set(sourceRef, entityId);
+    if (note) {
+      sourceNotes.set(sourceRef, note);
+    }
+  };
 
   for (const entity of [...parsed.entities.lines].sort(byHandle)) {
-    entities.push(lineToEntity(entity, index++));
+    const converted = lineToEntity(entity, index++);
+    entities.push(converted);
+    registerSource(converted, "LINE", entity.handle ?? converted.id);
   }
   for (const entity of [...parsed.entities.lwPolylines].sort(byHandle)) {
-    entities.push(lwPolylineToEntity(entity, index++));
+    const converted = lwPolylineToEntity(entity, index++);
+    entities.push(converted);
+    registerSource(converted, "LWPOLYLINE", entity.handle ?? converted.id);
   }
   for (const entity of [...parsed.entities.circles].sort(byHandle)) {
-    entities.push(circleToEntity(entity, index++));
+    const converted = circleToEntity(entity, index++);
+    entities.push(converted);
+    registerSource(converted, "CIRCLE", entity.handle ?? converted.id);
   }
   for (const entity of [...parsed.entities.arcs].sort(byHandle)) {
-    entities.push(arcToEntity(entity, index++));
+    const converted = arcToEntity(entity, index++);
+    entities.push(converted);
+    registerSource(converted, "ARC", entity.handle ?? converted.id);
   }
 
-  for (const entity of [...parsed.entities.inserts].sort(byHandle)) {
-    warnings.push(unsupportedWarning("INSERT", entity));
+  for (const entity of [...(parsed.entities.polylines as LegacyPolylineEntity[])].sort(byHandle)) {
+    if (isSimpleLegacyPolyline(entity)) {
+      const converted = legacyPolylineToEntity(entity, index++);
+      entities.push(converted);
+      registerSource(converted, "POLYLINE", entity.handle ?? converted.id);
+    } else {
+      warnings.push({
+        code: "DXF_POLYLINE_UNSUPPORTED",
+        message: `DXF POLYLINE entity is not a simple vertex chain and was skipped: ${legacyPolylineUnsupportedReason(entity)}.`,
+        entityType: "POLYLINE",
+        handle: entity.handle
+      });
+    }
+  }
+
+  for (const entity of [...(parsed.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {
+    const blockName = blockNameForInsert(entity);
+    const block = blocks.get(blockName);
+    if (!block) {
+      warnings.push({
+        code: "DXF_BLOCK_DEFINITION_MISSING",
+        message: `DXF INSERT references missing BLOCK definition "${blockName}"; entity was skipped.`,
+        entityType: "INSERT",
+        handle: entity.handle
+      });
+      continue;
+    }
+
+    const transformReason = unsupportedInsertTransformReason(entity);
+    if (transformReason) {
+      warnings.push({
+        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        message: `DXF INSERT transform is not supported by the simple expander (${transformReason}); entity was skipped.`,
+        entityType: "INSERT",
+        handle: entity.handle
+      });
+      continue;
+    }
+
+    const unsupportedTypes = blockUnsupportedEntityTypes(block);
+    if (unsupportedTypes.length > 0) {
+      warnings.push({
+        code: unsupportedTypes.includes("INSERT") ? "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED" : "DXF_BLOCK_UNSUPPORTED_CONTENT",
+        message: `DXF BLOCK "${blockName}" contains unsupported content (${unsupportedTypes.join(", ")}); INSERT was skipped.`,
+        entityType: "INSERT",
+        handle: entity.handle
+      });
+      continue;
+    }
+
+    for (const child of [...block.entities.lines].sort(byHandle)) {
+      const converted = expandBlockLine(child, entity, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "LINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
+    for (const child of [...block.entities.lwPolylines].sort(byHandle)) {
+      const converted = expandBlockLWPolyline(child, entity, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "LWPOLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
+    for (const child of [...block.entities.circles].sort(byHandle)) {
+      const converted = expandBlockCircle(child, entity, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "CIRCLE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
+    for (const child of [...block.entities.arcs].sort(byHandle)) {
+      const converted = expandBlockArc(child, entity, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "ARC", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
+    for (const child of [...block.entities.polylines].sort(byHandle)) {
+      const converted = expandBlockLegacyPolyline(child, entity, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
   }
 
   const unsupportedGroups: Array<[string, EntityCommons[]]> = [
@@ -272,7 +601,6 @@ function convertEntities(parsed: DxfGlobalObject) {
     ["TEXT", parsed.entities.texts],
     ["SPLINE", parsed.entities.splines],
     ["ELLIPSE", parsed.entities.ellipses],
-    ["POLYLINE", parsed.entities.polylines],
     ["SOLID", parsed.entities.solids],
     ["3DSOLID", parsed.entities.solid3ds],
     ["3DFACE", parsed.entities.face3ds],
@@ -288,20 +616,23 @@ function convertEntities(parsed: DxfGlobalObject) {
 
   return {
     entities,
+    sourceEntityTypes,
+    sourceEntityIds,
+    sourceNotes,
     warnings: warnings.sort((a, b) =>
       `${a.code}:${a.entityType ?? ""}:${a.handle ?? ""}`.localeCompare(`${b.code}:${b.entityType ?? ""}:${b.handle ?? ""}`)
     )
   };
 }
 
-function buildSourceMap(inputPath: string, entities: DrawingEntity[], parsed: DxfGlobalObject) {
-  const dxfEntityType = (entity: DrawingEntity) => {
-    if (entity.type === "polyline") {
-      return "LWPOLYLINE";
-    }
-    return entity.type.toUpperCase();
-  };
-
+function buildSourceMap(
+  inputPath: string,
+  entities: DrawingEntity[],
+  parsed: DxfGlobalObject,
+  sourceEntityTypes: Map<string, string>,
+  sourceEntityIds: Map<string, string>,
+  sourceNotes: Map<string, string>
+) {
   return {
     sources: [
       {
@@ -315,8 +646,9 @@ function buildSourceMap(inputPath: string, entities: DrawingEntity[], parsed: Dx
         id: entity.sourceRef ?? `src-${entity.id}`,
         path: inputPath,
         format: "DXF",
-        entityType: dxfEntityType(entity),
-        entityId: entity.sourceRef?.replace(/^src-dxf-/, "") ?? entity.id
+        entityType: sourceEntityTypes.get(entity.sourceRef ?? entity.id) ?? entity.type.toUpperCase(),
+        entityId: sourceEntityIds.get(entity.sourceRef ?? entity.id) ?? entity.sourceRef?.replace(/^src-dxf-/, "") ?? entity.id,
+        note: sourceNotes.get(entity.sourceRef ?? entity.id)
       }))
     ]
   };
@@ -414,7 +746,7 @@ function buildScenePackage(inputPath: string, parsed: DxfGlobalObject, options: 
     geometry: geometryDocuments,
     layers: { layers },
     materials: { materials: [] },
-    sourceMap: buildSourceMap(inputPath, converted.entities, parsed)
+    sourceMap: buildSourceMap(inputPath, converted.entities, parsed, converted.sourceEntityTypes, converted.sourceEntityIds, converted.sourceNotes)
   };
 }
 

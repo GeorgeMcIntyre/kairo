@@ -119,6 +119,14 @@ Initial import scope:
 
 Unsupported entities must be recorded in an import report with counts, warnings, layers found, and skipped entity details.
 
+Status: import expansion partially implemented.
+
+- Audited DXF pre-clean handles scoped `ACAD_REACTORS` groups and missing EOF compatibility.
+- `inspect-dxf` produces reusable block/insert inventory reports.
+- Simple legacy `POLYLINE` vertex chains are imported; complex legacy polylines remain explicit warnings.
+- Strict one-level simple `INSERT` expansion is implemented for supported curve-only blocks without nested inserts or complex transforms.
+- DXF export remains not implemented.
+
 Initial export scope:
 
 - lines

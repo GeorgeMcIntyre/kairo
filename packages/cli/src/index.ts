@@ -1,5 +1,5 @@
 import { flattenGeometry } from "@kairo/core";
-import { importDxfToKairo, writeScenePackage } from "@kairo/importer-dxf";
+import { analyzeDxfBlocks, importDxfToKairo, writeDxfBlockInventoryReports, writeScenePackage } from "@kairo/importer-dxf";
 import type { GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
 import { scenePackageSchema } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
@@ -260,6 +260,51 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
   }
 }
 
+async function inspectDxfCommand(args: string[], io: CliIo): Promise<number> {
+  const [inputPath, outputBasePath] = args;
+
+  if (!inputPath || !outputBasePath) {
+    io.stderr("Kairo DXF inspection failed\n- ERROR MISSING_INSPECT_ARGS: Usage: kairo inspect-dxf <input.dxf> <output-base-path>\n");
+    return 1;
+  }
+
+  try {
+    const inventory = await analyzeDxfBlocks(inputPath);
+    await writeDxfBlockInventoryReports(inventory, outputBasePath);
+
+    if (!inventory.parser.ok) {
+      io.stderr(
+        [
+          "Kairo DXF inspection failed",
+          `Input: ${path.resolve(inputPath)}`,
+          `Parser error: ${inventory.parser.error?.name ?? "Error"}: ${inventory.parser.error?.message ?? "Unknown parser error"}`,
+          `Output: ${path.resolve(outputBasePath)}.json / .md`
+        ].join("\n") + "\n"
+      );
+      return 1;
+    }
+
+    io.stdout(
+      [
+        "Kairo DXF inspection passed",
+        `Input: ${path.resolve(inputPath)}`,
+        `Output: ${path.resolve(outputBasePath)}.json / .md`,
+        `Layers: ${inventory.layerCount}`,
+        `INSERT entities: ${inventory.totalInsertCount}`,
+        `Unique INSERT block names: ${inventory.uniqueInsertBlockNameCount}`,
+        `BLOCK definitions: ${inventory.blockDefinitionCount}`,
+        `Missing block definitions: ${inventory.missingBlockDefinitions.length}`,
+        `Nested INSERTs inside blocks: ${inventory.nestedInsertCountInsideBlocks}`
+      ].join("\n") + "\n"
+    );
+    return 0;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo DXF inspection failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
 export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   const [command, ...args] = argv;
 
@@ -271,7 +316,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return importDxfCommand(args, io);
   }
 
-  const message = "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir>";
+  if (command === "inspect-dxf") {
+    return inspectDxfCommand(args, io);
+  }
+
+  const message =
+    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> <output-base-path>";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

@@ -2,7 +2,16 @@
 
 Phase 8 is investigation only. This document defines a future minimal DXF importer direction without adding parser dependencies or importer behavior.
 
-Phase 9 implementation note: the first importer slice now uses `@dxfjs/parser` in `packages/importer-dxf`. It imports `LINE`, `LWPOLYLINE`, `CIRCLE`, `ARC`, and `LAYER`; writes exploded Kairo scene folders; and exposes `kairo import-dxf <input.dxf> <output-dir>` through the CLI. `INSERT` is detected and warned as unsupported. Full block expansion, hatches, dimensions, text geometry, splines, DXF export, and DWG support remain out of scope.
+Phase 9 implementation note: the first importer slice now uses `@dxfjs/parser` in `packages/importer-dxf`. It imports `LINE`, `LWPOLYLINE`, `CIRCLE`, `ARC`, and `LAYER`; writes exploded Kairo scene folders; and exposes `kairo import-dxf <input.dxf> <output-dir>` through the CLI.
+
+Phase 10 implementation notes:
+
+- The importer runs an audited in-memory pre-clean before parsing. It removes only scoped `102 / {ACAD_REACTORS ... 102 / }` groups and appends `0 / EOF` only when the final EOF marker is missing.
+- `kairo inspect-dxf <input.dxf> <output-base-path>` writes block/insert inventory reports as `.json` and `.md`.
+- Simple legacy `POLYLINE` vertex chains are imported as Kairo polylines. Curve-fit, spline-fit, mesh, polyface, bulged, and 3D-mode legacy polylines are skipped with explicit warnings.
+- One-level `INSERT` expansion is implemented only for matching block definitions with supported curve children, no nested inserts, no text/attribute geometry, positive uniform scale, no rotation, and no Z offset. Child layer `0` inherits the insert layer; non-`0` child layers are preserved. Expanded source-map entries retain the insert handle, block name, and child handle.
+
+Full block expansion, hatches, dimensions, text geometry, splines, DXF export, and DWG support remain out of scope.
 
 ## Current Repo Fit
 

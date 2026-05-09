@@ -171,4 +171,25 @@ describe("kairo validate", () => {
     expect(validateResult.stdout).toContain("Kairo validation passed\n");
     expect(validateResult.stdout).toContain("Scene: one-line.dxf\n");
   });
+
+  it("inspects a DXF fixture and writes block inventory reports", async () => {
+    const outputBasePath = path.join(tempRoot, "one-line-inventory");
+    const result = await captureCli(["inspect-dxf", dxfFixturePath, outputBasePath]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo DXF inspection passed\n");
+    expect(result.stdout).toContain("INSERT entities: 0\n");
+    expect(result.stdout).toContain("BLOCK definitions: 0\n");
+
+    const inventory = JSON.parse(await readFile(`${outputBasePath}.json`, "utf8")) as {
+      parser: { ok: boolean };
+      totalInsertCount: number;
+      blockDefinitionCount: number;
+    };
+    expect(inventory.parser.ok).toBe(true);
+    expect(inventory.totalInsertCount).toBe(0);
+    expect(inventory.blockDefinitionCount).toBe(0);
+    expect(await readFile(`${outputBasePath}.md`, "utf8")).toContain("# DXF Block/Insert Inventory");
+  });
 });
