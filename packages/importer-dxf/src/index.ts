@@ -418,6 +418,22 @@ function rotateAngle(angle: number, insert: DxfInsertEntity) {
   return angle + (insert.rotation ?? 0);
 }
 
+function composeInserts(outerInsert: DxfInsertEntity, outerBlock: DxfBlockDefinition, flatChildInsert: DxfInsertEntity): DxfInsertEntity {
+  const outerScale = insertScale(outerInsert).x;
+  const childScale = insertScale(flatChildInsert).x;
+  const [composedX, composedY] = transformBlockPoint(flatChildInsert.x ?? 0, flatChildInsert.y ?? 0, 0, outerInsert, outerBlock);
+  return {
+    ...flatChildInsert,
+    x: composedX,
+    y: composedY,
+    z: 0,
+    xScale: outerScale * childScale,
+    yScale: outerScale * childScale,
+    zScale: outerScale * childScale,
+    rotation: (outerInsert.rotation ?? 0) + (flatChildInsert.rotation ?? 0)
+  };
+}
+
 function expandedEntityBase(
   type: DrawingEntity["type"],
   insert: DxfInsertEntity,
@@ -605,18 +621,6 @@ function convertEntities(parsed: DxfGlobalObject) {
       });
     }
 
-    if (blockHasNestedInserts(block)) {
-      const skippableTypes = blockSkippableEntityTypes(block);
-      const allUnsupported = ["INSERT", ...skippableTypes].sort((a, b) => a.localeCompare(b));
-      warnings.push({
-        code: "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED",
-        message: `DXF BLOCK "${blockName}" contains unsupported content (${allUnsupported.join(", ")}); INSERT was skipped.`,
-        entityType: "INSERT",
-        handle: entity.handle
-      });
-      continue;
-    }
-
     const skippableTypes = blockSkippableEntityTypes(block);
     if (skippableTypes.length > 0) {
       const countDetail = blockSkippedEntityCounts(block, skippableTypes);
@@ -655,6 +659,102 @@ function convertEntities(parsed: DxfGlobalObject) {
       const converted = expandBlockLegacyPolyline(child, expandInsert, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
+
+    for (const childInsertRaw of [...(block.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {
+      const childBlockName = blockNameForInsert(childInsertRaw);
+
+      if (childBlockName === blockName) {
+        warnings.push({
+          code: "DXF_BLOCK_INSERT_CYCLE",
+          message: `DXF BLOCK "${blockName}" contains a self-referential INSERT; nested INSERT was skipped.`,
+          entityType: "INSERT",
+          handle: childInsertRaw.handle
+        });
+        continue;
+      }
+
+      const childBlock = blocks.get(childBlockName);
+      if (!childBlock) {
+        warnings.push({
+          code: "DXF_BLOCK_DEFINITION_MISSING",
+          message: `DXF INSERT references missing BLOCK definition "${childBlockName}"; entity was skipped.`,
+          entityType: "INSERT",
+          handle: childInsertRaw.handle
+        });
+        continue;
+      }
+
+      const childHardReason = hardInsertTransformReason(childInsertRaw);
+      if (childHardReason) {
+        warnings.push({
+          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+          message: `DXF INSERT transform is not supported by the simple expander (${childHardReason}); entity was skipped.`,
+          entityType: "INSERT",
+          handle: childInsertRaw.handle
+        });
+        continue;
+      }
+
+      const flatChildInsert = hasZOffset(childInsertRaw) ? { ...childInsertRaw, z: 0 } : childInsertRaw;
+      if (hasZOffset(childInsertRaw)) {
+        warnings.push({
+          code: "DXF_INSERT_Z_FLATTENED",
+          message: `DXF INSERT was expanded with Z offset (${(childInsertRaw.z ?? 0).toFixed(4)}) flattened to 0 for 2D layout import.`,
+          entityType: "INSERT",
+          handle: childInsertRaw.handle
+        });
+      }
+
+      const composedInsert = composeInserts(expandInsert, block, flatChildInsert);
+
+      const childSkippableTypes = blockSkippableEntityTypes(childBlock);
+      if (childSkippableTypes.length > 0) {
+        const childCountDetail = blockSkippedEntityCounts(childBlock, childSkippableTypes);
+        warnings.push({
+          code: "DXF_BLOCK_PARTIAL_EXPAND",
+          message: `DXF BLOCK "${childBlockName}" was partially expanded; unsupported children skipped: ${childCountDetail}.`,
+          entityType: "INSERT",
+          handle: childInsertRaw.handle
+        });
+      }
+
+      for (const grandchild of [...childBlock.entities.lines].sort(byHandle)) {
+        const converted = expandBlockLine(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "LINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
+      for (const grandchild of [...childBlock.entities.lwPolylines].sort(byHandle)) {
+        const converted = expandBlockLWPolyline(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "LWPOLYLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
+      for (const grandchild of [...childBlock.entities.circles].sort(byHandle)) {
+        const converted = expandBlockCircle(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "CIRCLE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
+      for (const grandchild of [...childBlock.entities.arcs].sort(byHandle)) {
+        const converted = expandBlockArc(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "ARC", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
+      for (const grandchild of [...childBlock.entities.polylines].sort(byHandle)) {
+        if (!isSimpleLegacyPolyline(grandchild)) continue;
+        const converted = expandBlockLegacyPolyline(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "POLYLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
+
+      for (const depthThreeInsert of [...(childBlock.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {
+        const depthThreeBlockName = blockNameForInsert(depthThreeInsert);
+        warnings.push({
+          code: "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED",
+          message: `DXF BLOCK "${childBlockName}" contains nested INSERT to "${depthThreeBlockName}"; expansion limited to one level.`,
+          entityType: "INSERT",
+          handle: depthThreeInsert.handle
+        });
+      }
     }
   }
 

@@ -548,13 +548,14 @@ describe("importDxfToKairo", () => {
       expect(result.warnings).toEqual([
         expect.objectContaining({
           code: "DXF_BLOCK_DEFINITION_MISSING",
+          message: 'DXF INSERT references missing BLOCK definition "CHILD"; entity was skipped.',
           entityType: "INSERT",
-          handle: "I2"
+          handle: "BI1"
         }),
         expect.objectContaining({
-          code: "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED",
+          code: "DXF_BLOCK_DEFINITION_MISSING",
           entityType: "INSERT",
-          handle: "I1"
+          handle: "I2"
         }),
         expect.objectContaining({
           code: "DXF_BLOCK_PARTIAL_EXPAND",
@@ -770,7 +771,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("still skips INSERT with z-offset when block has nested INSERT", async () => {
+  it("expands z-offset INSERT with nested child: parent z flattened, child missing block reported", async () => {
     const content = blockScene(
       [...blockHeader("NESTED_Z"), ...blockInsert("CHILD", "BI1"), ...blockFooter],
       blockInsert("NESTED_Z", "I1", "CUT", ["30", "5"])
@@ -780,7 +781,279 @@ describe("importDxfToKairo", () => {
       const result = await importDxfToKairo(filePath);
 
       expect(result.summary.supportedEntityCount).toBe(0);
-      expect(result.warnings.some((w) => w.code === "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED" && w.handle === "I1")).toBe(true);
+      expect(result.warnings).toEqual([
+        expect.objectContaining({
+          code: "DXF_BLOCK_DEFINITION_MISSING",
+          message: 'DXF INSERT references missing BLOCK definition "CHILD"; entity was skipped.',
+          entityType: "INSERT",
+          handle: "BI1"
+        }),
+        expect.objectContaining({
+          code: "DXF_INSERT_Z_FLATTENED",
+          message: "DXF INSERT was expanded with Z offset (5.0000) flattened to 0 for 2D layout import.",
+          entityType: "INSERT",
+          handle: "I1"
+        })
+      ]);
+    });
+  });
+
+  it("expands nested LINE via child INSERT: one level deep", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1"),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(0);
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [10, 12, 0]);
+        expectPointClose(geometry.entities[0].end, [20, 12, 0]);
+      }
+    });
+  });
+
+  it("nested LINE with parent rotation 90°: transform composed correctly", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1"),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1", "CUT", ["50", "90"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(0);
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [-1, 11, 0]);
+        expectPointClose(geometry.entities[0].end, [-1, 21, 0]);
+      }
+    });
+  });
+
+  it("child INSERT z-offset is flattened to 0 when expanding nested geometry", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1", "CUT", ["30", "5"]),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toEqual([
+        expect.objectContaining({
+          code: "DXF_INSERT_Z_FLATTENED",
+          message: "DXF INSERT was expanded with Z offset (5.0000) flattened to 0 for 2D layout import.",
+          entityType: "INSERT",
+          handle: "BI1"
+        })
+      ]);
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [10, 12, 0]);
+        expectPointClose(geometry.entities[0].end, [20, 12, 0]);
+      }
+    });
+  });
+
+  it("parent and child both have z-offset: both flattened, both warnings emitted", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1", "CUT", ["30", "3"]),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1", "CUT", ["30", "5"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings.some((w) => w.code === "DXF_INSERT_Z_FLATTENED" && w.handle === "I1")).toBe(true);
+      expect(result.warnings.some((w) => w.code === "DXF_INSERT_Z_FLATTENED" && w.handle === "BI1")).toBe(true);
+    });
+  });
+
+  it("cycle detection: self-referential child INSERT emits DXF_BLOCK_INSERT_CYCLE", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("CYCLE"),
+        ...blockInsert("CYCLE", "BI1"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("CYCLE", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.warnings.some((w) => w.code === "DXF_BLOCK_INSERT_CYCLE" && w.handle === "BI1")).toBe(true);
+    });
+  });
+
+  it("child INSERT with non-uniform scale still skips that child INSERT", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1", "CUT", ["41", "2", "42", "3", "43", "2"]),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        handle: "BI1"
+      });
+      expect(result.warnings[0].message).toContain("non-uniform scale");
+    });
+  });
+
+  it("child INSERT with negative scale still skips that child INSERT", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1", "CUT", ["41", "-1", "42", "-1", "43", "-1"]),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        handle: "BI1"
+      });
+      expect(result.warnings[0].message).toContain("negative scale");
+    });
+  });
+
+  it("direct parent geometry AND child INSERT both expand: 2 entities total", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockLine("PL1"),
+        ...blockInsert("CHILD", "BI1"),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(2);
+      expect(result.warnings).toHaveLength(0);
+    });
+  });
+
+  it("depth guard: grandchild nested INSERT emits DXF_BLOCK_INSERT_NESTED_UNSUPPORTED", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1"),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockLine("L1"),
+        ...blockInsert("GRANDCHILD", "BI2"),
+        ...blockFooter,
+        ...blockHeader("GRANDCHILD"),
+        ...blockLine("GL1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED",
+        handle: "BI2"
+      });
+    });
+  });
+
+  it("nested child with partial expand: child block has TEXT+LINE, LINE expands with warning", async () => {
+    const content = blockScene(
+      [
+        ...blockHeader("PARENT"),
+        ...blockInsert("CHILD", "BI1"),
+        ...blockFooter,
+        ...blockHeader("CHILD"),
+        ...blockText,
+        ...blockLine("L1"),
+        ...blockFooter
+      ],
+      blockInsert("PARENT", "I1")
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_PARTIAL_EXPAND",
+        handle: "BI1"
+      });
+      expect(result.warnings[0].message).toContain("TEXT×1");
     });
   });
 
