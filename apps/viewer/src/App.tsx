@@ -296,7 +296,19 @@ function Viewport({
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const recordsRef = useRef<RenderRecord[]>([]);
+  const cameraRef = useRef<THREE.OrthographicCamera | THREE.PerspectiveCamera | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const sceneBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
 
+  // Latest-ref pattern: read current values in effects without adding them as deps.
+  const hiddenLayerIdsRef = useRef(hiddenLayerIds);
+  hiddenLayerIdsRef.current = hiddenLayerIds;
+  const selectedNodeIdRef = useRef(selectedNodeId);
+  selectedNodeIdRef.current = selectedNodeId;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  // Build effect: full Three.js setup. Runs only when scene data or camera type changes.
   useEffect(() => {
     const host = hostRef.current;
     if (!host) {
@@ -312,6 +324,7 @@ function Viewport({
         : new THREE.PerspectiveCamera(45, host.clientWidth / host.clientHeight, 0.1, 2000);
     camera.position.set(115, -135, 95);
     camera.lookAt(0, 0, 0);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio);
@@ -330,6 +343,7 @@ function Viewport({
       controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
       controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
     }
+    controlsRef.current = controls;
 
     const ambient = new THREE.AmbientLight("#ffffff", 1.7);
     const key = new THREE.DirectionalLight("#ffffff", 2);
@@ -351,12 +365,12 @@ function Viewport({
           continue;
         }
 
-        const object = geometry.kind === "mesh" ? makeMesh(scenePackage, geometry) : makeCurveSet(scenePackage, geometry);
         const effectiveLayerId = node.layerId ?? geometry.layerId;
+        const object = geometry.kind === "mesh" ? makeMesh(scenePackage, geometry) : makeCurveSet(scenePackage, geometry);
         object.name = node.displayName;
         object.userData.nodeId = node.id;
         object.userData.layerId = effectiveLayerId;
-        object.visible = !effectiveLayerId || !hiddenLayerIds.has(effectiveLayerId);
+        object.visible = !effectiveLayerId || !hiddenLayerIdsRef.current.has(effectiveLayerId);
         object.applyMatrix4(matrixFromArray(node.localTransform));
         scene.add(object);
 
@@ -380,16 +394,12 @@ function Viewport({
 
     recordsRef.current = records;
     updateLineMaterialResolution(records, host.clientWidth, host.clientHeight);
-    applyHighlight(records, selectedNodeId);
+    applyHighlight(records, selectedNodeIdRef.current);
 
-    const sceneBounds = boundsForRecords(records, { hiddenLayerIds });
-    const selectedBounds = boundsForRecords(records, { hiddenLayerIds, selectedNodeId });
-    fitCameraToBounds(
-      camera,
-      controls,
-      fitRequest.target === "selected" && !selectedBounds.isEmpty() ? selectedBounds : sceneBounds,
-      host
-    );
+    const sceneBounds = boundsForRecords(records, { hiddenLayerIds: hiddenLayerIdsRef.current });
+    sceneBoundsRef.current = sceneBounds;
+    fitCameraToBounds(camera, controls, sceneBounds, host);
+
     if (!sceneBounds.isEmpty()) {
       const center = sceneBounds.getCenter(new THREE.Vector3());
       const size = sceneBounds.getSize(new THREE.Vector3());
@@ -428,7 +438,7 @@ function Viewport({
           current = current.parent;
         }
         if (current?.userData.nodeId) {
-          onSelect(current.userData.nodeId);
+          onSelectRef.current(current.userData.nodeId);
         }
       }
     };
@@ -457,12 +467,49 @@ function Viewport({
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      for (const record of records) {
+        record.object.traverse((child) => {
+          if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+            child.geometry?.dispose();
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            for (const mat of mats) mat?.dispose();
+          }
+        });
+      }
       host.removeChild(renderer.domElement);
       controls.dispose();
       renderer.dispose();
+      cameraRef.current = null;
+      controlsRef.current = null;
     };
-  }, [fitRequest, hiddenLayerIds, onSelect, scenePackage, viewMode]);
+  }, [scenePackage, viewMode]); // hiddenLayerIds/onSelect read via refs; fit handled by separate effect
 
+  // Layer visibility: toggle without rebuilding geometry.
+  useEffect(() => {
+    for (const record of recordsRef.current) {
+      record.object.visible = !record.layerId || !hiddenLayerIds.has(record.layerId);
+    }
+  }, [hiddenLayerIds]);
+
+  // Fit: reposition camera without rebuilding geometry.
+  useEffect(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const host = hostRef.current;
+    if (!camera || !controls || !host) {
+      return;
+    }
+    const bounds =
+      fitRequest.target === "selected"
+        ? boundsForRecords(recordsRef.current, {
+            hiddenLayerIds: hiddenLayerIdsRef.current,
+            selectedNodeId: selectedNodeIdRef.current
+          })
+        : sceneBoundsRef.current;
+    fitCameraToBounds(camera, controls, bounds.isEmpty() ? sceneBoundsRef.current : bounds, host);
+  }, [fitRequest]); // hiddenLayerIds/selectedNodeId read via refs
+
+  // Selection highlight: update material colors without rebuilding geometry.
   useEffect(() => {
     applyHighlight(recordsRef.current, selectedNodeId);
   }, [selectedNodeId]);
