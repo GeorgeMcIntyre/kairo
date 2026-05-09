@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-05-09  
+Last updated: 2026-05-10  
 Use this file instead of GitHub Issues for now. Update section headers as tasks move.
 
 ---
@@ -12,6 +12,23 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 ---
 
 ## DONE
+
+### TASK-014: Phase 10N-A — POLYLINE parser investigation ✅ DONE
+
+**Completed:** 2026-05-10
+
+**Findings:**
+- `@dxfjs/parser` maps DXF group 70 to `VertexEntity.flag` (parser source: `VertexEntitySpec.set(70, "flag")`).
+- Values 8 and 16 are preserved at runtime — confirmed by permanent diagnostic test.
+- VERTEX `flag & 8` = spline vertex on the fitted curve (pre-sampled by AutoCAD) — safe to use as import chain.
+- VERTEX `flag & 16` = spline frame control point — skip; not on the fitted curve.
+- No B-spline math required for Phase 10N-B.
+
+**Decision:** Phase 10N-B (spline-fit POLYLINE expansion) is viable. See ADR-010.
+
+**Test added:** `"@dxfjs/parser exposes VERTEX flag (group 70) on spline-fit POLYLINE vertices"` — 90/90 pass.
+
+---
 
 ### TASK-013: Phase 10P — Viewer performance for large DXF scenes ✅ DONE
 

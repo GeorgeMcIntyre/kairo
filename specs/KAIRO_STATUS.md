@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-05-09
+Last updated: 2026-05-10
 
 ## Git
 
@@ -12,7 +12,7 @@ Last updated: 2026-05-09
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 89/89 passed |
+| `pnpm test` | 90/90 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
@@ -38,7 +38,7 @@ Last updated: 2026-05-09
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
 - 130 INSERT instances blocked by hard transform failures (non-uniform/negative scale — out of scope).
 - Text, ATTDEF, ATTRIB geometry is not rendered (by design).
-- Complex POLYLINE types (all spline-fit, 15 instances) are not imported.
+- Complex POLYLINE types (all spline-fit, 15 instances) are not imported. Phase 10N-B approach confirmed viable (see ADR-010).
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.

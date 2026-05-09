@@ -62,6 +62,22 @@ Last updated: 2026-05-09
 
 ---
 
+## ADR-010: Phase 10N-B POLYLINE spline-fit approach — use pre-sampled fitting vertices, not B-spline math
+
+**Decision:** When Phase 10N-B is implemented, expand spline-fit POLYLINEs by collecting the vertices with `flag & 8` (spline vertices created by AutoCAD's spline-fitting pass) as a pre-sampled polyline chain. Do not implement B-spline evaluation math.
+
+**Vertex flag semantics (confirmed by Phase 10N-A diagnostic test):**
+- POLYLINE `flag & 4` = spline-fit POLYLINE
+- VERTEX `flag & 8` = spline vertex on the fitted curve — **use these as the output chain**
+- VERTEX `flag & 16` = spline frame control point (original input, not on the curve) — **skip these**
+- POLYLINE `flag & 2` = curve-fit POLYLINE; VERTEX `flag & 1` = curve-fit generated vertex — same pattern
+
+**Reason:** AutoCAD already pre-samples the spline at the time it writes the DXF. The `flag & 8` vertices are the ready-to-use piecewise linear approximation. B-spline math would re-derive the same points at extra complexity and risk.
+
+**Confirmed by:** Phase 10N-A — `@dxfjs/parser` maps group 70 to `VertexEntity.flag`; values 8 and 16 are preserved at runtime (test: `"@dxfjs/parser exposes VERTEX flag (group 70) on spline-fit POLYLINE vertices"`).
+
+---
+
 ## ADR-009: Viewer performance invariant — one object per geometry document, not per entity
 
 **Decision:** The viewer renders one `THREE.LineSegments` per geometry document (curve-set). All curve entities within a document are merged into a single `Float32Array` and uploaded as a single draw call. Layer visibility, fit, and selection never trigger a full Three.js scene rebuild.

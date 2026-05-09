@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Parser } from "@dxfjs/parser";
 import { validateScenePackage } from "@kairo/validator";
 import { importDxfToKairo, writeScenePackage } from ".";
 
@@ -1069,5 +1070,68 @@ describe("importDxfToKairo", () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
+  });
+
+  // Phase 10N-A diagnostic: verify @dxfjs/parser exposes VERTEX group 70 flags for spline-fit POLYLINEs.
+  // DXF POLYLINE flag=4 = spline-fit.
+  // VERTEX flag=8  = "spline vertex created by spline fitting" — points ON the fitted curve; USE these for import.
+  // VERTEX flag=16 = "spline frame control point" — original input frame; SKIP these (not on the curve).
+  // Phase 10N-B will use flag&8 vertices as a pre-sampled polyline chain (no B-spline math needed).
+  it("@dxfjs/parser exposes VERTEX flag (group 70) on spline-fit POLYLINE vertices", async () => {
+    const splineFitDxf = dxf([
+      "0", "SECTION", "2", "HEADER", "9", "$INSUNITS", "70", "4", "0", "ENDSEC",
+      "0", "SECTION", "2", "ENTITIES",
+      // POLYLINE with flag=4 (spline-fit)
+      "0", "POLYLINE", "5", "P1", "8", "0",
+      "66", "1",  // vertices follow flag
+      "10", "0", "20", "0", "30", "0",
+      "70", "4",  // spline-fit flag
+      // VERTEX flag=16: spline frame control points (original input, NOT on the curve — skip these)
+      "0", "VERTEX", "5", "V1", "8", "0",
+      "10", "0", "20", "0", "30", "0",
+      "70", "16",
+      "0", "VERTEX", "5", "V2", "8", "0",
+      "10", "5", "20", "3", "30", "0",
+      "70", "16",
+      // VERTEX flag=8: spline vertices pre-sampled on the fitted curve (use these for import)
+      "0", "VERTEX", "5", "V3", "8", "0",
+      "10", "0", "20", "0", "30", "0",
+      "70", "8",
+      "0", "VERTEX", "5", "V4", "8", "0",
+      "10", "2", "20", "1", "30", "0",
+      "70", "8",
+      "0", "SEQEND", "5", "SE1", "8", "0",
+      "0", "ENDSEC",
+      "0", "EOF"
+    ]);
+
+    const parser = new Parser();
+    const parsed = await parser.parse(splineFitDxf);
+    const polyline = parsed.entities.polylines[0];
+
+    // POLYLINE entity exists and has spline-fit flag
+    expect(polyline).toBeDefined();
+    expect(polyline.flag & 4).toBe(4);
+
+    // All four vertices are parsed
+    expect(polyline.vertices).toHaveLength(4);
+
+    // Frame control vertices (flag=16): skip during import — preserved by parser for identification
+    const frameVertices = polyline.vertices.filter((v) => (v.flag & 16) === 16);
+    expect(frameVertices).toHaveLength(2);
+    expect(frameVertices[0].flag).toBe(16);
+    expect(frameVertices[1].flag).toBe(16);
+
+    // Spline vertices (flag=8): pre-sampled points on the fitted curve — use these for import
+    const splineVertices = polyline.vertices.filter((v) => (v.flag & 8) === 8 && (v.flag & 16) === 0);
+    expect(splineVertices).toHaveLength(2);
+    expect(splineVertices[0].flag).toBe(8);
+    expect(splineVertices[1].flag).toBe(8);
+
+    // Spline vertex coordinates are accessible
+    expect(splineVertices[0].x).toBeCloseTo(0, 6);
+    expect(splineVertices[0].y).toBeCloseTo(0, 6);
+    expect(splineVertices[1].x).toBeCloseTo(2, 6);
+    expect(splineVertices[1].y).toBeCloseTo(1, 6);
   });
 });
