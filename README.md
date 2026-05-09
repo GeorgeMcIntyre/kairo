@@ -54,9 +54,19 @@ node packages/cli/dist/index.js validate examples/example-scene
 node packages/cli/dist/index.js validate examples/example-scene --json
 node packages/cli/dist/index.js import-dxf packages/importer-dxf/test-fixtures/one-line.dxf imported-scene
 node packages/cli/dist/index.js validate imported-scene
+node packages/cli/dist/index.js stage-viewer-scene imported-scene imported-scene
 ```
 
 `pnpm dev` launches the viewer. It loads the included sample scene, shows validation status, and lets you select scene tree nodes to highlight their geometry and inspect metadata/source paths.
+
+To view a generated exploded scene in the dev viewer, stage it into the ignored viewer public scenes directory and open it by query string:
+
+```bash
+node packages/cli/dist/index.js stage-viewer-scene tmp/scott-dxf2013-import scott-dxf2013-import
+pnpm dev
+```
+
+Then open `http://localhost:5173/?scene=scott-dxf2013-import`. The staged files live under `apps/viewer/public/scenes/` and are intentionally ignored by git.
 
 The CLI validates exploded scene folders or a direct path to `manifest.json`:
 

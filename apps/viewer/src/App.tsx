@@ -1,9 +1,9 @@
 import { geometryById, nodesById, sourcePathForNode } from "@kairo/core";
-import type { DrawingEntity, Geometry, SceneNode } from "@kairo/schema";
+import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { sampleScenePackage } from "./sampleScene";
+import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 
 type RenderRecord = {
   object: THREE.Object3D;
@@ -15,8 +15,8 @@ type RenderRecord = {
 const selectedColor = new THREE.Color("#ffb020");
 const matrixFromArray = (values: number[]) => new THREE.Matrix4().fromArray(values);
 
-function layerColor(layerId?: string): THREE.Color {
-  const layer = sampleScenePackage.layers.layers.find((entry) => entry.id === layerId);
+function layerColor(scenePackage: ScenePackage, layerId?: string): THREE.Color {
+  const layer = scenePackage.layers.layers.find((entry) => entry.id === layerId);
   if (!layer?.color) {
     return new THREE.Color("#7f8b94");
   }
@@ -64,7 +64,7 @@ function TreeNode({
   );
 }
 
-function makeMesh(geometry: Extract<Geometry, { kind: "mesh" }>) {
+function makeMesh(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "mesh" }>) {
   const bufferGeometry = new THREE.BufferGeometry();
   bufferGeometry.setAttribute("position", new THREE.Float32BufferAttribute(geometry.vertices, 3));
   bufferGeometry.setIndex(geometry.indices);
@@ -75,7 +75,7 @@ function makeMesh(geometry: Extract<Geometry, { kind: "mesh" }>) {
   const material = new THREE.MeshStandardMaterial({
     color: materialColor
       ? new THREE.Color(materialColor.r, materialColor.g, materialColor.b)
-      : layerColor(geometry.layerId),
+      : layerColor(scenePackage, geometry.layerId),
     metalness: 0.15,
     roughness: 0.55
   });
@@ -135,11 +135,11 @@ function pointsForEntity(entity: DrawingEntity) {
   return pointsForArc(entity);
 }
 
-function makeCurveSet(geometry: Extract<Geometry, { kind: "curve-set" }>) {
+function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "curve-set" }>) {
   const group = new THREE.Group();
   for (const entity of geometry.entities) {
     const lineGeometry = new THREE.BufferGeometry().setFromPoints(pointsForEntity(entity));
-    const lineMaterial = new THREE.LineBasicMaterial({ color: layerColor(entity.layerId ?? geometry.layerId) });
+    const lineMaterial = new THREE.LineBasicMaterial({ color: layerColor(scenePackage, entity.layerId ?? geometry.layerId) });
     const line = new THREE.Line(lineGeometry, lineMaterial);
     group.add(line);
   }
@@ -159,9 +159,11 @@ function applyHighlight(records: RenderRecord[], selectedNodeId: string) {
 }
 
 function Viewport({
+  scenePackage,
   selectedNodeId,
   onSelect
 }: {
+  scenePackage: ScenePackage;
   selectedNodeId: string;
   onSelect: (nodeId: string) => void;
 }) {
@@ -195,18 +197,18 @@ function Viewport({
     grid.rotation.x = Math.PI / 2;
     scene.add(grid);
 
-    const nodeMap = nodesById(sampleScenePackage);
-    const geometryMap = geometryById(sampleScenePackage);
+    const nodeMap = nodesById(scenePackage);
+    const geometryMap = geometryById(scenePackage);
     const records: RenderRecord[] = [];
 
-    for (const node of sampleScenePackage.scene.nodes) {
+    for (const node of scenePackage.scene.nodes) {
       for (const geometryRef of node.geometryRefs ?? []) {
         const geometry = geometryMap.get(geometryRef);
         if (!geometry) {
           continue;
         }
 
-        const object = geometry.kind === "mesh" ? makeMesh(geometry) : makeCurveSet(geometry);
+        const object = geometry.kind === "mesh" ? makeMesh(scenePackage, geometry) : makeCurveSet(scenePackage, geometry);
         object.name = node.displayName;
         object.userData.nodeId = node.id;
         object.applyMatrix4(matrixFromArray(node.localTransform));
@@ -223,7 +225,7 @@ function Viewport({
         records.push({
           object,
           nodeId: node.id,
-          baseColor: layerColor(node.layerId ?? geometry.layerId),
+          baseColor: layerColor(scenePackage, node.layerId ?? geometry.layerId),
           material
         });
       }
@@ -231,6 +233,24 @@ function Viewport({
 
     recordsRef.current = records;
     applyHighlight(records, selectedNodeId);
+
+    const bounds = new THREE.Box3();
+    for (const record of records) {
+      record.object.updateMatrixWorld(true);
+      bounds.expandByObject(record.object);
+    }
+    if (!bounds.isEmpty()) {
+      const center = bounds.getCenter(new THREE.Vector3());
+      const size = bounds.getSize(new THREE.Vector3());
+      const maxDimension = Math.max(size.x, size.y, size.z, 1);
+      camera.near = Math.max(maxDimension / 100000, 0.1);
+      camera.far = maxDimension * 12;
+      camera.position.set(center.x + maxDimension * 0.7, center.y - maxDimension * 1.1, center.z + maxDimension * 0.75);
+      camera.lookAt(center);
+      camera.updateProjectionMatrix();
+      grid.position.copy(center);
+      grid.scale.setScalar(Math.max(maxDimension / 160, 1));
+    }
 
     const raycaster = new THREE.Raycaster();
     raycaster.params.Line.threshold = 4;
@@ -290,7 +310,7 @@ function Viewport({
       host.removeChild(renderer.domElement);
       renderer.dispose();
     };
-  }, [onSelect]);
+  }, [scenePackage, onSelect]);
 
   useEffect(() => {
     applyHighlight(recordsRef.current, selectedNodeId);
@@ -300,19 +320,55 @@ function Viewport({
 }
 
 export function App() {
-  const nodeMap = useMemo(() => nodesById(sampleScenePackage), []);
-  const [selectedNodeId, setSelectedNodeId] = useState(sampleScenePackage.scene.rootNodeId);
-  const selectedNode = nodeMap.get(selectedNodeId) ?? sampleScenePackage.scene.nodes[0];
-  const report = useMemo(() => validateScenePackage(sampleScenePackage), []);
-  const rootNode = nodeMap.get(sampleScenePackage.scene.rootNodeId)!;
-  const sourcePath = sourcePathForNode(sampleScenePackage, selectedNode);
+  const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
+  const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
+  const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
+  const nodeMap = useMemo(() => nodesById(scenePackage), [scenePackage]);
+  const [selectedNodeId, setSelectedNodeId] = useState(scenePackage.scene.rootNodeId);
+  const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
+  const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
+  const rootNode = nodeMap.get(scenePackage.scene.rootNodeId)!;
+  const sourcePath = sourcePathForNode(scenePackage, selectedNode);
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const request = resolveViewerSceneRequest(window.location.search);
+      if (request.kind === "bundled") {
+        return;
+      }
+
+      setSceneStatus(`Loading ${request.sceneName}`);
+      loadPublicScenePackage(request.basePath)
+        .then((loadedScenePackage) => {
+          if (!cancelled) {
+            setScenePackage(loadedScenePackage);
+            setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
+            setSceneStatus(`Loaded ${request.sceneName}`);
+            setSceneLoadError(undefined);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            setSceneStatus("Bundled sample scene");
+            setSceneLoadError(error instanceof Error ? error.message : String(error));
+          }
+        });
+    } catch (error) {
+      setSceneLoadError(error instanceof Error ? error.message : String(error));
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main className="app-shell">
       <aside className="tree-panel">
         <div className="panel-heading">
           <span>Scene Tree</span>
-          <strong>{sampleScenePackage.scene.nodes.length}</strong>
+          <strong>{scenePackage.scene.nodes.length}</strong>
         </div>
         <TreeNode
           node={rootNode}
@@ -325,11 +381,12 @@ export function App() {
 
       <section className="viewport-panel">
         <div className="viewport-toolbar">
-          <span>{sampleScenePackage.manifest.format}</span>
-          <span>{sampleScenePackage.manifest.units}</span>
-          <span>{sampleScenePackage.manifest.axisSystem.up}-up</span>
+          <span>{scenePackage.manifest.format}</span>
+          <span>{scenePackage.manifest.units}</span>
+          <span>{scenePackage.manifest.axisSystem.up}-up</span>
+          <span>{sceneStatus}</span>
         </div>
-        <Viewport selectedNodeId={selectedNodeId} onSelect={setSelectedNodeId} />
+        <Viewport scenePackage={scenePackage} selectedNodeId={selectedNodeId} onSelect={setSelectedNodeId} />
       </section>
 
       <aside className="properties-panel">
@@ -369,7 +426,7 @@ export function App() {
         </div>
         <ol>
           {report.findings.length === 0 ? (
-            <li>No validation findings for the included sample scene.</li>
+            <li>{sceneLoadError ? `Scene load warning: ${sceneLoadError}` : "No validation findings for the loaded scene."}</li>
           ) : (
             report.findings.map((finding) => (
               <li key={`${finding.code}-${finding.path}`}>

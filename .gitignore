@@ -141,3 +141,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Local viewer-staged generated scenes
+apps/viewer/public/scenes/

@@ -3,7 +3,7 @@ import { analyzeDxfBlocks, importDxfToKairo, writeDxfBlockInventoryReports, writ
 import type { GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
 import { scenePackageSchema } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -305,6 +305,60 @@ async function inspectDxfCommand(args: string[], io: CliIo): Promise<number> {
   }
 }
 
+function isSafeViewerSceneName(sceneName: string) {
+  return /^[A-Za-z0-9._-]+$/.test(sceneName);
+}
+
+function viewerScenesDirectory() {
+  return path.resolve(process.env.KAIRO_VIEWER_PUBLIC_SCENES_DIR ?? path.join("apps", "viewer", "public", "scenes"));
+}
+
+async function stageViewerSceneCommand(args: string[], io: CliIo): Promise<number> {
+  const [scenePath, sceneName] = args;
+
+  if (!scenePath || !sceneName) {
+    io.stderr("Kairo viewer scene staging failed\n- ERROR MISSING_STAGE_ARGS: Usage: kairo stage-viewer-scene <scene-path> <scene-name>\n");
+    return 1;
+  }
+
+  if (!isSafeViewerSceneName(sceneName)) {
+    io.stderr("Kairo viewer scene staging failed\n- ERROR INVALID_SCENE_NAME: Scene name may only contain letters, numbers, dot, underscore, and dash.\n");
+    return 1;
+  }
+
+  try {
+    const sceneData = await loadScenePackageFromPath(scenePath);
+    const report = validateScenePackage(sceneData);
+    if (!report.valid) {
+      io.stderr(`${formatInvalidOutput(report)}\n`);
+      return 1;
+    }
+
+    const parsedScenePackage = scenePackageSchema.parse(sceneData);
+    const sourceDirectory = await resolveSceneDirectory(scenePath);
+    const scenesDirectory = viewerScenesDirectory();
+    const destinationDirectory = path.join(scenesDirectory, sceneName);
+    await mkdir(scenesDirectory, { recursive: true });
+    await rm(destinationDirectory, { recursive: true, force: true });
+    await cp(sourceDirectory, destinationDirectory, { recursive: true });
+
+    io.stdout(
+      [
+        "Kairo viewer scene staging passed",
+        `Scene: ${parsedScenePackage.scene.nodes.find((node) => node.id === parsedScenePackage.scene.rootNodeId)?.displayName ?? parsedScenePackage.scene.rootNodeId}`,
+        `Input: ${path.resolve(scenePath)}`,
+        `Output: ${destinationDirectory}`,
+        `URL path: /?scene=${sceneName}`
+      ].join("\n") + "\n"
+    );
+    return 0;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo viewer scene staging failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
 export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   const [command, ...args] = argv;
 
@@ -320,8 +374,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return inspectDxfCommand(args, io);
   }
 
+  if (command === "stage-viewer-scene") {
+    return stageViewerSceneCommand(args, io);
+  }
+
   const message =
-    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> <output-base-path>";
+    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> <output-base-path> | kairo stage-viewer-scene <scene-path> <scene-name>";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

@@ -58,6 +58,7 @@ describe("kairo validate", () => {
   });
 
   afterEach(async () => {
+    delete process.env.KAIRO_VIEWER_PUBLIC_SCENES_DIR;
     await rm(tempRoot, { recursive: true, force: true });
   });
 
@@ -191,5 +192,29 @@ describe("kairo validate", () => {
     expect(inventory.totalInsertCount).toBe(0);
     expect(inventory.blockDefinitionCount).toBe(0);
     expect(await readFile(`${outputBasePath}.md`, "utf8")).toContain("# DXF Block/Insert Inventory");
+  });
+
+  it("stages a validated exploded scene for the viewer public scene loader", async () => {
+    const stagedRoot = path.join(tempRoot, "viewer-scenes");
+    process.env.KAIRO_VIEWER_PUBLIC_SCENES_DIR = stagedRoot;
+    const result = await captureCli(["stage-viewer-scene", sampleScenePath, "sample-dev"]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo viewer scene staging passed\n");
+    expect(result.stdout).toContain("URL path: /?scene=sample-dev\n");
+    expect(JSON.parse(await readFile(path.join(stagedRoot, "sample-dev", "manifest.json"), "utf8"))).toMatchObject({
+      format: "kairo-neutral-scene"
+    });
+  });
+
+  it("rejects unsafe viewer scene names", async () => {
+    const result = await captureCli(["stage-viewer-scene", sampleScenePath, "../escape"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "Kairo viewer scene staging failed\n- ERROR INVALID_SCENE_NAME: Scene name may only contain letters, numbers, dot, underscore, and dash.\n"
+    );
   });
 });
