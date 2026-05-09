@@ -1,5 +1,7 @@
 # Roadmap
 
+> **This file is superseded by `specs/KAIRO_ROADMAP.md`, which is the live planning dashboard. Edit that file, not this one.**
+
 ## Phase 1: Repo Scaffold
 
 - pnpm workspace.
