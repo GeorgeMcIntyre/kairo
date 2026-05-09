@@ -322,17 +322,16 @@ function insertScale(insert: DxfInsertEntity) {
   };
 }
 
-function unsupportedInsertTransformReason(insert: DxfInsertEntity) {
+function hardInsertTransformReason(insert: DxfInsertEntity) {
   const scale = insertScale(insert);
   const reasons: string[] = [];
   if (Math.abs(scale.x - scale.y) > 1e-9 || Math.abs(scale.x - scale.z) > 1e-9) reasons.push("non-uniform scale");
   if (scale.x < 0 || scale.y < 0 || scale.z < 0) reasons.push("negative scale");
-  if (Math.abs(insert.z ?? 0) > 1e-9) reasons.push("z offset");
   return reasons.join(", ");
 }
 
-function hasUnsupportedInsertTransform(insert: DxfInsertEntity) {
-  return unsupportedInsertTransformReason(insert) !== "";
+function hasZOffset(insert: DxfInsertEntity) {
+  return Math.abs(insert.z ?? 0) > 1e-9;
 }
 
 function blockHasNestedInserts(block: DxfBlockDefinition) {
@@ -585,15 +584,25 @@ function convertEntities(parsed: DxfGlobalObject) {
       continue;
     }
 
-    const transformReason = unsupportedInsertTransformReason(entity);
-    if (transformReason) {
+    const hardReason = hardInsertTransformReason(entity);
+    if (hardReason) {
       warnings.push({
         code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-        message: `DXF INSERT transform is not supported by the simple expander (${transformReason}); entity was skipped.`,
+        message: `DXF INSERT transform is not supported by the simple expander (${hardReason}); entity was skipped.`,
         entityType: "INSERT",
         handle: entity.handle
       });
       continue;
+    }
+
+    const expandInsert = hasZOffset(entity) ? { ...entity, z: 0 } : entity;
+    if (hasZOffset(entity)) {
+      warnings.push({
+        code: "DXF_INSERT_Z_FLATTENED",
+        message: `DXF INSERT was expanded with Z offset (${(entity.z ?? 0).toFixed(4)}) flattened to 0 for 2D layout import.`,
+        entityType: "INSERT",
+        handle: entity.handle
+      });
     }
 
     if (blockHasNestedInserts(block)) {
@@ -620,22 +629,22 @@ function convertEntities(parsed: DxfGlobalObject) {
     }
 
     for (const child of [...block.entities.lines].sort(byHandle)) {
-      const converted = expandBlockLine(child, entity, block, blockName, index++);
+      const converted = expandBlockLine(child, expandInsert, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "LINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
     for (const child of [...block.entities.lwPolylines].sort(byHandle)) {
-      const converted = expandBlockLWPolyline(child, entity, block, blockName, index++);
+      const converted = expandBlockLWPolyline(child, expandInsert, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "LWPOLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
     for (const child of [...block.entities.circles].sort(byHandle)) {
-      const converted = expandBlockCircle(child, entity, block, blockName, index++);
+      const converted = expandBlockCircle(child, expandInsert, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "CIRCLE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
     for (const child of [...block.entities.arcs].sort(byHandle)) {
-      const converted = expandBlockArc(child, entity, block, blockName, index++);
+      const converted = expandBlockArc(child, expandInsert, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "ARC", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
@@ -643,7 +652,7 @@ function convertEntities(parsed: DxfGlobalObject) {
       if (!isSimpleLegacyPolyline(child)) {
         continue;
       }
-      const converted = expandBlockLegacyPolyline(child, entity, block, blockName, index++);
+      const converted = expandBlockLegacyPolyline(child, expandInsert, block, blockName, index++);
       entities.push(converted);
       registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }

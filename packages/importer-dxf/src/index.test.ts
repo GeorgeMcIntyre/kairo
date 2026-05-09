@@ -491,7 +491,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("still warns and skips non-uniform, negative-scale, and z-offset block INSERTs", async () => {
+  it("skips non-uniform-scale and negative-scale INSERTs; expands z-offset-only INSERT flattened", async () => {
     const content = blockScene(
       [...blockHeader("TRANSFORMS"), ...blockLine("L1"), ...blockFooter],
       [
@@ -504,7 +504,7 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.summary.supportedEntityCount).toBe(1);
       expect(result.warnings).toEqual([
         {
           code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
@@ -519,8 +519,8 @@ describe("importDxfToKairo", () => {
           handle: "I2"
         },
         {
-          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-          message: "DXF INSERT transform is not supported by the simple expander (z offset); entity was skipped.",
+          code: "DXF_INSERT_Z_FLATTENED",
+          message: "DXF INSERT was expanded with Z offset (5.0000) flattened to 0 for 2D layout import.",
           entityType: "INSERT",
           handle: "I3"
         }
@@ -661,6 +661,126 @@ describe("importDxfToKairo", () => {
         expectPointClose(geometry.entities[0].start, [5, 6, 0]);
         expectPointClose(geometry.entities[0].end, [5, 26, 0]);
       }
+    });
+  });
+
+  it("expands z-offset-only INSERT: LINE visible at z=0", async () => {
+    const content = blockScene(
+      [...blockHeader("ZOFFSET"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("ZOFFSET", "I1", "CUT", ["30", "5"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toEqual({
+        code: "DXF_INSERT_Z_FLATTENED",
+        message: "DXF INSERT was expanded with Z offset (5.0000) flattened to 0 for 2D layout import.",
+        entityType: "INSERT",
+        handle: "I1"
+      });
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [15, 6, 0]);
+      }
+    });
+  });
+
+  it("expands z-offset INSERT with rotation 90°: LINE visible at z=0", async () => {
+    const content = blockScene(
+      [...blockHeader("ZOFFSETROT"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("ZOFFSETROT", "I1", "CUT", ["30", "5", "50", "90"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0].code).toBe("DXF_INSERT_Z_FLATTENED");
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [5, 16, 0]);
+      }
+    });
+  });
+
+  it("expands z-offset INSERT with uniform scale 2: LINE visible at z=0", async () => {
+    const content = blockScene(
+      [...blockHeader("ZOFFSETSCALE"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("ZOFFSETSCALE", "I1", "CUT", ["30", "5", "41", "2", "42", "2", "43", "2"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0].code).toBe("DXF_INSERT_Z_FLATTENED");
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [25, 6, 0]);
+      }
+    });
+  });
+
+  it("still skips INSERT with z-offset AND non-uniform scale", async () => {
+    const content = blockScene(
+      [...blockHeader("ZNONUNI"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("ZNONUNI", "I1", "CUT", ["30", "5", "41", "2", "42", "3", "43", "2"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        handle: "I1"
+      });
+      expect(result.warnings[0].message).toContain("non-uniform scale");
+    });
+  });
+
+  it("still skips INSERT with z-offset AND negative scale", async () => {
+    const content = blockScene(
+      [...blockHeader("ZNEG"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("ZNEG", "I1", "CUT", ["30", "5", "41", "-1", "42", "-1", "43", "-1"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({
+        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        handle: "I1"
+      });
+      expect(result.warnings[0].message).toContain("negative scale");
+    });
+  });
+
+  it("still skips INSERT with z-offset when block has nested INSERT", async () => {
+    const content = blockScene(
+      [...blockHeader("NESTED_Z"), ...blockInsert("CHILD", "BI1"), ...blockFooter],
+      blockInsert("NESTED_Z", "I1", "CUT", ["30", "5"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings.some((w) => w.code === "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED" && w.handle === "I1")).toBe(true);
     });
   });
 
