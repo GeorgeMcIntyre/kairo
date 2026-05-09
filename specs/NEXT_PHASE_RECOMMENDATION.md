@@ -6,14 +6,18 @@ Last updated: 2026-05-09
 
 ## Current Position
 
-Phase 10M complete. Scott DXF2013 now imports 142,378 supported entities (up from 102,562 after Phase 10L).
+Phase 10P complete. Viewer performance baseline established for 142,378-entity scenes.
 
-Warning breakdown post-10M:
+Phase 10M complete. Scott DXF2013 imports 142,378 supported entities (up from 102,562 after Phase 10L).
+
+Warning breakdown post-10M (unchanged by 10P — 10P is viewer-only):
 - DXF_BLOCK_PARTIAL_EXPAND: 453
 - DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED: 130 (non-uniform/negative scale only)
 - DXF_INSERT_Z_FLATTENED: 110
 - DXF_POLYLINE_UNSUPPORTED: 15
 - DXF_BLOCK_INSERT_NESTED_UNSUPPORTED: 14 (depth-3+ inserts — depth guard)
+
+Viewer is ready to handle the next entity count increase without degradation.
 
 ---
 

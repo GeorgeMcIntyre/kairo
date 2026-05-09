@@ -5,7 +5,7 @@ Last updated: 2026-05-09
 ## Git
 
 - Branch: main
-- HEAD: 6111938 feat: expand one-level nested dxf block inserts
+- HEAD: 2fc3bdf perf: merge per-layer curve geometry to reduce draw calls
 - In sync with origin/main
 
 ## Verification (as of HEAD)
@@ -14,7 +14,7 @@ Last updated: 2026-05-09
 |---|---|
 | `pnpm test` | 89/89 passed |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle 795 kB — chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
 ## What Works
 
@@ -27,6 +27,7 @@ Last updated: 2026-05-09
 - INSERT partial expansion (Phase 10K): blocks with ATTDEF/TEXT/SPLINE/ELLIPSE now expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC) instead of being fully skipped.
 - INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position are expanded with z=0 and a DXF_INSERT_Z_FLATTENED warning. Hard failures (non-uniform/negative scale) still skip.
 - One-level nested INSERT expansion (Phase 10M): parent blocks containing child INSERTs now expand grandchild geometry via composed transform. Child z-offsets flattened. Depth guard emits DXF_BLOCK_INSERT_NESTED_UNSUPPORTED for depth-3+. Cycle detection emits DXF_BLOCK_INSERT_CYCLE.
+- Viewer performance (Phase 10P): 142,378-entity Scott scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding. See Viewer Performance section below.
 - Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, tree selection, source-map display, layer list, diagnostics panel. George confirmed viewer is usable.
 - Dev scene loader: reads generated scene folders from `apps/viewer/public/scenes/`.
 - Scene stats: `computeSceneStats` and `computeLayerEntityCounts` in viewer (tested).
@@ -61,6 +62,47 @@ Last updated: 2026-05-09
 | After Phase 10K | 30,442 | Partial expansion: mixed blocks expand supported geometry |
 | After Phase 10L | 102,562 | Z-offset INSERTs expanded: SPR-CNT_TM_RIP, Fanuc controllers, etc. |
 | After Phase 10M | 142,378 | One-level nested INSERT expansion via composed transform |
+
+## Viewer Performance Baseline (after Phase 10P)
+
+Scott DXF2013: 142,378 curve entities across ~24 geometry documents.
+
+| Metric | Value |
+|---|---|
+| Scene load time | ~5 seconds (JSON fetch + parse + Float32Array assembly) |
+| Draw calls | ~24 (one `THREE.LineSegments` per geometry document) |
+| Layer toggle | No rebuild — toggles `object.visible` only |
+| Fit scene / fit selected | No rebuild — repositions camera using cached bounds |
+| Selection highlight | No rebuild — updates material color only |
+
+### Current Render Architecture
+
+- One `THREE.LineSegments` per geometry document/layer.
+- Entity point chains are merged into a single `Float32Array` per document.
+- Segments built as explicit GL_LINES pairs (each consecutive pair of entity points becomes one `[p1, p2]` entry).
+- One `THREE.LineBasicMaterial` per geometry document; color is the effective layer color.
+- `useEffect` is split into four independent effects: build (`[scenePackage, viewMode]`), visibility (`[hiddenLayerIds]`), fit (`[fitRequest]`), selection (`[selectedNodeId]`).
+- GPU resources (geometry + materials) disposed on build effect cleanup.
+
+### Performance Invariants — Do Not Violate
+
+- No one Three.js object per curve entity.
+- No one material per curve entity.
+- No full scene rebuild on layer toggle, fit, or selection.
+- If entity count grows significantly, check JSON/loading performance before committing.
+
+### Accepted Trade-offs (Phase 10P)
+
+- Lines render at 1 px width; `Line2` screen-space thick lines removed.
+- All entities in a geometry document share the layer color; per-entity color override not rendered.
+- Circle tesselation: 32 segments (was 64).
+- Arc tesselation: 24 segments (was 48).
+
+### Performance Watch Items
+
+- 5 s load is likely JSON fetch/parse + Float32Array assembly, not Three.js upload.
+- Future large entity count increases must consider JSON size and scene loading performance.
+- Zod validation on load and React tree rendering may become bottlenecks if node count grows past ~10,000.
 
 ## Latest DXF Files Tested
 

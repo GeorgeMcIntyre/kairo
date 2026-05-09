@@ -59,3 +59,24 @@ Last updated: 2026-05-09
 
 **Decision:** A hand-written JT binary writer is not in scope. JT export will use the licensed Siemens toolkit or a well-maintained wrapper, not a home-grown binary format writer.  
 **Reason:** JT is a complex binary format with version history. A hand-written writer would require significant reverse engineering and carries high risk of producing invalid files.
+
+---
+
+## ADR-009: Viewer performance invariant — one object per geometry document, not per entity
+
+**Decision:** The viewer renders one `THREE.LineSegments` per geometry document (curve-set). All curve entities within a document are merged into a single `Float32Array` and uploaded as a single draw call. Layer visibility, fit, and selection never trigger a full Three.js scene rebuild.
+
+**Accepted trade-offs:**
+- Lines render at 1 px width (no screen-space thickness).
+- All entities in a geometry document share the layer color; per-entity color overrides are not rendered.
+- Circle tesselation: 32 segments. Arc tesselation: 24 segments.
+
+**Performance invariants — do not violate in future changes:**
+- No one Three.js object per curve entity.
+- No one material per curve entity.
+- No full scene rebuild on layer toggle, fit, or selection.
+- Layer toggle: `object.visible = bool` only.
+- Fit: reposition camera using cached `Box3`; do not recompute from entity data.
+- Selection highlight: update `material.color` only.
+
+**Reason:** Scott DXF2013 has 142,378 curve entities. Before Phase 10P, one `Line2` per entity caused ~142,378 draw calls per frame; layer toggle triggered a full rebuild of all Three.js geometry. After Phase 10P the scene loads in ~5 s and interaction is smooth. These invariants must be maintained as entity counts grow.

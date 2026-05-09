@@ -7,32 +7,42 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ## NOW
 
-### TASK-010: Phase 10K — Partial block expansion ✅ DONE
-
-**Goal:** Change the importer so that blocks containing unsupported entity types (ATTDEF, TEXT, SPLINE, ELLIPSE, POINT, COMPLEX_POLYLINE) no longer cause the entire INSERT to be skipped. Expand supported curve entities (LINE, LWPOLYLINE, CIRCLE, ARC, simple POLYLINE) from the block; emit per-block warnings for skipped entity types and counts; continue to fully skip blocks containing nested INSERTs.  
-**Scope:** `packages/importer-dxf/src/index.ts` only; no viewer changes.  
-**Not allowed:** TEXT/ATTDEF geometry rendering; SPLINE/ELLIPSE approximation; nested INSERT expansion; viewer changes.  
-**Expected impact:** Scott DXF2013 supported entity count increases by several thousand (FENC fence panels, equipment blocks recovered). DXF_BLOCK_UNSUPPORTED_CONTENT warnings drop to near zero; new DXF_BLOCK_PARTIAL_EXPAND warnings appear.  
-**Acceptance criteria:**
-- New warning code `DXF_BLOCK_PARTIAL_EXPAND` emitted with entity type + count details.
-- Test: block with ATTDEF+LINE → LINE expanded, ATTDEF warning.
-- Test: block with TEXT+LWPOLYLINE → LWPOLYLINE expanded, TEXT warning.
-- Test: block with SPLINE+CIRCLE → CIRCLE expanded, SPLINE warning.
-- Test: block with only TEXT → no geometry, warning only.
-- All 70 existing tests pass.
-- Scott DXF2013 import passes. Validate passes.  
-**Commit message:** `feat: expand supported geometry from mixed dxf blocks`
-
----
-
-### TASK-001: Push all unpushed commits to origin/main ← PENDING
-
-**Goal:** Push `744d679` (rotation tests) plus the docs commit from this phase to origin/main.  
-**Scope:** `git push origin main` after audit docs commit.
+*(No active task — awaiting next phase assignment.)*
 
 ---
 
 ## DONE
+
+### TASK-013: Phase 10P — Viewer performance for large DXF scenes ✅ DONE
+
+**Completed:** 2026-05-09, commits ee7eb30 + 2fc3bdf
+
+Stage 10P-1 (`perf: avoid full viewer rebuilds for large dxf scenes`):
+- Split single `useEffect` (deps: `[fitRequest, hiddenLayerIds, onSelect, scenePackage, viewMode]`) into four independent effects.
+- Build effect `[scenePackage, viewMode]`: full Three.js setup + GPU dispose on cleanup.
+- Visibility effect `[hiddenLayerIds]`: toggles `object.visible` only.
+- Fit effect `[fitRequest]`: repositions camera using cached bounds + refs.
+- Selection effect `[selectedNodeId]`: updates material colors only.
+- Latest-ref pattern for `hiddenLayerIds`, `selectedNodeId`, `onSelect` to avoid stale closures.
+
+Stage 10P-2 (`perf: merge per-layer curve geometry to reduce draw calls`):
+- Replaced one `Line2` per entity (~142,378 draw calls) with one `THREE.LineSegments` per geometry document (~24 draw calls).
+- Removed `Line2`, `LineGeometry`, `LineMaterial` imports and `updateLineMaterialResolution`.
+- Circle segments 64 → 32; arc segments 48 → 24.
+- Bundle size 796 kB → 771 kB.
+
+Result: Scott DXF2013 scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding.
+
+---
+
+### TASK-010: Phase 10K — Partial block expansion ✅ DONE
+
+**Completed:** 2026-05-09
+- Blocks with ATTDEF/TEXT/SPLINE/ELLIPSE expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC).
+- New warning code `DXF_BLOCK_PARTIAL_EXPAND`.
+- Scott DXF2013: 13,711 → 30,442 supported entities.
+
+---
 
 ### TASK-002: Human visual QA of Scott DXF2013 in viewer ✅
 
