@@ -12,7 +12,7 @@ Last updated: 2026-05-09
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 97/97 passed |
+| `pnpm test` | 101/101 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
@@ -38,7 +38,7 @@ Last updated: 2026-05-09
 
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
 - 130 INSERT instances blocked by hard transform failures (non-uniform/negative scale — out of scope).
-- Text, ATTDEF, ATTRIB geometry is not rendered (by design).
+- Text, ATTDEF, ATTRIB geometry is not rendered (by design). Phase 10O-A audit: 148 TEXT + 261 ATTDEF in block definitions; 5 equipment blocks all blocked by transform complexity; 20 partial-expand blocks skip ATTDEFs.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.

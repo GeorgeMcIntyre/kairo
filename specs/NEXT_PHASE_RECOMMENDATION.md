@@ -6,6 +6,8 @@ Last updated: 2026-05-10
 
 ## Current Position
 
+Phase 10O-A complete. Text/attribute/equipment audit run against Scott DXF2013. See TASK-016.
+
 Phase 10N-A complete. Parser investigation confirmed: `@dxfjs/parser` exposes VERTEX group 70 flags; Phase 10N-B is viable.
 
 Phase 10P complete. Viewer performance baseline established for 142,378-entity scenes.
@@ -23,7 +25,15 @@ Viewer is ready to handle the next entity count increase without degradation.
 
 ---
 
-## Recommended: Phase 10N-B — POLYLINE Spline-Fit Expansion
+## Recommended: Phase 10O-B — ATTDEF Label Rendering (if approved) OR Phase 10N-B POLYLINE Expansion
+
+### Phase 10O-B Context
+
+Based on Phase 10O-A audit findings: all 261 ATTDEFs are in block definitions. The five equipment blocks (Fanuc, Controller, RBT, SPAC) are ALL blocked by transform complexity — rendering their ATTDEFs would require solving non-uniform/negative scale transforms first. The 20 partial-expand blocks (FENC-1525, *U36, etc.) DO have supported geometry and are already being partially expanded — their ATTDEFs are skipped silently. Text rendering is out of scope for this phase. See DO NOT DO YET list.
+
+---
+
+## Phase 10N-B — POLYLINE Spline-Fit Expansion (importer improvement)
 
 **Status: NEXT — approved to implement**
 

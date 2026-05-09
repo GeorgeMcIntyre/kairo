@@ -13,6 +13,39 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ## DONE
 
+### TASK-016: Phase 10O-A — Text/attribute/equipment audit ✅ DONE
+
+**Completed:** 2026-05-10
+
+Extended `inspect-dxf` with text audit. `output-base-path` is now optional — audit prints to stdout. New `DxfTextAuditSummary` type and `computeTextAudit()` in `analyzeDxfBlocks.ts`.
+
+**Scott DXF2013 audit findings:**
+- TEXT: 148 (all in block definitions, 0 direct)
+- MTEXT: 0
+- ATTDEF: 261 (all in block definitions, 0 direct)
+- ATTRIB: 0
+
+Equipment/robot block matches (5 blocks, all blocked by transform complexity):
+- `Fanuc_Henrob Controller` — 18 inserts, FANUC pattern
+- `W704949_de_...CONTROLLER_20250113` — 6 inserts, CONTROLLER pattern
+- `70ZF-20013171_rbt_pwr_dist_400A` — 5 inserts, RBT pattern
+- `FANUC_RBT_CNTR_R-J3iB` — 4 inserts, FANUC pattern
+- `7B060 SPAC` — 2 inserts, SPAC pattern
+
+Hard-transform blocks with text (20 blocks): top is `FENC-1525` (70 inserts, 3 ATTDEFs).
+
+Partial-expand blocks where ATTDEF/TEXT was skipped (20 blocks): same top — `FENC-1525`, `*U36`, `BUCKET`, `*U48`, `FENC-1025`.
+
+Richest text block: `Plant_Layout_A0-1189x841_v2014.01` — 114 TEXT + 16 ATTDEF (title block, 1 use).
+
+Sample ATTDEF strings: fence panel descriptions, custom height labels, part codes.
+
+Top text layer: `0` (403 text entities), then `FG-FENCE-TEXT` (2), `DES-AUTOMATION` (2).
+
+101/101 tests pass. No viewer or importer changes.
+
+---
+
 ### TASK-015: Phase 10N-B — Spline-fit POLYLINE expansion ✅ DONE
 
 **Completed:** 2026-05-09
