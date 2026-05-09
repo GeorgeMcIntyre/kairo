@@ -3,13 +3,24 @@ import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/sc
 import { validateScenePackage } from "@kairo/validator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 
 type RenderRecord = {
   object: THREE.Object3D;
   nodeId: string;
+  layerId?: string;
   baseColor: THREE.Color;
   material: THREE.Material | THREE.Material[];
+};
+
+type ViewMode = "top2d" | "perspective";
+type FitTarget = "scene" | "selected";
+
+type FitRequest = {
+  target: FitTarget;
+  serial: number;
 };
 
 const selectedColor = new THREE.Color("#ffb020");
@@ -21,6 +32,22 @@ function layerColor(scenePackage: ScenePackage, layerId?: string): THREE.Color {
     return new THREE.Color("#7f8b94");
   }
   return new THREE.Color(layer.color.r, layer.color.g, layer.color.b);
+}
+
+function visibleDrawingColor(color: THREE.Color): THREE.Color {
+  const hsl = { h: 0, s: 0, l: 0 };
+  color.getHSL(hsl);
+  if (hsl.l > 0.58 || hsl.s < 0.18) {
+    return color.clone().lerp(new THREE.Color("#12324a"), 0.5);
+  }
+  return color.clone();
+}
+
+function materialColorFromEntity(scenePackage: ScenePackage, entity: DrawingEntity, fallbackLayerId?: string): THREE.Color {
+  if (entity.color) {
+    return visibleDrawingColor(new THREE.Color(entity.color.r, entity.color.g, entity.color.b));
+  }
+  return visibleDrawingColor(layerColor(scenePackage, entity.layerId ?? fallbackLayerId));
 }
 
 function TreeNode({
@@ -70,8 +97,7 @@ function makeMesh(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind
   bufferGeometry.setIndex(geometry.indices);
   bufferGeometry.computeVertexNormals();
 
-  const materialColor = sampleScenePackage.materials.materials.find((material) => material.id === geometry.materialId)
-    ?.baseColor;
+  const materialColor = scenePackage.materials.materials.find((material) => material.id === geometry.materialId)?.baseColor;
   const material = new THREE.MeshStandardMaterial({
     color: materialColor
       ? new THREE.Color(materialColor.r, materialColor.g, materialColor.b)
@@ -139,8 +165,14 @@ function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { 
   const group = new THREE.Group();
   for (const entity of geometry.entities) {
     const lineGeometry = new THREE.BufferGeometry().setFromPoints(pointsForEntity(entity));
-    const lineMaterial = new THREE.LineBasicMaterial({ color: layerColor(scenePackage, entity.layerId ?? geometry.layerId) });
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: materialColorFromEntity(scenePackage, entity, geometry.layerId),
+      transparent: true,
+      opacity: 0.96,
+      depthTest: false
+    });
     const line = new THREE.Line(lineGeometry, lineMaterial);
+    line.renderOrder = 2;
     group.add(line);
   }
   return group;
@@ -149,21 +181,89 @@ function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { 
 function applyHighlight(records: RenderRecord[], selectedNodeId: string) {
   for (const record of records) {
     const color = record.nodeId === selectedNodeId ? selectedColor : record.baseColor;
+    record.object.renderOrder = record.nodeId === selectedNodeId ? 20 : 1;
     const materials = Array.isArray(record.material) ? record.material : [record.material];
     for (const material of materials) {
       if ("color" in material && material.color instanceof THREE.Color) {
         material.color.copy(color);
       }
+      if ("opacity" in material && typeof material.opacity === "number") {
+        material.opacity = record.nodeId === selectedNodeId ? 1 : 0.96;
+      }
     }
   }
 }
 
+function boundsForRecords(records: RenderRecord[], options?: { selectedNodeId?: string; hiddenLayerIds?: Set<string> }) {
+  const bounds = new THREE.Box3();
+  for (const record of records) {
+    if (options?.selectedNodeId && record.nodeId !== options.selectedNodeId) {
+      continue;
+    }
+    if (record.layerId && options?.hiddenLayerIds?.has(record.layerId)) {
+      continue;
+    }
+    record.object.updateMatrixWorld(true);
+    bounds.expandByObject(record.object);
+  }
+  return bounds;
+}
+
+function fitCameraToBounds(
+  camera: THREE.OrthographicCamera | THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  bounds: THREE.Box3,
+  host: HTMLElement
+) {
+  if (bounds.isEmpty()) {
+    return;
+  }
+
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const maxDimension = Math.max(size.x, size.y, size.z, 1);
+  const padding = 1.18;
+
+  if (camera instanceof THREE.OrthographicCamera) {
+    const aspect = Math.max(host.clientWidth / Math.max(host.clientHeight, 1), 0.1);
+    const paddedWidth = Math.max(size.x, maxDimension * 0.04, 1) * padding;
+    const paddedHeight = Math.max(size.y, maxDimension * 0.04, 1) * padding;
+    const boxAspect = paddedWidth / paddedHeight;
+    const viewWidth = boxAspect > aspect ? paddedWidth : paddedHeight * aspect;
+    const viewHeight = boxAspect > aspect ? paddedWidth / aspect : paddedHeight;
+    camera.left = -viewWidth / 2;
+    camera.right = viewWidth / 2;
+    camera.top = viewHeight / 2;
+    camera.bottom = -viewHeight / 2;
+    camera.near = 0.1;
+    camera.far = maxDimension * 20;
+    camera.position.set(center.x, center.y, center.z + maxDimension * 2);
+    camera.up.set(0, 1, 0);
+  } else {
+    const distance = maxDimension * 1.45;
+    camera.near = Math.max(maxDimension / 100000, 0.1);
+    camera.far = maxDimension * 20;
+    camera.position.set(center.x + distance * 0.7, center.y - distance * 1.05, center.z + distance * 0.7);
+  }
+
+  camera.lookAt(center);
+  camera.updateProjectionMatrix();
+  controls.target.copy(center);
+  controls.update();
+}
+
 function Viewport({
   scenePackage,
+  viewMode,
+  hiddenLayerIds,
+  fitRequest,
   selectedNodeId,
   onSelect
 }: {
   scenePackage: ScenePackage;
+  viewMode: ViewMode;
+  hiddenLayerIds: Set<string>;
+  fitRequest: FitRequest;
   selectedNodeId: string;
   onSelect: (nodeId: string) => void;
 }) {
@@ -179,7 +279,10 @@ function Viewport({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#f6f8fa");
 
-    const camera = new THREE.PerspectiveCamera(45, host.clientWidth / host.clientHeight, 0.1, 2000);
+    const camera =
+      viewMode === "top2d"
+        ? new THREE.OrthographicCamera(-100, 100, 100, -100, 0.1, 10000)
+        : new THREE.PerspectiveCamera(45, host.clientWidth / host.clientHeight, 0.1, 2000);
     camera.position.set(115, -135, 95);
     camera.lookAt(0, 0, 0);
 
@@ -187,6 +290,19 @@ function Viewport({
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(host.clientWidth, host.clientHeight);
     host.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.12;
+    controls.screenSpacePanning = true;
+    controls.enableRotate = viewMode !== "top2d";
+    controls.zoomSpeed = 1.2;
+    controls.panSpeed = 1.1;
+    if (viewMode === "top2d") {
+      controls.mouseButtons.LEFT = null;
+      controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    }
 
     const ambient = new THREE.AmbientLight("#ffffff", 1.7);
     const key = new THREE.DirectionalLight("#ffffff", 2);
@@ -209,8 +325,11 @@ function Viewport({
         }
 
         const object = geometry.kind === "mesh" ? makeMesh(scenePackage, geometry) : makeCurveSet(scenePackage, geometry);
+        const effectiveLayerId = node.layerId ?? geometry.layerId;
         object.name = node.displayName;
         object.userData.nodeId = node.id;
+        object.userData.layerId = effectiveLayerId;
+        object.visible = !effectiveLayerId || !hiddenLayerIds.has(effectiveLayerId);
         object.applyMatrix4(matrixFromArray(node.localTransform));
         scene.add(object);
 
@@ -225,7 +344,8 @@ function Viewport({
         records.push({
           object,
           nodeId: node.id,
-          baseColor: layerColor(scenePackage, node.layerId ?? geometry.layerId),
+          layerId: effectiveLayerId,
+          baseColor: visibleDrawingColor(layerColor(scenePackage, effectiveLayerId)),
           material
         });
       }
@@ -234,20 +354,18 @@ function Viewport({
     recordsRef.current = records;
     applyHighlight(records, selectedNodeId);
 
-    const bounds = new THREE.Box3();
-    for (const record of records) {
-      record.object.updateMatrixWorld(true);
-      bounds.expandByObject(record.object);
-    }
-    if (!bounds.isEmpty()) {
-      const center = bounds.getCenter(new THREE.Vector3());
-      const size = bounds.getSize(new THREE.Vector3());
+    const sceneBounds = boundsForRecords(records, { hiddenLayerIds });
+    const selectedBounds = boundsForRecords(records, { hiddenLayerIds, selectedNodeId });
+    fitCameraToBounds(
+      camera,
+      controls,
+      fitRequest.target === "selected" && !selectedBounds.isEmpty() ? selectedBounds : sceneBounds,
+      host
+    );
+    if (!sceneBounds.isEmpty()) {
+      const center = sceneBounds.getCenter(new THREE.Vector3());
+      const size = sceneBounds.getSize(new THREE.Vector3());
       const maxDimension = Math.max(size.x, size.y, size.z, 1);
-      camera.near = Math.max(maxDimension / 100000, 0.1);
-      camera.far = maxDimension * 12;
-      camera.position.set(center.x + maxDimension * 0.7, center.y - maxDimension * 1.1, center.z + maxDimension * 0.75);
-      camera.lookAt(center);
-      camera.updateProjectionMatrix();
       grid.position.copy(center);
       grid.scale.setScalar(Math.max(maxDimension / 160, 1));
     }
@@ -292,12 +410,15 @@ function Viewport({
     let frame = 0;
     const animate = () => {
       frame = requestAnimationFrame(animate);
+      controls.update();
       renderer.render(scene, camera);
     };
     animate();
 
     const resize = () => {
-      camera.aspect = host.clientWidth / host.clientHeight;
+      if (camera instanceof THREE.PerspectiveCamera) {
+        camera.aspect = host.clientWidth / host.clientHeight;
+      }
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
     };
@@ -308,9 +429,10 @@ function Viewport({
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       host.removeChild(renderer.domElement);
+      controls.dispose();
       renderer.dispose();
     };
-  }, [scenePackage, onSelect]);
+  }, [fitRequest, hiddenLayerIds, onSelect, scenePackage, viewMode]);
 
   useEffect(() => {
     applyHighlight(recordsRef.current, selectedNodeId);
@@ -319,16 +441,84 @@ function Viewport({
   return <div className="viewport" ref={hostRef} />;
 }
 
+function LayerPanel({
+  layers,
+  selectedLayerId,
+  hiddenLayerIds,
+  onToggleLayer,
+  onShowAllLayers
+}: {
+  layers: LayerEntityCount[];
+  selectedLayerId?: string;
+  hiddenLayerIds: Set<string>;
+  onToggleLayer: (layerId: string) => void;
+  onShowAllLayers: () => void;
+}) {
+  return (
+    <div className="layer-panel">
+      <div className="section-heading">
+        <h2>Layers</h2>
+        <button type="button" onClick={onShowAllLayers}>
+          Show all
+        </button>
+      </div>
+      <div className="layer-list">
+        {layers.map((layer) => (
+          <label className={layer.id === selectedLayerId ? "layer-row selected" : "layer-row"} key={layer.id}>
+            <input
+              checked={!hiddenLayerIds.has(layer.id)}
+              onChange={() => onToggleLayer(layer.id)}
+              type="checkbox"
+            />
+            <span>{layer.name}</span>
+            <strong>{layer.entityCount}</strong>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
+  const [viewMode, setViewMode] = useState<ViewMode>("perspective");
+  const [fitRequest, setFitRequest] = useState<FitRequest>({ target: "scene", serial: 0 });
+  const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
   const nodeMap = useMemo(() => nodesById(scenePackage), [scenePackage]);
   const [selectedNodeId, setSelectedNodeId] = useState(scenePackage.scene.rootNodeId);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
+  const sceneStats = useMemo(() => computeSceneStats(scenePackage), [scenePackage]);
+  const layerStats = useMemo(
+    () =>
+      computeLayerEntityCounts(scenePackage).sort((left, right) => {
+        const rightTotal = right.entityCount + right.geometryCount;
+        const leftTotal = left.entityCount + left.geometryCount;
+        return rightTotal - leftTotal || left.name.localeCompare(right.name);
+      }),
+    [scenePackage]
+  );
   const rootNode = nodeMap.get(scenePackage.scene.rootNodeId)!;
   const sourcePath = sourcePathForNode(scenePackage, selectedNode);
+  const selectedLayerId = selectedNode.layerId;
+
+  const requestFit = (target: FitTarget) => {
+    setFitRequest((current) => ({ target, serial: current.serial + 1 }));
+  };
+
+  const toggleLayer = (layerId: string) => {
+    setHiddenLayerIds((current) => {
+      const next = new Set(current);
+      if (next.has(layerId)) {
+        next.delete(layerId);
+      } else {
+        next.add(layerId);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -344,6 +534,9 @@ export function App() {
           if (!cancelled) {
             setScenePackage(loadedScenePackage);
             setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
+            setHiddenLayerIds(new Set());
+            setViewMode(loadedScenePackage.manifest.axisSystem.up === "Z" ? "top2d" : "perspective");
+            setFitRequest((current) => ({ target: "scene", serial: current.serial + 1 }));
             setSceneStatus(`Loaded ${request.sceneName}`);
             setSceneLoadError(undefined);
           }
@@ -385,8 +578,37 @@ export function App() {
           <span>{scenePackage.manifest.units}</span>
           <span>{scenePackage.manifest.axisSystem.up}-up</span>
           <span>{sceneStatus}</span>
+          <div className="toolbar-actions">
+            <button
+              className={viewMode === "top2d" ? "active" : ""}
+              onClick={() => setViewMode("top2d")}
+              type="button"
+            >
+              Top 2D
+            </button>
+            <button
+              className={viewMode === "perspective" ? "active" : ""}
+              onClick={() => setViewMode("perspective")}
+              type="button"
+            >
+              3D
+            </button>
+            <button onClick={() => requestFit("scene")} type="button">
+              Fit scene
+            </button>
+            <button onClick={() => requestFit("selected")} type="button">
+              Fit selected
+            </button>
+          </div>
         </div>
-        <Viewport scenePackage={scenePackage} selectedNodeId={selectedNodeId} onSelect={setSelectedNodeId} />
+        <Viewport
+          fitRequest={fitRequest}
+          hiddenLayerIds={hiddenLayerIds}
+          scenePackage={scenePackage}
+          selectedNodeId={selectedNodeId}
+          viewMode={viewMode}
+          onSelect={setSelectedNodeId}
+        />
       </section>
 
       <aside className="properties-panel">
@@ -415,6 +637,13 @@ export function App() {
             </div>
           ))}
         </div>
+        <LayerPanel
+          hiddenLayerIds={hiddenLayerIds}
+          layers={layerStats}
+          selectedLayerId={selectedLayerId}
+          onShowAllLayers={() => setHiddenLayerIds(new Set())}
+          onToggleLayer={toggleLayer}
+        />
       </aside>
 
       <section className={report.valid ? "diagnostics valid" : "diagnostics invalid"}>
@@ -422,6 +651,10 @@ export function App() {
           <strong>{report.valid ? "Validation passed" : "Validation failed"}</strong>
           <span>
             {report.summary.errors} errors, {report.summary.warnings} warnings
+          </span>
+          <span>
+            {sceneStats.nodeCount} nodes, {sceneStats.layerCount} layers, {sceneStats.geometryDocumentCount} geometry docs,{" "}
+            {sceneStats.curveEntityCount} curve entities
           </span>
         </div>
         <ol>
