@@ -14,7 +14,7 @@ export type TextOverlayItem = {
 
 export type TextOverlayCamera = THREE.OrthographicCamera | THREE.PerspectiveCamera;
 
-const MIN_FONT_PX = 5;
+const MIN_FONT_PX = 3;
 const MAX_FONT_PX = 48;
 
 export function collectTextItems(scenePackage: ScenePackage): TextOverlayItem[] {
@@ -81,6 +81,8 @@ export function SceneTextOverlay({
 
     const pxPerUnit = computePixelsPerWorldUnit(camera, host);
 
+    let visibleCount = 0;
+    let belowThresholdCount = 0;
     for (const item of items) {
       const el = labelRefs.current.get(item.entityId);
       if (!el) continue;
@@ -93,6 +95,7 @@ export function SceneTextOverlay({
       const fontPx = item.height * pxPerUnit;
       if (fontPx < MIN_FONT_PX) {
         el.style.display = "none";
+        belowThresholdCount += 1;
         continue;
       }
       const clampedPx = Math.min(fontPx, MAX_FONT_PX);
@@ -110,6 +113,15 @@ export function SceneTextOverlay({
       el.style.display = "";
       el.style.fontSize = `${clampedPx.toFixed(2)}px`;
       el.style.transform = `translate(${screenX.toFixed(2)}px, ${screenY.toFixed(2)}px) rotate(${(-item.rotationDeg).toFixed(2)}deg)`;
+      visibleCount += 1;
+    }
+
+    const meta = import.meta as { env?: { DEV?: boolean } };
+    if (meta.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.debug(
+        `[SceneTextOverlay] items=${items.length} visible=${visibleCount} belowThreshold=${belowThresholdCount} pxPerUnit=${pxPerUnit.toFixed(4)}`
+      );
     }
   }, [items, camera, host, hiddenLayerIds, rafTick, projectVec]);
 
