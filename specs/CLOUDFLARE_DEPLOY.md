@@ -10,10 +10,18 @@ apps/viewer/dist
 
 If you set it to `dist` (the Vite default), Pages will look in the wrong place and deploy an empty site.
 
-**Cloudflare Pages dashboard setting:**
+**Cloudflare Pages dashboard settings:**
 - Build command: `pnpm --filter @kairo/viewer build`
 - Build output directory: `apps/viewer/dist`
 - Root directory: *(leave blank — repo root)*
+- Framework preset: *None (manual config)*
+- Environment variables:
+  - `NODE_VERSION` = `20`
+  - `PNPM_VERSION` = `10.17.0`
+
+> These environment variables are required. Cloudflare Pages defaults to an older Node/pnpm version; without them the monorepo build will fail at the `pnpm install` step.
+
+No Cloudflare Workers are required. This is a fully static Pages deployment.
 
 ---
 
@@ -44,3 +52,16 @@ This is acceptable for early demos. If the project scales or requires fast cold-
 - **Separate object storage** — move large scene assets to R2 (or another CDN) and serve them from a different origin, keeping the Pages deploy small and fast.
 
 No changes to the importer, schema, or viewer are required to adopt any of these strategies.
+
+---
+
+## Rollback
+
+If a bad deploy ships:
+
+1. In the Cloudflare Pages dashboard, open the project → **Deployments** tab.
+2. Find the last known-good deployment in the list.
+3. Click the three-dot menu → **Rollback to this deployment**.
+4. Cloudflare will re-promote that build to production instantly (no rebuild required).
+
+Alternatively, revert the offending commit on `main` and push — Cloudflare will trigger a new build automatically.
