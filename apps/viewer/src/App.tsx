@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
+import { collectTextItems, SceneTextOverlay, type TextOverlayCamera } from "./SceneTextOverlay";
 
 type RenderRecord = {
   object: THREE.Object3D;
@@ -144,7 +145,7 @@ function pointsForArc(entity: Extract<DrawingEntity, { type: "arc" }>) {
   return points;
 }
 
-function pointsForEntity(entity: DrawingEntity) {
+function pointsForEntity(entity: DrawingEntity): THREE.Vector3[] {
   if (entity.type === "line") {
     return [new THREE.Vector3(...entity.start), new THREE.Vector3(...entity.end)];
   }
@@ -158,7 +159,12 @@ function pointsForEntity(entity: DrawingEntity) {
     return pointsForCircle(entity);
   }
 
-  return pointsForArc(entity);
+  if (entity.type === "arc") {
+    return pointsForArc(entity);
+  }
+
+  // text entities are rendered by SceneTextOverlay, not as line segments
+  return [];
 }
 
 function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "curve-set" }>, layerId?: string) {
@@ -274,6 +280,10 @@ function Viewport({
   const cameraRef = useRef<THREE.OrthographicCamera | THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const sceneBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
+  const [overlayCamera, setOverlayCamera] = useState<TextOverlayCamera | null>(null);
+  const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
+  const [rafTick, setRafTick] = useState(0);
+  const textItems = useMemo(() => collectTextItems(scenePackage), [scenePackage]);
 
   // Latest-ref pattern: read current values in effects without adding them as deps.
   const hiddenLayerIdsRef = useRef(hiddenLayerIds);
@@ -319,6 +329,11 @@ function Viewport({
       controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
     }
     controlsRef.current = controls;
+
+    setOverlayCamera(camera);
+    setOverlayHost(host);
+    const onCameraChange = () => setRafTick((tick) => tick + 1);
+    controls.addEventListener("change", onCameraChange);
 
     const ambient = new THREE.AmbientLight("#ffffff", 1.7);
     const key = new THREE.DirectionalLight("#ffffff", 2);
@@ -430,13 +445,17 @@ function Viewport({
       }
       camera.updateProjectionMatrix();
       renderer.setSize(host.clientWidth, host.clientHeight);
+      setRafTick((tick) => tick + 1);
     };
     window.addEventListener("resize", resize);
+
+    setRafTick((tick) => tick + 1);
 
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      controls.removeEventListener("change", onCameraChange);
       for (const record of records) {
         record.object.traverse((child) => {
           if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
@@ -451,6 +470,8 @@ function Viewport({
       renderer.dispose();
       cameraRef.current = null;
       controlsRef.current = null;
+      setOverlayCamera(null);
+      setOverlayHost(null);
     };
   }, [scenePackage, viewMode]); // hiddenLayerIds/onSelect read via refs; fit handled by separate effect
 
@@ -477,6 +498,7 @@ function Viewport({
           })
         : sceneBoundsRef.current;
     fitCameraToBounds(camera, controls, bounds.isEmpty() ? sceneBoundsRef.current : bounds, host);
+    setRafTick((tick) => tick + 1);
   }, [fitRequest]); // hiddenLayerIds/selectedNodeId read via refs
 
   // Selection highlight: update material colors without rebuilding geometry.
@@ -484,7 +506,17 @@ function Viewport({
     applyHighlight(recordsRef.current, selectedNodeId);
   }, [selectedNodeId]);
 
-  return <div className="viewport" ref={hostRef} />;
+  return (
+    <div className="viewport" ref={hostRef}>
+      <SceneTextOverlay
+        items={textItems}
+        camera={overlayCamera}
+        host={overlayHost}
+        hiddenLayerIds={hiddenLayerIds}
+        rafTick={rafTick}
+      />
+    </div>
+  );
 }
 
 function LayerPanel({

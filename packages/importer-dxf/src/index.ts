@@ -362,13 +362,11 @@ function blockHasNestedInserts(block: DxfBlockDefinition) {
 function blockSkippableEntityTypes(block: DxfBlockDefinition) {
   const skippable: string[] = [];
   const entityGroups: Array<[string, EntityCommons[]]> = [
-    ["ATTDEF", block.entities.attdefs],
     ["ATTRIB", block.entities.attribs],
     ["ELLIPSE", block.entities.ellipses],
     ["POINT", block.entities.points],
     ["SOLID", block.entities.solids],
     ["SPLINE", block.entities.splines],
-    ["TEXT", block.entities.texts],
     ["3DFACE", block.entities.face3ds],
     ["3DSOLID", block.entities.solid3ds]
   ];
@@ -389,13 +387,11 @@ function blockSkippableEntityTypes(block: DxfBlockDefinition) {
 function blockSkippedEntityCounts(block: DxfBlockDefinition, skippableTypes: string[]) {
   const counts: string[] = [];
   const entityGroups: Array<[string, EntityCommons[]]> = [
-    ["ATTDEF", block.entities.attdefs],
     ["ATTRIB", block.entities.attribs],
     ["ELLIPSE", block.entities.ellipses],
     ["POINT", block.entities.points],
     ["SOLID", block.entities.solids],
     ["SPLINE", block.entities.splines],
-    ["TEXT", block.entities.texts],
     ["3DFACE", block.entities.face3ds],
     ["3DSOLID", block.entities.solid3ds]
   ];
@@ -447,6 +443,13 @@ function transformArcAngles(startAngle: number, endAngle: number, insert: DxfIns
   // Both X and Y mirror = 180° rotation, no direction reversal
   if (mirrorX && mirrorY) return [startAngle + 180 + rot, endAngle + 180 + rot];
   return [startAngle + rot, endAngle + rot];
+}
+
+// AutoCAD MIRRTEXT=0 default: text remains readable when the host insert is mirrored.
+// We compose insert rotation with text rotation; we do NOT reflect the angle for mirror.
+// Position is still mirror-correct via transformBlockPoint. Acceptable v1 limitation.
+function transformTextRotation(textRotation: number, insert: DxfInsertEntity): number {
+  return textRotation + (insert.rotation ?? 0);
 }
 
 function composeInserts(outerInsert: DxfInsertEntity, outerBlock: DxfBlockDefinition, flatChildInsert: DxfInsertEntity): DxfInsertEntity {
@@ -554,6 +557,79 @@ function expandBlockArc(entity: ArcEntity, insert: DxfInsertEntity, block: DxfBl
   };
 }
 
+type DxfTextEntity = EntityCommons & {
+  text?: string;
+  textHeight?: number;
+  height?: number;
+  rotation?: number;
+  firstAlignmentX?: number;
+  firstAlignmentY?: number;
+  firstAlignmentZ?: number;
+  firstAlignmentPointX?: number;
+  firstAlignmentPointY?: number;
+  firstAlignmentPointZ?: number;
+};
+
+type DxfAttdefEntity = DxfTextEntity & { value?: string; tag?: string };
+
+function textInsertionPoint(entity: DxfTextEntity): [number, number, number] {
+  const x = entity.firstAlignmentX ?? entity.firstAlignmentPointX ?? 0;
+  const y = entity.firstAlignmentY ?? entity.firstAlignmentPointY ?? 0;
+  const z = entity.firstAlignmentZ ?? entity.firstAlignmentPointZ ?? 0;
+  return [x, y, z];
+}
+
+function textHeightOf(entity: DxfTextEntity): number {
+  return entity.textHeight ?? entity.height ?? 0;
+}
+
+function attdefDisplayString(entity: DxfAttdefEntity): string {
+  const value = (entity.value ?? "").trim();
+  return value.length > 0 ? value : entity.tag ?? "";
+}
+
+function textToEntity(entity: DxfTextEntity, fallbackIndex: number): DrawingEntity {
+  const [x, y, z] = textInsertionPoint(entity);
+  return {
+    ...entityBase(entity, "text", fallbackIndex),
+    type: "text",
+    text: entity.text ?? "",
+    position: point(x, y, z),
+    rotationDeg: entity.rotation ?? 0,
+    height: Math.max(textHeightOf(entity), 1e-6),
+    origin: "TEXT"
+  };
+}
+
+function expandBlockText(entity: DxfTextEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  const [x, y, z] = textInsertionPoint(entity);
+  const scaleMagnitude = Math.abs(insertScale(insert).x);
+  return {
+    ...expandedEntityBase("text", insert, blockName, entity, fallbackIndex),
+    type: "text",
+    text: entity.text ?? "",
+    position: transformBlockPoint(x, y, z, insert, block),
+    rotationDeg: transformTextRotation(entity.rotation ?? 0, insert),
+    height: Math.max(textHeightOf(entity) * scaleMagnitude, 1e-6),
+    origin: "TEXT"
+  };
+}
+
+function expandBlockAttdef(entity: DxfAttdefEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  const [x, y, z] = textInsertionPoint(entity);
+  const scaleMagnitude = Math.abs(insertScale(insert).x);
+  return {
+    ...expandedEntityBase("text", insert, blockName, entity, fallbackIndex),
+    type: "text",
+    text: attdefDisplayString(entity),
+    position: transformBlockPoint(x, y, z, insert, block),
+    rotationDeg: transformTextRotation(entity.rotation ?? 0, insert),
+    height: Math.max(textHeightOf(entity) * scaleMagnitude, 1e-6),
+    origin: "ATTDEF",
+    tag: entity.tag
+  };
+}
+
 function unsupportedWarning(entityType: string, entity: Partial<EntityCommons>): DxfImportWarning {
   const isBlockInsert = entityType === "INSERT";
   return {
@@ -602,6 +678,12 @@ function convertEntities(parsed: DxfGlobalObject) {
     const converted = arcToEntity(entity, index++);
     entities.push(converted);
     registerSource(converted, "ARC", entity.handle ?? converted.id);
+  }
+
+  for (const entity of [...(parsed.entities.texts as unknown as DxfTextEntity[])].sort(byHandle)) {
+    const converted = textToEntity(entity, index++);
+    entities.push(converted);
+    registerSource(converted, "TEXT", entity.handle ?? converted.id);
   }
 
   for (const entity of [...(parsed.entities.polylines as LegacyPolylineEntity[])].sort(byHandle)) {
@@ -724,6 +806,16 @@ function convertEntities(parsed: DxfGlobalObject) {
         }
       }
     }
+    for (const child of [...(block.entities.texts as unknown as DxfTextEntity[])].sort(byHandle)) {
+      const converted = expandBlockText(child, expandInsert, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "TEXT", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
+    for (const child of [...(block.entities.attdefs as unknown as DxfAttdefEntity[])].sort(byHandle)) {
+      const converted = expandBlockAttdef(child, expandInsert, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "ATTDEF", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
+    }
 
     for (const childInsertRaw of [...(block.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {
       const childBlockName = blockNameForInsert(childInsertRaw);
@@ -825,6 +917,16 @@ function convertEntities(parsed: DxfGlobalObject) {
           }
         }
       }
+      for (const grandchild of [...(childBlock.entities.texts as unknown as DxfTextEntity[])].sort(byHandle)) {
+        const converted = expandBlockText(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "TEXT", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
+      for (const grandchild of [...(childBlock.entities.attdefs as unknown as DxfAttdefEntity[])].sort(byHandle)) {
+        const converted = expandBlockAttdef(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "ATTDEF", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
+      }
 
       for (const depthThreeInsert of [...(childBlock.entities.inserts as DxfInsertEntity[])].sort(byHandle)) {
         const depthThreeBlockName = blockNameForInsert(depthThreeInsert);
@@ -840,7 +942,6 @@ function convertEntities(parsed: DxfGlobalObject) {
 
   const unsupportedGroups: Array<[string, EntityCommons[]]> = [
     ["POINT", parsed.entities.points],
-    ["TEXT", parsed.entities.texts],
     ["SPLINE", parsed.entities.splines],
     ["ELLIPSE", parsed.entities.ellipses],
     ["SOLID", parsed.entities.solids],

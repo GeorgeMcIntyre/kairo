@@ -44,6 +44,8 @@ export function computeEntityCentroid(entity: DrawingEntity): Vec3 {
     case "circle":
     case "arc":
       return [entity.center[0], entity.center[1], entity.center[2]];
+    case "text":
+      return [entity.position[0], entity.position[1], entity.position[2]];
   }
 }
 

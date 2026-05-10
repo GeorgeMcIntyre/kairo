@@ -164,6 +164,32 @@ button:hover {
   height: 100%;
 }
 
+.text-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.text-overlay-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 100%;
+  white-space: nowrap;
+  color: #1c2733;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  text-shadow: 0 0 2px rgba(255, 255, 255, 0.85), 0 0 2px rgba(255, 255, 255, 0.85);
+  user-select: none;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.text-overlay-label.attdef {
+  color: #2b4361;
+  font-style: italic;
+}
+
 .properties-panel dl {
   display: grid;
   grid-template-columns: 96px minmax(0, 1fr);

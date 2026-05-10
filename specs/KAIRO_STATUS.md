@@ -5,26 +5,27 @@ Last updated: 2026-05-10
 ## Git
 
 - Branch: main
-- HEAD: chore: add scene-outliers cli and phase 10t visual qa report
+- HEAD: feat: render dxf text and attdef labels
 - In sync with origin/main (post-commit)
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 124/124 passed |
+| `pnpm test` | 133/133 passed |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle 773 kB — chunk size warning only) |
 
 ## What Works
 
 - Full monorepo build: schema, validator, core, importer-dxf, CLI, viewer.
 - CLI commands: `validate`, `import-dxf`, `inspect-dxf`, `stage-viewer-scene`.
-- DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains.
+- DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains, TEXT, ATTDEF (default value or tag fallback).
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
 - INSERT expansion: up to two levels deep (parent + one nested child), curve-only blocks, uniform scale (positive or negative mirror), Z-axis rotation, z-offset flattening.
 - INSERT rotation: verified by dedicated DXF file fixture and inline tests for 90°, 45°, rotation+scale, circle, arc, LWPOLYLINE, layer inheritance.
 - INSERT mirror expansion (Phase 10S): INSERTs with uniform-magnitude negative scale (e.g. xScale=-25.4, yScale=25.4) now expand with per-axis scale and arc angle reflection. DXF_INSERT_MIRROR_FLATTENED warning emitted. Works at depth-1 and depth-2 via per-axis composeInserts.
+- TEXT/ATTDEF rendering (Phase 10T-B): Schema gained `text` entity type. Importer extracts direct TEXT entities and TEXT/ATTDEF inside block expansions (depth-1 and depth-2) with INSERT position transform; rotation composes additively (MIRRTEXT=0 semantics — no angle reflection under mirror). ATTDEF uses default value or falls back to tag. Viewer renders text as HTML overlay above the Three.js canvas (no TextGeometry); font size clamped 5–48px, labels below threshold removed; layer-toggle and rAF-driven projection. Scott DXF2013: 230 TEXT + 739 ATTDEF = 969 text entities.
 - INSERT partial expansion (Phase 10K): blocks with ATTDEF/TEXT/SPLINE/ELLIPSE now expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC) instead of being fully skipped.
 - INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position are expanded with z=0 and a DXF_INSERT_Z_FLATTENED warning.
 - One-level nested INSERT expansion (Phase 10M): parent blocks containing child INSERTs now expand grandchild geometry via composed transform. Child z-offsets flattened. Depth guard emits DXF_BLOCK_INSERT_NESTED_UNSUPPORTED for depth-3+. Cycle detection emits DXF_BLOCK_INSERT_CYCLE.
@@ -40,7 +41,9 @@ Last updated: 2026-05-10
 
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
 - 0 INSERT instances now blocked by hard transform failures (all 130 were uniform-magnitude mirrors — resolved by Phase 10S).
-- Text, ATTDEF, ATTRIB geometry is not rendered (by design). Phase 10O-A audit: 148 TEXT + 261 ATTDEF in block definitions; 5 equipment blocks all blocked by transform complexity; 20 partial-expand blocks skip ATTDEFs.
+- MTEXT, ATTRIB are not imported (0 of each in Scott DXF2013).
+- Mirror-aware text rotation: text rotation does NOT reflect under mirrored INSERT (AutoCAD MIRRTEXT=0 default semantics). Position is mirror-correct. Acceptable v1 limitation.
+- Text overlay does not collision-detect or do z-ordering against curves; large station headers and equipment labels render in the same DOM layer.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.
@@ -81,7 +84,7 @@ Note: 130 total `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED` in importer vs 108 in a
 
 | Warning code | Count | Notes |
 |---|---|---|
-| DXF_BLOCK_PARTIAL_EXPAND | 550 | Blocks with mixed supported/unsupported entity types (increased as more blocks now expand) |
+| DXF_BLOCK_PARTIAL_EXPAND | 160 | Blocks with mixed supported/unsupported entity types (down from 550 — TEXT and ATTDEF no longer trigger partial-expand) |
 | DXF_INSERT_Z_FLATTENED | 140 | z-offset INSERTs expanded with z=0 |
 | DXF_INSERT_MIRROR_FLATTENED | 132 | Uniform-magnitude negative-scale INSERTs expanded with coordinate flip |
 | DXF_POLYLINE_SPLINE_APPROXIMATED | 15 | Spline-fit POLYLINEs expanded via pre-sampled fitting vertices |
@@ -98,6 +101,7 @@ Note: 130 total `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED` in importer vs 108 in a
 | After Phase 10M | 142,378 | One-level nested INSERT expansion via composed transform |
 | After Phase 10N-B | 142,393 | Spline-fit POLYLINEs expanded (+15 entities, 0 DXF_POLYLINE_UNSUPPORTED) |
 | After Phase 10S | 244,953 | Mirror INSERT expansion: +102,560 entities (FENC-1525 ×35, SPR-CNT_TM_RIP ×9, etc.) |
+| After Phase 10T-B | 245,922 | TEXT + ATTDEF rendering: +969 entities (230 TEXT + 739 ATTDEF, all rendered as HTML overlay) |
 
 ## Viewer Performance Baseline (after Phase 10P)
 

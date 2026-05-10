@@ -13,16 +13,27 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ## NEXT
 
-### TASK-019: Phase 10T-B — Text/ATTDEF rendering
-
-See `specs/PHASE_10T_VISUAL_QA_REPORT.md` recommendation. Adds `text` entity
-type to schema, importer extracts TEXT/ATTDEF from direct entities and block
-expansion (with INSERT transforms), viewer renders text as HTML overlay
-(no Three.js TextGeometry). 148 TEXT + 261 ATTDEF in Scott DXF2013.
+*(No active task — awaiting next phase assignment.)*
 
 ---
 
 ## DONE
+
+### TASK-019: Phase 10T-B — TEXT/ATTDEF rendering ✅ DONE
+
+**Completed:** 2026-05-10
+
+Schema gained `text` entity type with `text`, `position`, `rotationDeg`, `height`, `origin (TEXT|ATTDEF)`, `tag`, `layerId`, `sourceRef`. Importer extracts direct TEXT entities and TEXT/ATTDEF inside block expansion (depth-1 and depth-2) using `transformBlockPoint` for position and additive rotation composition (no mirror reflection — AutoCAD MIRRTEXT=0 default). ATTDEF uses `value` if non-empty, else `tag`. Viewer renders text via new `<SceneTextOverlay>` HTML overlay component above the Three.js canvas — no TextGeometry, no per-character meshes. Font size clamped 5px–48px (sub-threshold labels hidden). Layer toggle hides matching text. Camera changes drive an rAF tick that mutates DOM `transform` strings imperatively.
+
+**Scott DXF2013 results:**
+- Supported entities: 244,953 → 245,922 (+969 = 230 TEXT + 739 ATTDEF)
+- DXF_BLOCK_PARTIAL_EXPAND: 550 → 160 (TEXT/ATTDEF no longer skipped)
+- Validation: passed
+- Bundle size: 770.55 → 772.87 kB (+2.32 kB)
+
+7 new importer tests + 3 viewer overlay tests; 133/133 pass.
+
+---
 
 ### TASK-018: Phase 10T-A — Visual QA spike (scene-outliers CLI) ✅ DONE
 

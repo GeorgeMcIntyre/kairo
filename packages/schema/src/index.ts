@@ -139,11 +139,26 @@ const arcEntitySchema = z.object({
   sourceRef: z.string().optional()
 });
 
+const textEntitySchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("text"),
+  text: z.string(),
+  position: vector3Schema,
+  rotationDeg: z.number().finite(),
+  height: z.number().positive(),
+  origin: z.enum(["TEXT", "ATTDEF"]),
+  tag: z.string().optional(),
+  layerId: z.string().optional(),
+  color: colorSchema.optional(),
+  sourceRef: z.string().optional()
+});
+
 export const drawingEntitySchema = z.discriminatedUnion("type", [
   lineEntitySchema,
   polylineEntitySchema,
   circleEntitySchema,
-  arcEntitySchema
+  arcEntitySchema,
+  textEntitySchema
 ]);
 
 const curveGeometrySchema = z.object({

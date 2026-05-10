@@ -41,6 +41,32 @@ const blockLWPolyline = (handle: string, layer = "0") => [
   "10"
 ];
 const blockText = ["0", "TEXT", "5", "T1", "8", "0", "10", "0", "20", "0", "30", "0", "40", "1", "1", "LABEL"];
+const blockTextAt = (handle: string, x: number, y: number, height = 1, content = "LABEL", layer = "0", rotation?: number) => {
+  const base = ["0", "TEXT", "5", handle, "8", layer, "10", String(x), "20", String(y), "30", "0", "40", String(height), "1", content];
+  return rotation === undefined ? base : [...base, "50", String(rotation)];
+};
+const blockAttdef = (handle: string, x: number, y: number, tag: string, value: string, height = 1, layer = "0") => [
+  "0",
+  "ATTDEF",
+  "5",
+  handle,
+  "8",
+  layer,
+  "10",
+  String(x),
+  "20",
+  String(y),
+  "30",
+  "0",
+  "40",
+  String(height),
+  "1",
+  value,
+  "2",
+  tag,
+  "3",
+  `${tag}_PROMPT`
+];
 const blockInsert = (blockName: string, handle: string, layer = "CUT", extras: string[] = []) => [
   "0",
   "INSERT",
@@ -420,7 +446,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("partially expands block with ATTDEF+LINE: LINE expanded, ATTDEF skipped with partial expand warning", async () => {
+  it("expands block with ATTDEF+LINE: LINE and ATTDEF both supported, no partial-expand warning", async () => {
     const blockAttdefLine = (lineHandle: string) => [
       "0", "ATTDEF", "5", "AD1", "8", "0", "10", "0", "20", "0", "30", "0", "40", "1", "1", "TAG", "2", "TAG",
       "0", "LINE", "5", lineHandle, "8", "0", "10", "0", "20", "0", "30", "0", "11", "10", "21", "0", "31", "0"
@@ -430,19 +456,14 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(1);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_PARTIAL_EXPAND",
-        message: 'DXF BLOCK "MIXEDBLOCK" was partially expanded; unsupported children skipped: ATTDEF×1.',
-        entityType: "INSERT",
-        handle: "I1"
-      });
+      expect(result.summary.supportedEntityCount).toBe(2);
+      expect(result.warnings).toEqual([]);
 
       const geometry = result.scenePackage.geometry[0].geometries[0];
       expect(geometry.kind).toBe("curve-set");
       if (geometry.kind === "curve-set") {
-        expect(geometry.entities[0]).toMatchObject({
+        const lineEntity = geometry.entities.find((e) => e.type === "line");
+        expect(lineEntity).toMatchObject({
           type: "line",
           start: [5, 6, 0],
           end: [15, 6, 0]
@@ -476,19 +497,24 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("partial expand of text-only block yields no geometry and a DXF_BLOCK_PARTIAL_EXPAND warning", async () => {
+  it("expands a block TEXT entity through INSERT offset", async () => {
     const content = blockScene([...blockHeader("TEXTONLY"), ...blockText, ...blockFooter], blockInsert("TEXTONLY", "I1", "CUT"));
 
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
-      const partialWarn = result.warnings.find((w) => w.code === "DXF_BLOCK_PARTIAL_EXPAND");
-      expect(partialWarn).toMatchObject({
-        message: 'DXF BLOCK "TEXTONLY" was partially expanded; unsupported children skipped: TEXT×1.',
-        entityType: "INSERT",
-        handle: "I1"
-      });
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings.find((w) => w.code === "DXF_BLOCK_PARTIAL_EXPAND")).toBeUndefined();
+
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "text") {
+        expect(geometry.entities[0].text).toBe("LABEL");
+        expect(geometry.entities[0].origin).toBe("TEXT");
+        expectPointClose(geometry.entities[0].position, [5, 6, 0]);
+        expect(geometry.entities[0].rotationDeg).toBeCloseTo(0, 6);
+        expect(geometry.entities[0].height).toBeCloseTo(1, 6);
+      }
     });
   });
 
@@ -529,7 +555,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("still fully skips nested and missing INSERTs; partial-expands text-only block with no geometry", async () => {
+  it("skips missing INSERTs but expands TEXT in text-only block", async () => {
     const content = blockScene(
       [
         ...blockHeader("NESTED"),
@@ -545,7 +571,7 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.summary.supportedEntityCount).toBe(1);
       expect(result.warnings).toEqual([
         expect.objectContaining({
           code: "DXF_BLOCK_DEFINITION_MISSING",
@@ -557,26 +583,20 @@ describe("importDxfToKairo", () => {
           code: "DXF_BLOCK_DEFINITION_MISSING",
           entityType: "INSERT",
           handle: "I2"
-        }),
-        expect.objectContaining({
-          code: "DXF_BLOCK_PARTIAL_EXPAND",
-          message: 'DXF BLOCK "TEXTBLOCK" was partially expanded; unsupported children skipped: TEXT×1.',
-          entityType: "INSERT",
-          handle: "I3"
         })
       ]);
     });
   });
 
-  it("creates deterministic warnings for unsupported TEXT and INSERT", async () => {
+  it("imports direct TEXT entity and skips missing INSERT block", async () => {
     const result = await importDxfToKairo(path.join(fixturesDir, "unsupported-entity-warning.dxf"));
 
     expect(validateScenePackage(result.scenePackage).valid).toBe(true);
     expect(result.summary).toEqual({
-      supportedEntityCount: 0,
-      unsupportedEntityCount: 2,
+      supportedEntityCount: 1,
+      unsupportedEntityCount: 1,
       layerCount: 1,
-      warningCount: 2
+      warningCount: 1
     });
     expect(result.warnings).toEqual([
       {
@@ -584,12 +604,6 @@ describe("importDxfToKairo", () => {
         message: 'DXF INSERT references missing BLOCK definition "TITLE_BLOCK"; entity was skipped.',
         entityType: "INSERT",
         handle: "41"
-      },
-      {
-        code: "DXF_ENTITY_UNSUPPORTED",
-        message: "DXF entity type TEXT is not supported by the minimal importer.",
-        entityType: "TEXT",
-        handle: "40"
       }
     ]);
   });
@@ -1172,7 +1186,132 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("nested child with partial expand: child block has TEXT+LINE, LINE expands with warning", async () => {
+  it("imports a direct TEXT entity", async () => {
+    const content = dxf([
+      "0",
+      "SECTION",
+      "2",
+      "HEADER",
+      "9",
+      "$INSUNITS",
+      "70",
+      "4",
+      "0",
+      "ENDSEC",
+      ...dxfLayerTable,
+      "0",
+      "SECTION",
+      "2",
+      "ENTITIES",
+      ...blockTextAt("TX1", 12, 34, 2.5, "DIRECT", "CUT", 45),
+      "0",
+      "ENDSEC",
+      "0",
+      "EOF"
+    ]);
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "text") {
+        expect(geometry.entities[0].text).toBe("DIRECT");
+        expect(geometry.entities[0].origin).toBe("TEXT");
+        expectPointClose(geometry.entities[0].position, [12, 34, 0]);
+        expect(geometry.entities[0].rotationDeg).toBeCloseTo(45, 6);
+        expect(geometry.entities[0].height).toBeCloseTo(2.5, 6);
+        expect(geometry.entities[0].layerId).toBe("layer-cut");
+      }
+    });
+  });
+
+  it("expands block TEXT with INSERT rotation 90 deg: position transforms, rotation composes", async () => {
+    const content = blockScene(
+      [...blockHeader("ROTTEXT"), ...blockTextAt("T1", 10, 0, 1, "ROT"), ...blockFooter],
+      blockInsert("ROTTEXT", "I1", "CUT", ["50", "90"])
+    );
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "text") {
+        // (10,0) rotated 90 = (0,10), plus insert (5,6) = (5,16)
+        expectPointClose(geometry.entities[0].position, [5, 16, 0]);
+        expect(geometry.entities[0].rotationDeg).toBeCloseTo(90, 6);
+      }
+    });
+  });
+
+  it("expands block TEXT with mirrored INSERT: position is mirrored but rotation is not reflected (MIRRTEXT=0)", async () => {
+    const content = blockScene(
+      [...blockHeader("MTEXT"), ...blockTextAt("T1", 10, 0, 1, "MIR", "0", 30), ...blockFooter],
+      blockInsert("MTEXT", "I1", "CUT", ["41", "-1", "42", "1", "43", "1"])
+    );
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const mirror = result.warnings.find((w) => w.code === "DXF_INSERT_MIRROR_FLATTENED");
+      expect(mirror).toBeDefined();
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "text") {
+        // (10,0) with X mirror → (-10,0), plus insert (5,6) = (-5,6). Position mirrors.
+        expectPointClose(geometry.entities[0].position, [-5, 6, 0]);
+        // Rotation does NOT reflect under mirror (AutoCAD MIRRTEXT=0 default semantics).
+        expect(geometry.entities[0].rotationDeg).toBeCloseTo(30, 6);
+      }
+    });
+  });
+
+  it("expands ATTDEF with non-empty default value to a text entity", async () => {
+    const content = blockScene(
+      [...blockHeader("ATTBLOCK"), ...blockAttdef("A1", 0, 0, "PART_NUMBER", "ABC-123"), ...blockFooter],
+      blockInsert("ATTBLOCK", "I1", "CUT")
+    );
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "text") {
+        expect(geometry.entities[0].text).toBe("ABC-123");
+        expect(geometry.entities[0].origin).toBe("ATTDEF");
+        expect(geometry.entities[0].tag).toBe("PART_NUMBER");
+        expectPointClose(geometry.entities[0].position, [5, 6, 0]);
+      }
+    });
+  });
+
+  it("expands ATTDEF with empty default value: falls back to tag", async () => {
+    const content = blockScene(
+      [...blockHeader("ATTBLOCK"), ...blockAttdef("A1", 0, 0, "DESC", ""), ...blockFooter],
+      blockInsert("ATTBLOCK", "I1", "CUT")
+    );
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "text") {
+        expect(geometry.entities[0].text).toBe("DESC");
+        expect(geometry.entities[0].origin).toBe("ATTDEF");
+        expect(geometry.entities[0].tag).toBe("DESC");
+      }
+    });
+  });
+
+  it("block TEXT with layer 0 inherits the INSERT layer", async () => {
+    const content = blockScene(
+      [...blockHeader("INHERIT"), ...blockTextAt("T1", 0, 0, 1, "INHERIT", "0"), ...blockFooter],
+      blockInsert("INHERIT", "I1", "DETAIL")
+    );
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      const documents = result.scenePackage.geometry;
+      const allEntities = documents.flatMap((d) => d.geometries.flatMap((g) => (g.kind === "curve-set" ? g.entities : [])));
+      const text = allEntities.find((e) => e.type === "text");
+      expect(text?.layerId).toBe("layer-detail");
+    });
+  });
+
+  it("nested child block with TEXT+LINE: both expand at depth-2 with no partial-expand warning", async () => {
     const content = blockScene(
       [
         ...blockHeader("PARENT"),
@@ -1189,13 +1328,13 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(1);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_PARTIAL_EXPAND",
-        handle: "BI1"
-      });
-      expect(result.warnings[0].message).toContain("TEXT×1");
+      expect(result.summary.supportedEntityCount).toBe(2);
+      expect(result.warnings).toEqual([]);
+      const entities = result.scenePackage.geometry[0].geometries[0];
+      if (entities.kind === "curve-set") {
+        const types = entities.entities.map((e) => e.type).sort();
+        expect(types).toEqual(["line", "text"]);
+      }
     });
   });
 

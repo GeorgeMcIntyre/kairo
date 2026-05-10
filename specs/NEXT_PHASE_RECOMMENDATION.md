@@ -6,12 +6,10 @@ Last updated: 2026-05-10
 
 ## Current Position
 
-Phase 10T-A complete. Visual QA via new `scene-outliers` CLI verified that post-Phase-10S transform pipeline is mathematically correct: top-6 outliers' centroids match raw block + insert math to within 1 mm. No transform bug. See `specs/PHASE_10T_VISUAL_QA_REPORT.md`.
+Phase 10T-B complete. TEXT and ATTDEF rendering live. Scott DXF2013: 244,953 → 245,922 entities (+969 text). 230 TEXT + 739 ATTDEF rendered as HTML overlay above the Three.js canvas. Validation passes. See TASK-019.
 
-Phase 10S complete. All 130 `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED` warnings resolved. Scott DXF2013 entity count: 142,393 → 244,953.
-
-Warning breakdown (Scott DXF2013, post Phase 10S):
-- DXF_BLOCK_PARTIAL_EXPAND: 550
+Warning breakdown (Scott DXF2013, post Phase 10T-B):
+- DXF_BLOCK_PARTIAL_EXPAND: 160 (was 550 pre-Phase-10T-B — TEXT/ATTDEF no longer trigger partial-expand)
 - DXF_INSERT_Z_FLATTENED: 140
 - DXF_INSERT_MIRROR_FLATTENED: 132
 - DXF_POLYLINE_SPLINE_APPROXIMATED: 15
@@ -20,40 +18,28 @@ Warning breakdown (Scott DXF2013, post Phase 10S):
 
 ---
 
-## Recommended: Phase 10T-B — Text/ATTDEF Rendering
+## Remaining Blockers
 
-**Status: NEXT — ready to implement**
+| Blocker | Count | Notes |
+|---|---|---|
+| Depth-3+ nested INSERTs | 14 | Hit depth guard; increasing depth limit risks cycle explosion |
+| Hatches, dimensions, splines | — | Not imported; design decision |
+| MTEXT (formatted text) | 0 in Scott | Could add later if needed |
+| ATTRIB (attribute overrides) | 0 in Scott | ATTDEF default is sufficient for Scott file |
 
-George reports the current viewer is missing all text labels visible in the
-reference renderer (image 2): large station headers like `7B-070L RACK LOAD`
-and small annotations like `7B-070L-DN1`. Phase 10O-A audit found:
+---
 
-- TEXT: 148 (all in block definitions)
-- ATTDEF: 261 (all in block definitions)
-- MTEXT: 0
-- ATTRIB: 0
+## Options
 
-**Approach:** HTML overlay above the Three.js canvas. Avoids Three.js
-TextGeometry (which would create thousands of mesh instances). 409 total
-text items easily handled by browser DOM.
+| Option | Unlocks / Risk |
+|---|---|
+| Visual QA pass on text overlay | Confirm with George whether labels match reference; iterate on font/clamping if not |
+| Mirror-aware text rotation | Optional — currently MIRRTEXT=0 semantics; switch to mirror-reflect if Scott shows backwards labels |
+| TASK-004: CLI scene-stats command | Low risk, useful tooling |
+| Hatch/dimension import | Medium risk; Scott file's missing dimensions noticeable in compare |
+| Performance audit at full Scott zoom | Verify rAF projection cost holds at 245k+ entities |
 
-**Schema:** new `text` entity type with `text`, `position`, `rotationDeg`,
-`height`, `layer`, `origin (TEXT|ATTDEF)`, `tag`, `sourceRef`.
-
-**Importer:** extract direct TEXT entities; extract TEXT/ATTDEF inside block
-definitions during INSERT expansion (apply `transformBlockPoint` for
-position, mirror-aware rotation transform analogous to `transformArcAngles`).
-
-**Viewer:** new `<SceneTextOverlay>` React component, screen-space projection
-from world coords on each rAF, layer toggling via store, font-size clamped
-4px–48px, items below threshold removed from DOM.
-
-**Acceptance:** large station labels and small annotations visible in viewer
-matching reference image (image 2); layer toggle hides text on hidden
-layers; Scott DXF2013 import: 244,953 + ~409 text entities, validation
-passes; bundle size growth < 30 KB.
-
-See full plan in the previous /plan response (Track B section).
+**Recommended next:** Visual QA pass with George. If labels look right, the 245k-entity Scott layout is "feature complete" for 2D layout viewing — natural pause point. If labels are wrong (backwards under mirror, wrong size), do a small Phase 10T-C tune.
 
 ---
 
@@ -63,5 +49,4 @@ See full plan in the previous /plan response (Track B section).
 |---|---|---|
 | Depth-3+ nested INSERT expansion | 14 instances | Low value; depth guard exists for a reason |
 | Non-uniform scale INSERT expansion | 0 in Scott DXF2013 | N/A for this file |
-| TASK-004: CLI scene-stats command | Developer QA tooling | Low; reuses viewer logic |
-| Hatch/dimension import | Unknown entities | Medium |
+| Hatch/dimension import | Unknown | Medium |
