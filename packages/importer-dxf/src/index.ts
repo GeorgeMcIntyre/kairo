@@ -19,6 +19,7 @@ import { validateScenePackage } from "@kairo/validator";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { preCleanDxfText, type DxfPreCleanReport } from "./preCleanDxf";
+import { extractDirectMtextEntities, type RawMtextRecord } from "./extractMtext";
 export { analyzeDxfBlocks, renderDxfBlockInventoryMarkdown, writeDxfBlockInventoryReports } from "./analyzeDxfBlocks";
 export type {
   DxfBlockDefinitionSummary,
@@ -256,6 +257,21 @@ function entityBase(entity: EntityCommons, type: DrawingEntity["type"], fallback
     id: `dxf-${type}-${slug(entity.handle || String(fallbackIndex))}`,
     layerId: layerIdForName(entity.layerName),
     sourceRef: sourceIdForEntity(entity, fallbackIndex)
+  };
+}
+
+function mtextToEntity(record: RawMtextRecord, fallbackIndex: number): DrawingEntity {
+  const handle = record.handle || `mtext-${fallbackIndex}`;
+  return {
+    id: `dxf-mtext-${slug(handle)}`,
+    layerId: layerIdForName(record.layerName),
+    sourceRef: `src-dxf-mtext-${slug(handle)}`,
+    type: "text",
+    text: record.text,
+    position: point(record.insertion[0], record.insertion[1], record.insertion[2]),
+    rotationDeg: record.rotationDeg,
+    height: Math.max(record.height, 1e-6),
+    origin: "TEXT"
   };
 }
 
@@ -1006,11 +1022,28 @@ function groupEntitiesByLayer(entities: DrawingEntity[]) {
   return [...byLayer.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
-function buildScenePackage(inputPath: string, parsed: DxfGlobalObject, options: DxfImportOptions, warnings: DxfImportWarning[]): ScenePackage {
+function buildScenePackage(
+  inputPath: string,
+  parsed: DxfGlobalObject,
+  options: DxfImportOptions,
+  warnings: DxfImportWarning[],
+  rawMtextRecords: RawMtextRecord[] = []
+): ScenePackage {
   const units = detectUnits(parsed, options, warnings);
   const layers = layersFromDxf(parsed);
   const converted = convertEntities(parsed);
   warnings.push(...converted.warnings);
+
+  if (rawMtextRecords.length > 0) {
+    let mtextIndex = 0;
+    for (const record of rawMtextRecords) {
+      const entity = mtextToEntity(record, mtextIndex++);
+      converted.entities.push(entity);
+      const sourceRef = entity.sourceRef ?? entity.id;
+      converted.sourceEntityTypes.set(sourceRef, "MTEXT");
+      converted.sourceEntityIds.set(sourceRef, record.handle ?? entity.id);
+    }
+  }
 
   const geometryDocuments: GeometryDocument[] = [];
   const nodes: ScenePackage["scene"]["nodes"] = [
@@ -1099,8 +1132,13 @@ export async function importDxfToKairo(inputPath: string, options: DxfImportOpti
   const preCleaned = preCleanDxfText(content);
   const parser = new Parser();
   const parsed = await parser.parse(preCleaned.text);
+  // @dxfjs/parser does not surface MTEXT entities, so we scan the cleaned DXF
+  // text for direct-section MTEXT records ourselves. Without this, large
+  // title-block headers (e.g. "7B-070L RACK LOAD" at 457.2 mm) are silently
+  // dropped from the imported scene.
+  const rawMtext = extractDirectMtextEntities(preCleaned.text);
   const warnings: DxfImportWarning[] = [];
-  const scenePackage = buildScenePackage(absolutePath, parsed, options, warnings);
+  const scenePackage = buildScenePackage(absolutePath, parsed, options, warnings, rawMtext);
   const report = validateScenePackage(scenePackage);
 
   if (!report.valid) {

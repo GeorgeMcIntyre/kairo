@@ -201,7 +201,8 @@ button:hover {
   top: 0;
   left: 0;
   transform-origin: 0 100%;
-  white-space: nowrap;
+  white-space: pre;
+  line-height: 1.1;
   color: #1c2733;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.85), 0 0 2px rgba(255, 255, 255, 0.85);

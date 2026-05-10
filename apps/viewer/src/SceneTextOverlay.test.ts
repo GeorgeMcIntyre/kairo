@@ -6,13 +6,17 @@ import {
   MAX_DISPLAY_PX,
   MIN_DISPLAY_PX,
   collectTextItems,
+  computeLargeLabelWorldHeight,
   computePixelsPerWorldUnit,
   cssRotationFor,
   decideDisplay,
   isUpsideDown,
   normalizeRotation,
-  projectLabel
+  projectLabel,
+  type DensityContext
 } from "./SceneTextOverlay";
+
+const NO_LARGE: DensityContext = { largeLabelWorldHeight: Number.POSITIVE_INFINITY };
 
 function makeScenePackage(): ScenePackage {
   return {
@@ -222,35 +226,63 @@ describe("projectLabel", () => {
 
 describe("decideDisplay", () => {
   it("hides everything in 'off' mode", () => {
-    expect(decideDisplay(20, true, false, "off")).toEqual({ display: false, reason: "density" });
+    expect(decideDisplay(20, 50, true, false, "off", NO_LARGE)).toEqual({ display: false, reason: "density" });
   });
 
   it("hides layer-hidden labels regardless of size", () => {
-    expect(decideDisplay(20, true, true, "auto")).toEqual({ display: false, reason: "layer" });
-    expect(decideDisplay(20, true, true, "all")).toEqual({ display: false, reason: "layer" });
+    expect(decideDisplay(20, 50, true, true, "auto", NO_LARGE)).toEqual({ display: false, reason: "layer" });
+    expect(decideDisplay(20, 50, true, true, "all", NO_LARGE)).toEqual({ display: false, reason: "layer" });
   });
 
   it("hides out-of-frustum labels", () => {
-    expect(decideDisplay(20, false, false, "auto")).toEqual({ display: false, reason: "frustum" });
+    expect(decideDisplay(20, 50, false, false, "auto", NO_LARGE)).toEqual({ display: false, reason: "frustum" });
   });
 
-  it("auto mode hides labels below AUTO_HIDE_BELOW_PX", () => {
-    expect(decideDisplay(AUTO_HIDE_BELOW_PX - 0.1, true, false, "auto")).toEqual({
+  it("auto mode hides labels below AUTO_HIDE_BELOW_PX when not flagged 'large'", () => {
+    expect(decideDisplay(AUTO_HIDE_BELOW_PX - 0.1, 10, true, false, "auto", { largeLabelWorldHeight: 100 })).toEqual({
       display: false,
       reason: "density"
     });
-    const ok = decideDisplay(AUTO_HIDE_BELOW_PX + 0.1, true, false, "auto");
+    const ok = decideDisplay(AUTO_HIDE_BELOW_PX + 0.1, 10, true, false, "auto", { largeLabelWorldHeight: 100 });
     expect(ok.display).toBe(true);
     if (ok.display) expect(ok.clampedUp).toBe(false);
   });
 
+  it("auto mode keeps largest labels visible regardless of pixel size", () => {
+    // worldFontPx is sub-pixel, but worldHeight matches the large threshold —
+    // this is the "7B-070L RACK LOAD" header at fit-scene case.
+    const result = decideDisplay(0.6, 457.2, true, false, "auto", { largeLabelWorldHeight: 100 });
+    expect(result.display).toBe(true);
+    if (result.display) {
+      expect(result.fontPx).toBe(MIN_DISPLAY_PX);
+      expect(result.clampedUp).toBe(true);
+    }
+  });
+
   it("all mode clamps tiny labels up to MIN_DISPLAY_PX", () => {
-    const tiny = decideDisplay(0.5, true, false, "all");
+    const tiny = decideDisplay(0.5, 10, true, false, "all", NO_LARGE);
     expect(tiny).toEqual({ display: true, fontPx: MIN_DISPLAY_PX, clampedUp: true });
   });
 
   it("clamps very large labels to MAX_DISPLAY_PX", () => {
-    const huge = decideDisplay(500, true, false, "all");
+    const huge = decideDisplay(500, 10, true, false, "all", NO_LARGE);
     expect(huge).toEqual({ display: true, fontPx: MAX_DISPLAY_PX, clampedUp: false });
+  });
+});
+
+describe("computeLargeLabelWorldHeight", () => {
+  it("returns infinity for an empty list", () => {
+    expect(computeLargeLabelWorldHeight([])).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it("returns the 90th percentile of heights", () => {
+    const items = Array.from({ length: 10 }, (_, i) => ({ height: i + 1 })); // 1..10
+    // Math.floor(10 * 0.9) = 9 → sorted[9] = 10
+    expect(computeLargeLabelWorldHeight(items)).toBe(10);
+  });
+
+  it("clamps to last index for very small samples", () => {
+    expect(computeLargeLabelWorldHeight([{ height: 5 }])).toBe(5);
+    expect(computeLargeLabelWorldHeight([{ height: 5 }, { height: 12 }])).toBe(12);
   });
 });

@@ -126,21 +126,46 @@ export type DisplayDecision =
   | { display: false; reason: "layer" | "frustum" | "density" }
   | { display: true; fontPx: number; clampedUp: boolean };
 
+export type DensityContext = {
+  // World-height threshold above which a label is always shown in auto mode,
+  // regardless of how many on-screen pixels it would occupy. Computed per-scene
+  // from the height distribution so the largest title-block headers survive
+  // fit-scene zoom on layouts that span tens of metres.
+  largeLabelWorldHeight: number;
+};
+
 export function decideDisplay(
   worldFontPx: number,
+  worldHeight: number,
   inFrustum: boolean,
   layerHidden: boolean,
-  densityMode: LabelDensityMode
+  densityMode: LabelDensityMode,
+  context: DensityContext
 ): DisplayDecision {
   if (densityMode === "off") return { display: false, reason: "density" };
   if (layerHidden) return { display: false, reason: "layer" };
   if (!inFrustum) return { display: false, reason: "frustum" };
-  if (densityMode === "auto" && worldFontPx < AUTO_HIDE_BELOW_PX) {
-    return { display: false, reason: "density" };
+  if (densityMode === "auto") {
+    const isLargeLabel = worldHeight >= context.largeLabelWorldHeight;
+    const isLegibleOnScreen = worldFontPx >= AUTO_HIDE_BELOW_PX;
+    if (!isLargeLabel && !isLegibleOnScreen) {
+      return { display: false, reason: "density" };
+    }
   }
   const clampedUp = worldFontPx < MIN_DISPLAY_PX;
   const fontPx = Math.max(MIN_DISPLAY_PX, Math.min(worldFontPx, MAX_DISPLAY_PX));
   return { display: true, fontPx, clampedUp };
+}
+
+// Compute the per-scene "large label" threshold using the 90th percentile of
+// world heights. Labels at or above this height are always shown in auto mode
+// even when they project to a single pixel, so title-block headers stay
+// visible at fit-scene.
+export function computeLargeLabelWorldHeight(items: ReadonlyArray<{ height: number }>): number {
+  if (items.length === 0) return Number.POSITIVE_INFINITY;
+  const sorted = items.map((item) => item.height).sort((a, b) => a - b);
+  const idx = Math.floor(sorted.length * 0.9);
+  return sorted[Math.min(idx, sorted.length - 1)];
 }
 
 export function SceneTextOverlay({
@@ -167,6 +192,10 @@ export function SceneTextOverlay({
   const projectVec = useMemo(() => new THREE.Vector3(), []);
   const onMetricsRef = useRef(onMetrics);
   onMetricsRef.current = onMetrics;
+  const densityContext = useMemo<DensityContext>(
+    () => ({ largeLabelWorldHeight: computeLargeLabelWorldHeight(items) }),
+    [items]
+  );
 
   // Mutate DOM imperatively when ticked. React renders the items once.
   useEffect(() => {
@@ -207,7 +236,14 @@ export function SceneTextOverlay({
       const layerHidden = item.layerId !== undefined && hiddenLayerIds.has(item.layerId);
       const projected = projectLabel(item.position, camera, width, height, projectVec);
       const worldFontPx = item.height * pxPerUnit;
-      const decision = decideDisplay(worldFontPx, projected.inFrustum, layerHidden, densityMode);
+      const decision = decideDisplay(
+        worldFontPx,
+        item.height,
+        projected.inFrustum,
+        layerHidden,
+        densityMode,
+        densityContext
+      );
 
       if (!decision.display) {
         el.style.display = "none";
@@ -246,7 +282,7 @@ export function SceneTextOverlay({
         `[SceneTextOverlay] items=${items.length} dom=${labelRefs.current.size} visible=${visibleCount} clampedUp=${clampedUpCount} frustumCulled=${frustumCulledCount} layerHidden=${layerHiddenCount} densityHidden=${densityHiddenCount} pxPerUnit=${pxPerUnit.toFixed(4)} mode=${densityMode} readable=${readableOrientation} cameraReady=${cameraReady} hostReady=${hostReady}`
       );
     }
-  }, [items, camera, host, hiddenLayerIds, rafTick, projectVec, densityMode, readableOrientation]);
+  }, [items, camera, host, hiddenLayerIds, rafTick, projectVec, densityMode, readableOrientation, densityContext]);
 
   return (
     <div ref={overlayRef} className="text-overlay">
