@@ -6,7 +6,9 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
-import { collectTextItems, SceneTextOverlay, type TextOverlayCamera } from "./SceneTextOverlay";
+import { collectTextItems, SceneTextOverlay, type TextOverlayCamera, type TextOverlayMetrics } from "./SceneTextOverlay";
+
+const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 
 type RenderRecord = {
   object: THREE.Object3D;
@@ -283,6 +285,7 @@ function Viewport({
   const [overlayCamera, setOverlayCamera] = useState<TextOverlayCamera | null>(null);
   const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
   const [rafTick, setRafTick] = useState(0);
+  const [overlayMetrics, setOverlayMetrics] = useState<TextOverlayMetrics | null>(null);
   const textItems = useMemo(() => collectTextItems(scenePackage), [scenePackage]);
 
   // Latest-ref pattern: read current values in effects without adding them as deps.
@@ -514,7 +517,22 @@ function Viewport({
         host={overlayHost}
         hiddenLayerIds={hiddenLayerIds}
         rafTick={rafTick}
+        onMetrics={DEV_MODE ? setOverlayMetrics : undefined}
       />
+      {DEV_MODE && overlayMetrics ? (
+        <div className="text-overlay-diagnostics">
+          <strong>Text overlay (dev)</strong>
+          <span>items={overlayMetrics.itemCount}</span>
+          <span>dom={overlayMetrics.domLabelCount}</span>
+          <span>visible={overlayMetrics.visibleCount}</span>
+          <span>clampedUp={overlayMetrics.clampedUpCount}</span>
+          <span>frustumCulled={overlayMetrics.frustumCulledCount}</span>
+          <span>layerHidden={overlayMetrics.layerHiddenCount}</span>
+          <span>pxPerUnit={overlayMetrics.pxPerUnit.toFixed(4)}</span>
+          <span>camera={overlayMetrics.cameraReady ? "yes" : "no"}</span>
+          <span>host={overlayMetrics.hostReady ? "yes" : "no"}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
