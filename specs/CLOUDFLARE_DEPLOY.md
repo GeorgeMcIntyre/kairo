@@ -23,7 +23,7 @@ If you set it to `dist` (the Vite default), Pages will look in the wrong place a
 
 No Cloudflare Workers are required. This is a fully static Pages deployment.
 
-Current main verification (2026-05-10, HEAD `644eb03`): `pnpm build` completes successfully with the expected viewer chunk-size warning only.
+Current verification (2026-05-10): `pnpm build` completes successfully with the expected viewer chunk-size warning only.
 
 ---
 
