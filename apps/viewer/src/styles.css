@@ -32,33 +32,42 @@ button:hover {
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(360px, 1fr) minmax(260px, 340px);
-  grid-template-rows: minmax(420px, 1fr) 150px;
+  position: relative;
   height: 100vh;
   min-height: 620px;
+  overflow: hidden;
+  background: #111927;
 }
 
-.tree-panel,
+.layers-shell,
 .properties-panel,
 .viewport-panel,
 .diagnostics {
   min-width: 0;
 }
 
-.tree-panel,
+.layers-shell,
 .properties-panel {
+  position: absolute;
+  z-index: 4;
+  top: 58px;
+  max-height: calc(100vh - 74px);
   background: #161e2e;
+  border: 1px solid #29344a;
+  border-radius: 6px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
   border-color: #29344a;
   overflow: auto;
 }
 
-.tree-panel {
-  border-right: 1px solid #29344a;
+.layers-shell {
+  left: 12px;
+  width: min(320px, calc(50vw - 24px));
 }
 
 .properties-panel {
-  border-left: 1px solid #29344a;
+  right: 12px;
+  width: min(380px, calc(50vw - 24px));
 }
 
 .panel-heading,
@@ -113,29 +122,57 @@ button:hover {
 }
 
 .viewport-panel {
+  position: absolute;
+  inset: 0;
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: 48px 1fr;
   background: #111927;
 }
 
 .viewport-toolbar {
+  position: relative;
+  z-index: 5;
   justify-content: flex-start;
   border-bottom: 1px solid #29344a;
-  background: #161e2e;
+  background: rgba(22, 30, 46, 0.96);
   overflow-x: auto;
 }
 
-.viewport-toolbar span {
+.scene-summary {
+  display: flex;
+  min-width: 260px;
+  flex-direction: column;
+  gap: 2px;
   padding-right: 14px;
   border-right: 1px solid #29344a;
+}
+
+.scene-summary strong {
+  color: #c9d4df;
+  font-size: 12px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.scene-summary span {
+  color: #6a8499;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-transform: none;
   white-space: nowrap;
 }
 
 .toolbar-actions {
   display: flex;
+  flex: 1;
+  align-items: center;
   gap: 8px;
-  margin-left: auto;
   padding-left: 10px;
+  white-space: nowrap;
 }
 
 .toolbar-actions button,
@@ -218,7 +255,7 @@ button:hover {
 
 .text-overlay-diagnostics {
   position: absolute;
-  top: 8px;
+  top: 56px;
   right: 8px;
   z-index: 2;
   display: grid;
@@ -243,11 +280,35 @@ button:hover {
 
 .properties-panel dl {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   gap: 10px 12px;
-  padding: 16px;
+  padding: 14px;
   margin: 0;
   border-bottom: 1px solid #29344a;
+}
+
+.selection-summary {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border-bottom: 1px solid #29344a;
+  background: #111927;
+}
+
+.selection-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f4a51c;
+  font-size: 14px;
+}
+
+.selection-summary span {
+  min-width: 0;
+  overflow: hidden;
+  color: #8aa2b6;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .properties-panel dt {
@@ -293,7 +354,7 @@ button:hover {
 }
 
 .layer-panel {
-  padding: 0 16px 16px;
+  padding: 0 14px 14px;
 }
 
 .section-heading {
@@ -304,9 +365,10 @@ button:hover {
 }
 
 .layer-list {
-  max-height: 260px;
+  max-height: calc(100vh - 168px);
   overflow: auto;
   border: 1px solid #29344a;
+  border-radius: 4px;
 }
 
 .layer-row {
@@ -344,13 +406,21 @@ button:hover {
 }
 
 .diagnostics {
-  grid-column: 1 / 4;
+  position: absolute;
+  z-index: 6;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: minmax(220px, 300px) minmax(260px, 1fr) minmax(220px, 340px);
   gap: 18px;
-  padding: 16px;
-  border-top: 1px solid #29344a;
-  background: #161e2e;
+  max-height: min(360px, calc(100vh - 92px));
+  padding: 14px;
+  border: 1px solid #29344a;
+  border-radius: 6px;
+  background: rgba(22, 30, 46, 0.97);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+  overflow: auto;
 }
 
 .diagnostics.valid {
@@ -361,7 +431,7 @@ button:hover {
   box-shadow: inset 4px 0 0 #bd3f32;
 }
 
-.diagnostics div {
+.diagnostics-summary {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -379,17 +449,88 @@ button:hover {
   overflow: auto;
 }
 
+.diagnostics-tree {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #29344a;
+  border-radius: 4px;
+}
+
+.diagnostics-tree .panel-heading {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: #161e2e;
+}
+
 @media (max-width: 900px) {
   .app-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 420px auto 150px;
-    height: auto;
+    height: 100vh;
+    min-height: 520px;
   }
 
-  .tree-panel,
-  .properties-panel,
+  .viewport-panel {
+    grid-template-rows: auto 1fr;
+  }
+
+  .viewport-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    min-height: 92px;
+    padding: 8px 10px;
+  }
+
+  .scene-summary {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid #29344a;
+    padding: 0 0 8px;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    padding-left: 0;
+    overflow-x: auto;
+  }
+
+  .layers-shell,
+  .properties-panel {
+    top: auto;
+    bottom: 12px;
+    width: calc(50vw - 18px);
+    max-height: min(48vh, 420px);
+  }
+
+  .layers-shell {
+    left: 12px;
+  }
+
+  .properties-panel {
+    right: 12px;
+  }
+
   .diagnostics {
-    grid-column: 1;
+    top: 104px;
+    bottom: 12px;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .layers-shell,
+  .properties-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 36vh;
+  }
+
+  .layers-shell {
+    bottom: calc(36vh + 20px);
+  }
+
+  .properties-panel {
+    bottom: 12px;
   }
 
   .diagnostics {

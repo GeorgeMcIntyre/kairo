@@ -638,6 +638,7 @@ export function App() {
   const [selectedEntity, setSelectedEntity] = useState<PickableCurveEntity | undefined>();
   const [labelDensity, setLabelDensity] = useState<LabelDensityMode>("auto");
   const [readableOrientation, setReadableOrientation] = useState(true);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
   const sceneStats = useMemo(() => computeSceneStats(scenePackage), [scenePackage]);
@@ -725,41 +726,16 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <aside className="tree-panel">
-        <div className="panel-heading">
-          <span>Scene Tree</span>
-          <strong>{scenePackage.scene.nodes.length}</strong>
-        </div>
-        <TreeNode
-          node={rootNode}
-          depth={0}
-          selectedNodeId={selectedNodeId}
-          nodeMap={nodeMap}
-          onSelect={selectNode}
-        />
-      </aside>
-
       <section className="viewport-panel">
         <div className="viewport-toolbar">
-          <span>{scenePackage.manifest.format}</span>
-          <span>{scenePackage.manifest.units}</span>
-          <span>{scenePackage.manifest.axisSystem.up}-up</span>
-          <span>{sceneStatus}</span>
+          <div className="scene-summary" aria-label="Loaded scene summary">
+            <strong>{sceneStatus}</strong>
+            <span>
+              {sceneStats.layerCount} layers / {sceneStats.geometryDocumentCount} geometry docs /{" "}
+              {sceneStats.curveEntityCount} curves
+            </span>
+          </div>
           <div className="toolbar-actions">
-            <button
-              className={viewMode === "top2d" ? "active" : ""}
-              onClick={() => setViewMode("top2d")}
-              type="button"
-            >
-              Top 2D
-            </button>
-            <button
-              className={viewMode === "perspective" ? "active" : ""}
-              onClick={() => setViewMode("perspective")}
-              type="button"
-            >
-              3D
-            </button>
             <button onClick={() => requestFit("scene")} type="button">
               Fit scene
             </button>
@@ -769,9 +745,26 @@ export function App() {
             <button onClick={() => requestFit("selected")} type="button">
               Fit selected
             </button>
+            <button
+              aria-pressed={viewMode === "top2d"}
+              className={viewMode === "top2d" ? "active" : ""}
+              onClick={() => setViewMode("top2d")}
+              type="button"
+            >
+              Top 2D
+            </button>
+            <button
+              aria-pressed={viewMode === "perspective"}
+              className={viewMode === "perspective" ? "active" : ""}
+              onClick={() => setViewMode("perspective")}
+              type="button"
+            >
+              3D
+            </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <span className="toolbar-label">Labels</span>
             <button
+              aria-pressed={labelDensity === "auto"}
               className={labelDensity === "auto" ? "active" : ""}
               onClick={() => setLabelDensity("auto")}
               title="Hide labels smaller than ~5px (cleaner fit-scene view)"
@@ -780,6 +773,7 @@ export function App() {
               Auto
             </button>
             <button
+              aria-pressed={labelDensity === "all"}
               className={labelDensity === "all" ? "active" : ""}
               onClick={() => setLabelDensity("all")}
               title="Show every label, clamping tiny labels up to 2px"
@@ -788,6 +782,7 @@ export function App() {
               All
             </button>
             <button
+              aria-pressed={labelDensity === "off"}
               className={labelDensity === "off" ? "active" : ""}
               onClick={() => setLabelDensity("off")}
               title="Hide all text labels"
@@ -796,12 +791,23 @@ export function App() {
               Off
             </button>
             <button
+              aria-pressed={readableOrientation}
               className={readableOrientation ? "active" : ""}
               onClick={() => setReadableOrientation((current) => !current)}
               title="Flip upside-down labels so they read left-to-right"
               type="button"
             >
               Readable
+            </button>
+            <span className="toolbar-divider" aria-hidden="true" />
+            <button
+              aria-controls="diagnostics-panel"
+              aria-expanded={diagnosticsOpen}
+              className={diagnosticsOpen ? "active" : ""}
+              onClick={() => setDiagnosticsOpen((current) => !current)}
+              type="button"
+            >
+              Diagnostics
             </button>
           </div>
         </div>
@@ -817,20 +823,34 @@ export function App() {
         />
       </section>
 
+      <aside className="layers-shell">
+        <LayerPanel
+          hiddenLayerIds={hiddenLayerIds}
+          layers={layerStats}
+          selectedLayerId={selectedLayerId}
+          onShowAllLayers={() => setHiddenLayerIds(new Set())}
+          onToggleLayer={toggleLayer}
+        />
+      </aside>
+
       <aside className="properties-panel">
         <div className="panel-heading">
-          <span>Properties</span>
+          <span>{selectedEntity ? "Selected entity" : "Selected node"}</span>
           <strong>{selectedEntity ? selectedEntity.type : selectedNode.type}</strong>
         </div>
+        <div className="selection-summary">
+          <strong>{selectedEntity?.entityId ?? selectedNode.displayName}</strong>
+          <span>{selectedLayerName ?? selectedLayerId ?? "No layer"}</span>
+        </div>
         <dl>
-          <dt>Name</dt>
-          <dd>{selectedNode.displayName}</dd>
           <dt>ID</dt>
           <dd>{selectedEntity?.entityId ?? selectedNode.id}</dd>
-          {selectedEntity ? (
+          <dt>Type</dt>
+          <dd>{sourceEntry?.entityType ?? selectedEntity?.type ?? selectedNode.type}</dd>
+          {selectedSourceRef ? (
             <>
-              <dt>Batch node</dt>
-              <dd>{selectedNode.id}</dd>
+              <dt>Source ref</dt>
+              <dd>{selectedSourceRef}</dd>
             </>
           ) : null}
           {selectedLayerId ? (
@@ -839,15 +859,21 @@ export function App() {
               <dd>{selectedLayerName ? `${selectedLayerName} (${selectedLayerId})` : selectedLayerId}</dd>
             </>
           ) : null}
-          {selectedSourceRef ? (
+          {!selectedEntity ? (
             <>
-              <dt>Source ref</dt>
-              <dd>{selectedSourceRef}</dd>
+              <dt>Name</dt>
+              <dd>{selectedNode.displayName}</dd>
+            </>
+          ) : null}
+          {selectedEntity ? (
+            <>
+              <dt>Batch node</dt>
+              <dd>{selectedNode.id}</dd>
             </>
           ) : null}
           {selectedEntity || sourceEntry?.entityType ? (
             <>
-              <dt>Entity type</dt>
+              <dt>Source type</dt>
               <dd>{sourceEntry?.entityType ?? selectedEntity?.type.toUpperCase()}</dd>
             </>
           ) : null}
@@ -895,38 +921,49 @@ export function App() {
             </div>
           ))}
         </div>
-        <LayerPanel
-          hiddenLayerIds={hiddenLayerIds}
-          layers={layerStats}
-          selectedLayerId={selectedLayerId}
-          onShowAllLayers={() => setHiddenLayerIds(new Set())}
-          onToggleLayer={toggleLayer}
-        />
       </aside>
 
-      <section className={report.valid ? "diagnostics valid" : "diagnostics invalid"}>
-        <div>
-          <strong>{report.valid ? "Validation passed" : "Validation failed"}</strong>
-          <span>
-            {report.summary.errors} errors, {report.summary.warnings} warnings
-          </span>
-          <span>
-            {sceneStats.nodeCount} nodes, {sceneStats.layerCount} layers, {sceneStats.geometryDocumentCount} geometry docs,{" "}
-            {sceneStats.curveEntityCount} curve entities
-          </span>
-        </div>
-        <ol>
-          {report.findings.length === 0 ? (
-            <li>{sceneLoadError ? `Scene load warning: ${sceneLoadError}` : "No validation findings for the loaded scene."}</li>
-          ) : (
-            report.findings.map((finding) => (
-              <li key={`${finding.code}-${finding.path}`}>
-                <strong>{finding.severity}</strong> {finding.code}: {finding.message}
-              </li>
-            ))
-          )}
-        </ol>
-      </section>
+      {diagnosticsOpen ? (
+        <section
+          className={report.valid ? "diagnostics valid" : "diagnostics invalid"}
+          id="diagnostics-panel"
+        >
+          <div className="diagnostics-summary">
+            <strong>{report.valid ? "Validation passed" : "Validation failed"}</strong>
+            <span>
+              {report.summary.errors} errors, {report.summary.warnings} warnings
+            </span>
+            <span>
+              {sceneStats.nodeCount} nodes, {sceneStats.layerCount} layers, {sceneStats.geometryDocumentCount} geometry docs,{" "}
+              {sceneStats.curveEntityCount} curve entities
+            </span>
+          </div>
+          <ol>
+            {report.findings.length === 0 ? (
+              <li>{sceneLoadError ? `Scene load warning: ${sceneLoadError}` : "No validation findings for the loaded scene."}</li>
+            ) : (
+              report.findings.map((finding) => (
+                <li key={`${finding.code}-${finding.path}`}>
+                  <strong>{finding.severity}</strong> {finding.code}: {finding.message}
+                </li>
+              ))
+            )}
+          </ol>
+          <div className="diagnostics-tree">
+            <div className="panel-heading">
+              <span>Scene tree</span>
+              <strong>{scenePackage.scene.nodes.length}</strong>
+            </div>
+            <TreeNode
+              node={rootNode}
+              depth={0}
+              selectedNodeId={selectedNodeId}
+              nodeMap={nodeMap}
+              onSelect={selectNode}
+            />
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

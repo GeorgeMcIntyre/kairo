@@ -23,6 +23,10 @@ export const MIN_DISPLAY_PX = 2;
 export const MAX_DISPLAY_PX = 48;
 export const AUTO_HIDE_BELOW_PX = 5;
 
+function textOverlayDomKey(item: TextOverlayItem, index: number): string {
+  return `${item.entityId}:${index}`;
+}
+
 export type TextOverlayMetrics = {
   itemCount: number;
   domLabelCount: number;
@@ -253,8 +257,9 @@ export function SceneTextOverlay({
     let frustumCulledCount = 0;
     let layerHiddenCount = 0;
     let densityHiddenCount = 0;
-    for (const item of items) {
-      const el = labelRefs.current.get(item.entityId);
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      const el = labelRefs.current.get(textOverlayDomKey(item, index));
       if (!el) continue;
 
       const layerHidden = item.layerId !== undefined && hiddenLayerIds.has(item.layerId);
@@ -315,12 +320,13 @@ export function SceneTextOverlay({
 
   return (
     <div ref={overlayRef} className="text-overlay">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <div
-          key={item.entityId}
+          key={textOverlayDomKey(item, index)}
           ref={(node) => {
-            if (node) labelRefs.current.set(item.entityId, node);
-            else labelRefs.current.delete(item.entityId);
+            const domKey = textOverlayDomKey(item, index);
+            if (node) labelRefs.current.set(domKey, node);
+            else labelRefs.current.delete(domKey);
           }}
           className={`text-overlay-label${item.origin === "ATTDEF" ? " attdef" : ""}`}
           style={{ display: "none" }}
