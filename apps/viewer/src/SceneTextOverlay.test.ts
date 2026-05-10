@@ -11,8 +11,10 @@ import {
   cssRotationFor,
   decideDisplay,
   isUpsideDown,
+  mtextAnchorPercent,
   normalizeRotation,
   projectLabel,
+  textAnchorPercent,
   type DensityContext
 } from "./SceneTextOverlay";
 
@@ -267,6 +269,64 @@ describe("decideDisplay", () => {
   it("clamps very large labels to MAX_DISPLAY_PX", () => {
     const huge = decideDisplay(500, 10, true, false, "all", NO_LARGE);
     expect(huge).toEqual({ display: true, fontPx: MAX_DISPLAY_PX, clampedUp: false });
+  });
+});
+
+describe("textAnchorPercent", () => {
+  it("defaults to left-baseline (0%, 100%) when no alignment", () => {
+    expect(textAnchorPercent()).toEqual([0, 100]);
+    expect(textAnchorPercent(0, 0)).toEqual([0, 100]);
+  });
+
+  it("center horizontal → 50% x", () => {
+    expect(textAnchorPercent(1, 0)).toEqual([50, 100]);
+  });
+
+  it("right horizontal → 100% x", () => {
+    expect(textAnchorPercent(2, 0)).toEqual([100, 100]);
+  });
+
+  it("right-bottom → 100% 100%", () => {
+    expect(textAnchorPercent(2, 1)).toEqual([100, 100]);
+  });
+
+  it("top vertical → 0% y", () => {
+    expect(textAnchorPercent(0, 3)).toEqual([0, 0]);
+  });
+
+  it("middle-center → 50% 50%", () => {
+    expect(textAnchorPercent(1, 2)).toEqual([50, 50]);
+  });
+});
+
+describe("mtextAnchorPercent", () => {
+  it("top-left (1) → 0% 0%", () => {
+    expect(mtextAnchorPercent(1)).toEqual([0, 0]);
+  });
+
+  it("top-center (2) → 50% 0%", () => {
+    expect(mtextAnchorPercent(2)).toEqual([50, 0]);
+  });
+
+  it("top-right (3) → 100% 0%", () => {
+    expect(mtextAnchorPercent(3)).toEqual([100, 0]);
+  });
+
+  it("middle-center (5) → 50% 50%", () => {
+    expect(mtextAnchorPercent(5)).toEqual([50, 50]);
+  });
+
+  it("bottom-left (7) → 0% 100%", () => {
+    expect(mtextAnchorPercent(7)).toEqual([0, 100]);
+  });
+
+  it("bottom-right (9) → 100% 100%", () => {
+    expect(mtextAnchorPercent(9)).toEqual([100, 100]);
+  });
+
+  it("defaults to top-left when undefined", () => {
+    expect(mtextAnchorPercent(undefined)).toEqual([0, 0]);
+    expect(mtextAnchorPercent()).toEqual([0, 0]);
   });
 });
 

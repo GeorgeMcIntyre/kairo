@@ -13,26 +13,6 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## NEXT
 
-### ISSUE-003: Text placement and alignment correctness (P0)
-
-**Goal:** Improve TEXT/MTEXT placement accuracy — horizontal alignment (group 72), vertical alignment (group 73), MTEXT attachment point (group 71).
-
-**Allowed:** Schema-safe fields only if proven needed, overlay placement tests.
-
-**Not allowed:** Full rich MTEXT formatting, viewer redesign, break existing display, touch GLB/JT/export.
-
----
-
-### ISSUE-003: Text placement and alignment correctness (P0)
-
-**Goal:** Improve TEXT/MTEXT placement accuracy — horizontal alignment (group 72), vertical alignment (group 73), MTEXT attachment point (group 71).
-
-**Allowed:** Schema-safe fields only if proven needed, overlay placement tests.
-
-**Not allowed:** Full rich MTEXT formatting, viewer redesign, break existing display, touch GLB/JT/export.
-
----
-
 ### ISSUE-004: Viewer UI drawing-first review mode (P1)
 
 **Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers as main side panel. Diagnostics collapsed.
@@ -104,6 +84,20 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-003: Text placement and alignment correctness ✅ DONE
+
+**Completed:** 2026-05-10
+
+- **Schema**: `textEntitySchema` gains four optional fields: `hAlign`, `vAlign`, `alignmentPoint` (Vec3), `attachmentPoint`. All backward-compatible.
+- **Importer TEXT/ATTDEF**: `DxfTextEntity` now reads `horizontalJustification` (group 72), `verticalJustification` (group 73), `secondAlignmentendX/Y/Z` (group 11/21/31 — note "end" typo in @dxfjs/parser). `DxfAttdefEntity` reads `secondAlignmentPointX/Y/Z`. DXF rule applied: when hAlign≠0 OR vAlign≠0, `position` is set to the second alignment point (group 11/21/31), not the first insertion point. `hAlign`, `vAlign`, `alignmentPoint` written to entity.
+- **Importer MTEXT**: `mtextToEntity()` now passes `attachmentPoint` (group 71, values 1-9) from `RawMtextRecord` through to the entity.
+- **Viewer anchor**: `textAnchorPercent(hAlign?, vAlign?)` and `mtextAnchorPercent(attachmentPoint?)` compute CSS `[xPct, yPct]`. The render loop sets `el.style.transformOrigin` per label so the projected screen point is the logical anchor (left-baseline for default TEXT; top-left for default MTEXT; correct anchor for all other alignments).
+- **Tests**: 13 new tests — 6 for `textAnchorPercent`, 7 for `mtextAnchorPercent`. 201/201 total tests pass.
+
+Scott DXF2013: 201/201 tests pass. Text entities with non-default DXF alignment now render at their DXF-specified anchor rather than always bottom-left.
+
+---
 
 ### ISSUE-002: Selection and inspection usability ✅ DONE
 

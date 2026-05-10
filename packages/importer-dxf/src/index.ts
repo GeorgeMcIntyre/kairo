@@ -271,7 +271,8 @@ function mtextToEntity(record: RawMtextRecord, fallbackIndex: number): DrawingEn
     position: point(record.insertion[0], record.insertion[1], record.insertion[2]),
     rotationDeg: record.rotationDeg,
     height: Math.max(record.height, 1e-6),
-    origin: "TEXT"
+    origin: "TEXT",
+    ...(record.attachmentPoint !== undefined && { attachmentPoint: record.attachmentPoint })
   };
 }
 
@@ -584,15 +585,38 @@ type DxfTextEntity = EntityCommons & {
   firstAlignmentPointX?: number;
   firstAlignmentPointY?: number;
   firstAlignmentPointZ?: number;
+  horizontalJustification?: number;
+  verticalJustification?: number;
+  secondAlignmentendX?: number;
+  secondAlignmentendY?: number;
+  secondAlignmentendZ?: number;
 };
 
-type DxfAttdefEntity = DxfTextEntity & { value?: string; tag?: string };
+type DxfAttdefEntity = DxfTextEntity & {
+  value?: string;
+  tag?: string;
+  secondAlignmentPointX?: number;
+  secondAlignmentPointY?: number;
+  secondAlignmentPointZ?: number;
+};
 
 function textInsertionPoint(entity: DxfTextEntity): [number, number, number] {
   const x = entity.firstAlignmentX ?? entity.firstAlignmentPointX ?? 0;
   const y = entity.firstAlignmentY ?? entity.firstAlignmentPointY ?? 0;
   const z = entity.firstAlignmentZ ?? entity.firstAlignmentPointZ ?? 0;
   return [x, y, z];
+}
+
+function textSecondPoint(entity: DxfTextEntity): [number, number, number] {
+  return [entity.secondAlignmentendX ?? 0, entity.secondAlignmentendY ?? 0, entity.secondAlignmentendZ ?? 0];
+}
+
+function attdefSecondPoint(entity: DxfAttdefEntity): [number, number, number] {
+  return [
+    entity.secondAlignmentPointX ?? entity.secondAlignmentendX ?? 0,
+    entity.secondAlignmentPointY ?? entity.secondAlignmentendY ?? 0,
+    entity.secondAlignmentPointZ ?? entity.secondAlignmentendZ ?? 0
+  ];
 }
 
 function textHeightOf(entity: DxfTextEntity): number {
@@ -605,7 +629,11 @@ function attdefDisplayString(entity: DxfAttdefEntity): string {
 }
 
 function textToEntity(entity: DxfTextEntity, fallbackIndex: number): DrawingEntity {
-  const [x, y, z] = textInsertionPoint(entity);
+  const h = entity.horizontalJustification ?? 0;
+  const v = entity.verticalJustification ?? 0;
+  const useAlignment = h !== 0 || v !== 0;
+  const secondPt = textSecondPoint(entity);
+  const [x, y, z] = useAlignment ? secondPt : textInsertionPoint(entity);
   return {
     ...entityBase(entity, "text", fallbackIndex),
     type: "text",
@@ -613,12 +641,19 @@ function textToEntity(entity: DxfTextEntity, fallbackIndex: number): DrawingEnti
     position: point(x, y, z),
     rotationDeg: entity.rotation ?? 0,
     height: Math.max(textHeightOf(entity), 1e-6),
-    origin: "TEXT"
+    origin: "TEXT",
+    ...(h !== 0 && { hAlign: h }),
+    ...(v !== 0 && { vAlign: v }),
+    ...(useAlignment && { alignmentPoint: secondPt })
   };
 }
 
 function expandBlockText(entity: DxfTextEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
-  const [x, y, z] = textInsertionPoint(entity);
+  const h = entity.horizontalJustification ?? 0;
+  const v = entity.verticalJustification ?? 0;
+  const useAlignment = h !== 0 || v !== 0;
+  const secondPt = textSecondPoint(entity);
+  const [x, y, z] = useAlignment ? secondPt : textInsertionPoint(entity);
   const scaleMagnitude = Math.abs(insertScale(insert).x);
   return {
     ...expandedEntityBase("text", insert, blockName, entity, fallbackIndex),
@@ -627,12 +662,19 @@ function expandBlockText(entity: DxfTextEntity, insert: DxfInsertEntity, block: 
     position: transformBlockPoint(x, y, z, insert, block),
     rotationDeg: transformTextRotation(entity.rotation ?? 0, insert),
     height: Math.max(textHeightOf(entity) * scaleMagnitude, 1e-6),
-    origin: "TEXT"
+    origin: "TEXT",
+    ...(h !== 0 && { hAlign: h }),
+    ...(v !== 0 && { vAlign: v }),
+    ...(useAlignment && { alignmentPoint: transformBlockPoint(secondPt[0], secondPt[1], secondPt[2], insert, block) })
   };
 }
 
 function expandBlockAttdef(entity: DxfAttdefEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
-  const [x, y, z] = textInsertionPoint(entity);
+  const h = entity.horizontalJustification ?? 0;
+  const v = entity.verticalJustification ?? 0;
+  const useAlignment = h !== 0 || v !== 0;
+  const secondPt = attdefSecondPoint(entity);
+  const [x, y, z] = useAlignment ? secondPt : textInsertionPoint(entity);
   const scaleMagnitude = Math.abs(insertScale(insert).x);
   return {
     ...expandedEntityBase("text", insert, blockName, entity, fallbackIndex),
@@ -642,7 +684,10 @@ function expandBlockAttdef(entity: DxfAttdefEntity, insert: DxfInsertEntity, blo
     rotationDeg: transformTextRotation(entity.rotation ?? 0, insert),
     height: Math.max(textHeightOf(entity) * scaleMagnitude, 1e-6),
     origin: "ATTDEF",
-    tag: entity.tag
+    tag: entity.tag,
+    ...(h !== 0 && { hAlign: h }),
+    ...(v !== 0 && { vAlign: v }),
+    ...(useAlignment && { alignmentPoint: transformBlockPoint(secondPt[0], secondPt[1], secondPt[2], insert, block) })
   };
 }
 

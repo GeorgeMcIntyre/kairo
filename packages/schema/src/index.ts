@@ -148,6 +148,10 @@ const textEntitySchema = z.object({
   height: z.number().positive(),
   origin: z.enum(["TEXT", "ATTDEF"]),
   tag: z.string().optional(),
+  hAlign: z.number().int().optional(),
+  vAlign: z.number().int().optional(),
+  alignmentPoint: vector3Schema.optional(),
+  attachmentPoint: z.number().int().optional(),
   layerId: z.string().optional(),
   color: colorSchema.optional(),
   sourceRef: z.string().optional()

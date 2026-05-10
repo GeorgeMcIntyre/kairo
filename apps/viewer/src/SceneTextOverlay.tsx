@@ -10,6 +10,9 @@ export type TextOverlayItem = {
   height: number;
   origin: "TEXT" | "ATTDEF";
   layerId?: string;
+  hAlign?: number;
+  vAlign?: number;
+  attachmentPoint?: number;
 };
 
 export type TextOverlayCamera = THREE.OrthographicCamera | THREE.PerspectiveCamera;
@@ -49,7 +52,10 @@ export function collectTextItems(scenePackage: ScenePackage): TextOverlayItem[] 
           rotationDeg: entity.rotationDeg,
           height: entity.height,
           origin: entity.origin,
-          layerId: entity.layerId ?? geometry.layerId
+          layerId: entity.layerId ?? geometry.layerId,
+          hAlign: entity.hAlign,
+          vAlign: entity.vAlign,
+          attachmentPoint: entity.attachmentPoint
         });
       }
     }
@@ -168,6 +174,24 @@ export function computeLargeLabelWorldHeight(items: ReadonlyArray<{ height: numb
   return sorted[Math.min(idx, sorted.length - 1)];
 }
 
+// Returns [xPct, yPct] for CSS transform-origin based on DXF TEXT alignment.
+// hAlign: 0=Left, 1=Center, 2=Right. vAlign: 0=Baseline, 1=Bottom, 2=Middle, 3=Top.
+export function textAnchorPercent(hAlign?: number, vAlign?: number): [number, number] {
+  const x = hAlign === 1 ? 50 : hAlign === 2 ? 100 : 0;
+  const y = vAlign === 3 ? 0 : vAlign === 2 ? 50 : 100;
+  return [x, y];
+}
+
+// Returns [xPct, yPct] for CSS transform-origin based on MTEXT attachment point.
+// Attachment 1-9: rows top/middle/bottom, cols left/center/right. Default: top-left (1).
+export function mtextAnchorPercent(attachmentPoint?: number): [number, number] {
+  const pt = attachmentPoint ?? 1;
+  if (pt < 1 || pt > 9) return [0, 0];
+  const col = (pt - 1) % 3;
+  const row = Math.floor((pt - 1) / 3);
+  return [col === 0 ? 0 : col === 1 ? 50 : 100, row === 0 ? 0 : row === 1 ? 50 : 100];
+}
+
 export function SceneTextOverlay({
   items,
   camera,
@@ -255,6 +279,11 @@ export function SceneTextOverlay({
 
       if (decision.clampedUp) clampedUpCount += 1;
       const cssRotation = cssRotationFor(item.rotationDeg, readableOrientation);
+      const [anchorX, anchorY] =
+        item.attachmentPoint !== undefined
+          ? mtextAnchorPercent(item.attachmentPoint)
+          : textAnchorPercent(item.hAlign, item.vAlign);
+      el.style.transformOrigin = `${anchorX}% ${anchorY}%`;
       el.style.display = "";
       el.style.fontSize = `${decision.fontPx.toFixed(2)}px`;
       el.style.transform = `translate(${projected.screenX.toFixed(2)}px, ${projected.screenY.toFixed(2)}px) rotate(${cssRotation.toFixed(2)}deg)`;
