@@ -5,16 +5,19 @@ Last updated: 2026-05-10
 ## Git
 
 - Branch: main
-- HEAD: c1241f1 feat: extract MTEXT entities and keep big labels visible at fit-scene
-- In sync with origin/main (post-commit)
+- HEAD: 1e713df feat: ISSUE-003 text alignment — wire DXF group 72/73/71 through to viewer anchor
+- In sync with origin/main (post-push)
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 151/151 passed |
+| `pnpm test` | 201/201 passed |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~773 kB — chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle ~780 kB — chunk size warning only) |
+| `import-dxf` Scott DXF2013 | Passed — 246,045 supported, 461 warnings |
+| `validate` | Passed — 0 errors, 0 warnings |
+| `stage-viewer-scene` | Passed — staged to `scott-dxf2013-import` |
 
 ## What Works
 
@@ -27,6 +30,7 @@ Last updated: 2026-05-10
 - INSERT mirror expansion (Phase 10S): INSERTs with uniform-magnitude negative scale (e.g. xScale=-25.4, yScale=25.4, zScale=25.4) expand with per-axis scale and arc angle reflection. DXF_INSERT_MIRROR_FLATTENED warning emitted.
 - TEXT/ATTDEF rendering (Phase 10T-B): Schema has `text` entity type. Importer extracts direct TEXT entities and TEXT/ATTDEF inside block expansions (depth-1 and depth-2) with INSERT position transform. Viewer renders text as HTML overlay above the Three.js canvas; font size clamped 5–48px; layer-toggle and rAF-driven projection.
 - MTEXT extraction (Phase 10T-C): Direct ENTITIES-section MTEXT scanner (`extractMtext.ts`) extracts MTEXT records that `@dxfjs/parser` does not surface. Full DXF formatting-code stripping (`\P`, `\X`, `\~`, `\C`, `\H`, `\f`, `\U+XXXX`, stacked text, grouping braces). Scott DXF2013 had 343 MTEXT records silently dropped before this commit; large station headers like "7B-070L RACK LOAD" at 457.2 mm are now visible.
+- Text alignment (ISSUE-003): Schema `textEntitySchema` gains optional `hAlign`, `vAlign`, `alignmentPoint`, `attachmentPoint`. Importer reads DXF group 72 (`horizontalJustification`), group 73 (`verticalJustification`), and group 11/21/31 (second alignment point); uses second point as `position` when hAlign≠0 or vAlign≠0. MTEXT `attachmentPoint` (group 71, 1–9) wired from scanner through to entity. Viewer `textAnchorPercent()` and `mtextAnchorPercent()` compute CSS `transform-origin` per label so projected screen point is the correct DXF logical anchor. Scott DXF2013: 477 TEXT/ATTDEF with non-default hAlign, 467 with non-default vAlign, 123 MTEXT with attachmentPoint.
 - Label density modes (Phase 10T-C): Auto / All / Off. Auto uses 90th-percentile world-height threshold — large headers stay visible at fit-scene while small annotations declutter. All clamps tiny labels to 2px minimum. Off hides all text.
 - Readable orientation toggle (Phase 10T-C): Flips upside-down labels (rotation mod 360 in 90°–270°) to read left-to-right.
 - INSERT partial expansion (Phase 10K): Blocks with ATTDEF/TEXT/SPLINE/ELLIPSE expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC).
@@ -43,9 +47,8 @@ Last updated: 2026-05-10
 **Usable but not polished.** The Scott DXF2013 layout loads, lines are visible, layers toggle, and text/MTEXT labels including large station headers appear.
 
 Known visual issues still requiring work:
-- Some floater/outlier entities are visible away from the main drawing (5,506 entities >3× median distance — may be correct far-field equipment, not confirmed as bugs)
-- Text placement/alignment still approximate (horizontal/vertical alignment group codes not fully honored)
-- Selection/inspection is functional but not practical for QA: panel shows minimal details, picking tolerance may be too tight for dense geometry
+- Text anchor position is now correct per-entity but visual overlap/density may still need tuning in dense label areas
+- Clicking a line resolves to the batched LineSegments object (node-level), not the individual DXF entity within the batch — granular picking is the next inspection improvement
 - Viewer UI is development-oriented; for drawing-first review, panels take too much screen space
 - Mouse wheel zoom is center-of-viewport, not toward cursor
 
@@ -54,8 +57,8 @@ Known visual issues still requiring work:
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
 - ATTRIB (attribute overrides): not imported; ATTDEF default value used instead.
 - MTEXT inside block definitions: not expanded during INSERT expansion (only direct ENTITIES-section MTEXT is imported via scanner).
-- Text alignment: horizontal alignment (group 72), vertical alignment (group 73), MTEXT attachment point (group 71) not fully implemented — approximate placement only.
 - Mirror-aware text rotation: text rotation does NOT reflect under mirrored INSERT (AutoCAD MIRRTEXT=0 default semantics). Position is mirror-correct. Acceptable v1 limitation.
+- Granular entity picking: raycaster resolves to the batched LineSegments node, not the individual DXF entity within the batch. Per-entity picking requires a segment-index → entity map (planned).
 - Text overlay does not collision-detect or z-order against curves.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
@@ -65,12 +68,11 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. **ISSUE-001** — Outlier/floater audit (classify the 5,506 outliers; confirm no transform bugs)
-2. **ISSUE-002** — Selection/inspection usability (click entity → see layer/type/handle/source)
-3. **ISSUE-003** — Text placement/alignment (honor alignment group codes)
-4. **ISSUE-004** — Drawing-first viewer UI (maximize canvas, toolbar)
-5. **ISSUE-005** — Zoom-to-cursor (controls.zoomToCursor)
-6. **ISSUE-006** — Layer controls / isolate workflow
+1. **Granular entity picking** — segment-index → entity map so raycast resolves to exact DXF entity, not just the LineSegments node
+2. **ISSUE-005** — Mouse wheel zoom toward cursor (controls.zoomToCursor)
+3. **ISSUE-004** — Drawing-first viewer UI (maximize canvas, toolbar)
+4. Coordinate precision audit
+5. Export/JT probe (not exporter — research only)
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 
@@ -107,6 +109,7 @@ See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
 | After Phase 10S | 244,953 | Mirror INSERT expansion (+102,560 entities) |
 | After Phase 10T-B | 245,922 | TEXT + ATTDEF (+969 entities; rendered as HTML overlay) |
 | After Phase 10T-C | 246,045 | MTEXT scanner (+123 entities; station headers now visible) |
+| After ISSUE-003 | 246,045 | Text alignment fields wired; entity count unchanged; anchors corrected |
 
 ## Viewer Performance Baseline (after Phase 10P)
 
