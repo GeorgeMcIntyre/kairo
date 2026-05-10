@@ -29,7 +29,7 @@ GitHub issue creation from ChatGPT is blocked (403). This file is the authoritat
 
 ## ISSUE-001 — Scott DXF outlier / floater audit
 
-- **Status:** NOW
+- **Status:** DONE
 - **Priority:** P0
 
 **Goal:**
@@ -72,7 +72,7 @@ node packages/cli/dist/index.js scene-outliers ".\tmp\scott-dxf2013-import"
 
 ## ISSUE-002 — Selection and inspection usability
 
-- **Status:** NEXT
+- **Status:** DONE
 - **Priority:** P0
 
 **Goal:**
@@ -114,7 +114,7 @@ pnpm build
 
 ## ISSUE-003 — Text placement and alignment correctness
 
-- **Status:** NEXT
+- **Status:** DONE
 - **Priority:** P0
 
 **Goal:**
@@ -199,7 +199,7 @@ pnpm build
 
 ## ISSUE-005 — Mouse wheel zoom toward cursor
 
-- **Status:** NEXT
+- **Status:** DONE
 - **Priority:** P1
 
 **Goal:**
@@ -430,7 +430,7 @@ Open: `http://localhost:5173/?scene=scott-dxf2013-import`
 
 ## ISSUE-011 — Repo workflow / GitHub issue fallback
 
-- **Status:** NOW
+- **Status:** DONE
 - **Priority:** P1
 
 **Goal:**
@@ -525,12 +525,12 @@ JT is the target format for downstream CAD/PLM tools. But implementing it now wo
 
 | ID | Title | Status | Priority |
 |---|---|---|---|
-| ISSUE-001 | Scott DXF outlier/floater audit | NOW | P0 |
-| ISSUE-011 | Repo workflow / GitHub issue fallback | NOW | P1 |
-| ISSUE-002 | Selection and inspection usability | NEXT | P0 |
-| ISSUE-003 | Text placement and alignment correctness | NEXT | P0 |
+| ISSUE-001 | Scott DXF outlier/floater audit | DONE | P0 |
+| ISSUE-011 | Repo workflow / GitHub issue fallback | DONE | P1 |
+| ISSUE-002 | Selection and inspection usability | DONE | P0 |
+| ISSUE-003 | Text placement and alignment correctness | DONE | P0 |
 | ISSUE-004 | Viewer UI drawing-first review mode | NEXT | P1 |
-| ISSUE-005 | Mouse wheel zoom toward cursor | NEXT | P1 |
+| ISSUE-005 | Mouse wheel zoom toward cursor | DONE | P1 |
 | ISSUE-006 | Layer controls and isolate workflow | NEXT | P1 |
 | ISSUE-010 | Fast viewer QA workflow documentation | NEXT | P1 |
 | ISSUE-012 | Claude skills for Kairo | NEXT | P2 |

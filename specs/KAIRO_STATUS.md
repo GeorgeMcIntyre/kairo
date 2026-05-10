@@ -5,14 +5,16 @@ Last updated: 2026-05-10
 ## Git
 
 - Branch: main
-- HEAD: 1e713df feat: ISSUE-003 text alignment — wire DXF group 72/73/71 through to viewer anchor
+- HEAD: 02d6b59 docs: close issue-003 text alignment verification
 - In sync with origin/main (post-push)
+- Actual HEAD during 2026-05-10 implementation: `02d6b593480c0328072674b0a7f73c22168ae5ad` (`docs: close issue-003 text alignment verification`).
+- Current working tree includes uncommitted viewer picking / zoom-to-cursor changes.
 
-## Verification (as of HEAD)
+## Verification (current working tree)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 201/201 passed |
+| `pnpm test -- --minWorkers=1 --maxWorkers=1` | 206/206 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle ~780 kB — chunk size warning only) |
 | `import-dxf` Scott DXF2013 | Passed — 246,045 supported, 461 warnings |
@@ -37,8 +39,8 @@ Last updated: 2026-05-10
 - INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position expanded with z=0 and DXF_INSERT_Z_FLATTENED warning.
 - One-level nested INSERT expansion (Phase 10M): parent blocks containing child INSERTs expand grandchild geometry via composed transform. Depth guard for depth-3+. Cycle detection.
 - Spline-fit POLYLINE expansion (Phase 10N-B): spline-fit and curve-fit POLYLINEs expanded using pre-sampled fitting vertices from the DXF file. Emits DXF_POLYLINE_SPLINE_APPROXIMATED.
-- Viewer performance (Phase 10P): scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding (~24 draw calls, one LineSegments per geometry document).
-- Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, tree selection, source-map display, layer list, diagnostics panel, text density controls.
+- Viewer performance (Phase 10P): scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding (~28 draw calls, one LineSegments per geometry document).
+- Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, mouse-wheel zoom toward cursor, tree selection, exact entity picking inside batched LineSegments, source-map display, layer list, diagnostics panel, text density controls.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 
@@ -48,9 +50,7 @@ Last updated: 2026-05-10
 
 Known visual issues still requiring work:
 - Text anchor position is now correct per-entity but visual overlap/density may still need tuning in dense label areas
-- Clicking a line resolves to the batched LineSegments object (node-level), not the individual DXF entity within the batch — granular picking is the next inspection improvement
 - Viewer UI is development-oriented; for drawing-first review, panels take too much screen space
-- Mouse wheel zoom is center-of-viewport, not toward cursor
 
 ## What Is Broken / Missing
 
@@ -58,7 +58,6 @@ Known visual issues still requiring work:
 - ATTRIB (attribute overrides): not imported; ATTDEF default value used instead.
 - MTEXT inside block definitions: not expanded during INSERT expansion (only direct ENTITIES-section MTEXT is imported via scanner).
 - Mirror-aware text rotation: text rotation does NOT reflect under mirrored INSERT (AutoCAD MIRRTEXT=0 default semantics). Position is mirror-correct. Acceptable v1 limitation.
-- Granular entity picking: raycaster resolves to the batched LineSegments node, not the individual DXF entity within the batch. Per-entity picking requires a segment-index → entity map (planned).
 - Text overlay does not collision-detect or z-order against curves.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
@@ -68,11 +67,10 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. **Granular entity picking** — segment-index → entity map so raycast resolves to exact DXF entity, not just the LineSegments node
-2. **ISSUE-005** — Mouse wheel zoom toward cursor (controls.zoomToCursor)
-3. **ISSUE-004** — Drawing-first viewer UI (maximize canvas, toolbar)
-4. Coordinate precision audit
-5. Export/JT probe (not exporter — research only)
+1. **ISSUE-004** — Drawing-first viewer UI (maximize canvas, toolbar)
+2. **ISSUE-010** — Fast viewer QA workflow documentation
+3. Coordinate precision audit
+4. Export/JT probe (not exporter — research only)
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 
@@ -113,12 +111,12 @@ See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
 
 ## Viewer Performance Baseline (after Phase 10P)
 
-Scott DXF2013: ~246k curve entities across ~24 geometry documents.
+Scott DXF2013: ~246k curve entities across 28 geometry documents.
 
 | Metric | Value |
 |---|---|
 | Scene load time | ~5 seconds (JSON fetch + parse + Float32Array assembly) |
-| Draw calls | ~24 (one `THREE.LineSegments` per geometry document) |
+| Draw calls | ~28 (one `THREE.LineSegments` per geometry document) |
 | Layer toggle | No rebuild — toggles `object.visible` only |
 | Fit scene / fit selected | No rebuild — repositions camera using cached bounds |
 | Selection highlight | No rebuild — updates material color only |

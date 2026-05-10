@@ -37,7 +37,11 @@ dir apps\viewer\dist\scenes\scott-dxf2013-import
 Expected `dist` contents: `index.html`, `assets/`, `scenes/`.  
 Expected `scenes/scott-dxf2013-import` contents: `manifest.json`, `scene.json`, `layers.json`, `materials.json`, `source-map.json`, `geometry/`.
 
-If `scenes/` is missing, run `pnpm --filter @kairo/viewer stage` (or equivalent CLI stage command) before building.
+If `scenes/` is missing, run the CLI staging command before building:
+
+```
+node packages/cli/dist/index.js stage-viewer-scene ".\tmp\scott-dxf2013-import" scott-dxf2013-import
+```
 
 ---
 

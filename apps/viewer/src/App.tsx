@@ -12,6 +12,7 @@ import { validateScenePackage } from "@kairo/validator";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { createCurveBatchData, pickEntryForIntersectionIndex, type CurveSegmentPickEntry, type PickableCurveEntity } from "./curveBatch";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 import {
@@ -30,6 +31,11 @@ type RenderRecord = {
   layerId?: string;
   baseColor: THREE.Color;
   material: THREE.Material | THREE.Material[];
+};
+
+type ViewerSelection = {
+  nodeId: string;
+  entity?: PickableCurveEntity;
 };
 
 type ViewMode = "top2d" | "perspective";
@@ -130,75 +136,14 @@ function makeMesh(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind
   return mesh;
 }
 
-function pointsForCircle(entity: Extract<DrawingEntity, { type: "circle" }>) {
-  const points: THREE.Vector3[] = [];
-  for (let i = 0; i <= 32; i += 1) {
-    const angle = (i / 32) * Math.PI * 2;
-    points.push(
-      new THREE.Vector3(
-        entity.center[0] + Math.cos(angle) * entity.radius,
-        entity.center[1] + Math.sin(angle) * entity.radius,
-        entity.center[2]
-      )
-    );
-  }
-  return points;
-}
-
-function pointsForArc(entity: Extract<DrawingEntity, { type: "arc" }>) {
-  const points: THREE.Vector3[] = [];
-  const start = THREE.MathUtils.degToRad(entity.startAngleDeg);
-  const end = THREE.MathUtils.degToRad(entity.endAngleDeg);
-  for (let i = 0; i <= 24; i += 1) {
-    const angle = start + ((end - start) * i) / 24;
-    points.push(
-      new THREE.Vector3(
-        entity.center[0] + Math.cos(angle) * entity.radius,
-        entity.center[1] + Math.sin(angle) * entity.radius,
-        entity.center[2]
-      )
-    );
-  }
-  return points;
-}
-
-function pointsForEntity(entity: DrawingEntity): THREE.Vector3[] {
-  if (entity.type === "line") {
-    return [new THREE.Vector3(...entity.start), new THREE.Vector3(...entity.end)];
-  }
-
-  if (entity.type === "polyline") {
-    const points = entity.points.map((point) => new THREE.Vector3(...point));
-    return entity.closed ? [...points, points[0].clone()] : points;
-  }
-
-  if (entity.type === "circle") {
-    return pointsForCircle(entity);
-  }
-
-  if (entity.type === "arc") {
-    return pointsForArc(entity);
-  }
-
-  // text entities are rendered by SceneTextOverlay, not as line segments
-  return [];
-}
-
 function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { kind: "curve-set" }>, layerId?: string) {
-  const positions: number[] = [];
-  for (const entity of geometry.entities) {
-    const points = pointsForEntity(entity);
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
-    }
-  }
+  const batch = createCurveBatchData(geometry, layerId);
   const bufferGeometry = new THREE.BufferGeometry();
-  bufferGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  bufferGeometry.setAttribute("position", new THREE.Float32BufferAttribute(batch.positions, 3));
   const color = visibleDrawingColor(layerColor(scenePackage, layerId ?? geometry.layerId));
   const material = new THREE.LineBasicMaterial({ color, depthTest: false });
   const lineSegments = new THREE.LineSegments(bufferGeometry, material);
+  lineSegments.userData.pickEntriesBySegment = batch.pickEntriesBySegment;
   lineSegments.renderOrder = 2;
   return lineSegments;
 }
@@ -327,7 +272,7 @@ function Viewport({
   hiddenLayerIds: Set<string>;
   fitRequest: FitRequest;
   selectedNodeId: string;
-  onSelect: (nodeId: string) => void;
+  onSelect: (selection: ViewerSelection) => void;
   labelDensity: LabelDensityMode;
   readableOrientation: boolean;
 }) {
@@ -382,6 +327,7 @@ function Viewport({
     controls.dampingFactor = 0.12;
     controls.screenSpacePanning = true;
     controls.enableRotate = viewMode !== "top2d";
+    controls.zoomToCursor = true;
     controls.zoomSpeed = 1.2;
     controls.panSpeed = 1.1;
     if (viewMode === "top2d") {
@@ -477,7 +423,7 @@ function Viewport({
       }
     };
 
-    const resolveHitNodeId = (intersections: THREE.Intersection[]): string => {
+    const resolveHitSelection = (intersections: THREE.Intersection[]): ViewerSelection | undefined => {
       const hit = intersections.find((intersection) => {
         let current: THREE.Object3D | null = intersection.object;
         while (current) {
@@ -486,10 +432,19 @@ function Viewport({
         }
         return false;
       });
-      if (!hit) return "";
+      if (!hit) return undefined;
       let current: THREE.Object3D | null = hit.object;
       while (current && !current.userData.nodeId) current = current.parent;
-      return (current?.userData.nodeId as string) ?? "";
+      if (!current) return undefined;
+      const nodeId = (current?.userData.nodeId as string) ?? "";
+      if (!nodeId) return undefined;
+
+      const pickEntriesBySegment = current.userData.pickEntriesBySegment;
+      const entity =
+        Array.isArray(pickEntriesBySegment)
+          ? pickEntryForIntersectionIndex(hit.index, pickEntriesBySegment as CurveSegmentPickEntry[])
+          : undefined;
+      return { nodeId, entity };
     };
 
     const castRay = (event: PointerEvent) => {
@@ -505,14 +460,14 @@ function Viewport({
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      const nodeId = resolveHitNodeId(castRay(event));
-      if (nodeId) {
-        onSelectRef.current(nodeId);
+      const selection = resolveHitSelection(castRay(event));
+      if (selection) {
+        onSelectRef.current(selection);
       }
     };
 
     const onPointerMove = (event: PointerEvent) => {
-      const nodeId = resolveHitNodeId(castRay(event));
+      const nodeId = resolveHitSelection(castRay(event))?.nodeId ?? "";
       if (nodeId !== hoveredNodeIdRef.current) {
         hoveredNodeIdRef.current = nodeId;
         renderer.domElement.style.cursor = nodeId ? "pointer" : "default";
@@ -680,6 +635,7 @@ export function App() {
   const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
   const nodeMap = useMemo(() => nodesById(scenePackage), [scenePackage]);
   const [selectedNodeId, setSelectedNodeId] = useState(scenePackage.scene.rootNodeId);
+  const [selectedEntity, setSelectedEntity] = useState<PickableCurveEntity | undefined>();
   const [labelDensity, setLabelDensity] = useState<LabelDensityMode>("auto");
   const [readableOrientation, setReadableOrientation] = useState(true);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
@@ -695,14 +651,27 @@ export function App() {
     [scenePackage]
   );
   const rootNode = nodeMap.get(scenePackage.scene.rootNodeId)!;
-  const selectedLayerId = selectedNode.layerId;
+  const selectedLayerId = selectedEntity?.layerId ?? selectedNode.layerId;
 
-  const sourceEntry = sourceEntryForNode(scenePackage, selectedNode);
-  const parsedRef = selectedNode.sourceRef ? parseSourceRef(selectedNode.sourceRef) : undefined;
-  const selectedLayerName = scenePackage.layers.layers.find((l) => l.id === selectedNode.layerId)?.name;
+  const selectedSourceRef = selectedEntity?.sourceRef ?? selectedNode.sourceRef;
+  const sourceEntry = selectedEntity?.sourceRef
+    ? scenePackage.sourceMap.sources.find((source) => source.id === selectedEntity.sourceRef)
+    : sourceEntryForNode(scenePackage, selectedNode);
+  const parsedRef = selectedSourceRef ? parseSourceRef(selectedSourceRef) : undefined;
+  const selectedLayerName = scenePackage.layers.layers.find((l) => l.id === selectedLayerId)?.name;
 
   const requestFit = (target: FitTarget) => {
     setFitRequest((current) => ({ target, serial: current.serial + 1 }));
+  };
+
+  const selectNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    setSelectedEntity(undefined);
+  };
+
+  const selectViewport = (selection: ViewerSelection) => {
+    setSelectedNodeId(selection.nodeId);
+    setSelectedEntity(selection.entity);
   };
 
   const toggleLayer = (layerId: string) => {
@@ -731,6 +700,7 @@ export function App() {
           if (!cancelled) {
             setScenePackage(loadedScenePackage);
             setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
+            setSelectedEntity(undefined);
             setHiddenLayerIds(new Set());
             setViewMode(loadedScenePackage.manifest.axisSystem.up === "Z" ? "top2d" : "perspective");
             setFitRequest((current) => ({ target: "main", serial: current.serial + 1 }));
@@ -765,7 +735,7 @@ export function App() {
           depth={0}
           selectedNodeId={selectedNodeId}
           nodeMap={nodeMap}
-          onSelect={setSelectedNodeId}
+          onSelect={selectNode}
         />
       </aside>
 
@@ -841,7 +811,7 @@ export function App() {
           scenePackage={scenePackage}
           selectedNodeId={selectedNodeId}
           viewMode={viewMode}
-          onSelect={setSelectedNodeId}
+          onSelect={selectViewport}
           labelDensity={labelDensity}
           readableOrientation={readableOrientation}
         />
@@ -850,29 +820,35 @@ export function App() {
       <aside className="properties-panel">
         <div className="panel-heading">
           <span>Properties</span>
-          <strong>{selectedNode.type}</strong>
+          <strong>{selectedEntity ? selectedEntity.type : selectedNode.type}</strong>
         </div>
         <dl>
           <dt>Name</dt>
           <dd>{selectedNode.displayName}</dd>
           <dt>ID</dt>
-          <dd>{selectedNode.id}</dd>
-          {selectedNode.layerId ? (
+          <dd>{selectedEntity?.entityId ?? selectedNode.id}</dd>
+          {selectedEntity ? (
+            <>
+              <dt>Batch node</dt>
+              <dd>{selectedNode.id}</dd>
+            </>
+          ) : null}
+          {selectedLayerId ? (
             <>
               <dt>Layer</dt>
-              <dd>{selectedLayerName ? `${selectedLayerName} (${selectedNode.layerId})` : selectedNode.layerId}</dd>
+              <dd>{selectedLayerName ? `${selectedLayerName} (${selectedLayerId})` : selectedLayerId}</dd>
             </>
           ) : null}
-          {selectedNode.sourceRef ? (
+          {selectedSourceRef ? (
             <>
               <dt>Source ref</dt>
-              <dd>{selectedNode.sourceRef}</dd>
+              <dd>{selectedSourceRef}</dd>
             </>
           ) : null}
-          {sourceEntry?.entityType ? (
+          {selectedEntity || sourceEntry?.entityType ? (
             <>
               <dt>Entity type</dt>
-              <dd>{sourceEntry.entityType}</dd>
+              <dd>{sourceEntry?.entityType ?? selectedEntity?.type.toUpperCase()}</dd>
             </>
           ) : null}
           {sourceEntry?.entityId ? (

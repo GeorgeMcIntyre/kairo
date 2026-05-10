@@ -21,14 +21,6 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ---
 
-### ISSUE-005: Mouse wheel zoom toward cursor (P1)
-
-**Goal:** `controls.zoomToCursor = true` if OrbitControls supports it. Test orthographic and top-2D views. If not supported, report smallest safe custom approach without implementing it.
-
-**Not allowed:** Touch importer/schema/GLB/export.
-
----
-
 ### ISSUE-006: Layer controls and isolate workflow (P1)
 
 **Goal:** Layer search/filter, isolate layer, show all, hide all except selected, counts visible.
@@ -84,6 +76,16 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### Viewer batched entity picking + zoom-to-cursor - DONE
+
+**Completed:** 2026-05-10
+
+Viewer now keeps Phase 10P batching while attaching segment metadata to each batched `THREE.LineSegments`. Raycast hits resolve to exact line/polyline/circle/arc entity metadata in the properties panel. Mouse-wheel zoom toward cursor is enabled through `OrbitControls.zoomToCursor`.
+
+Verification: 206/206 tests pass with `pnpm test -- --minWorkers=1 --maxWorkers=1`; `pnpm typecheck` and `pnpm build` pass. Browser QA confirmed the Scott scene loads, exact entity source refs appear after clicking geometry, label modes still work, and fit selected still works at the batch-node level. Pre-existing duplicate text-overlay key console warnings remain outside this picking/zoom change.
+
+---
 
 ### ISSUE-003: Text placement and alignment correctness ✅ DONE
 
