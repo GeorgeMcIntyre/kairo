@@ -1,7 +1,7 @@
 # Scott DXF Outlier Audit
 
 Date: 2026-05-10
-Scene: `scott-dxf2013-import` (Phase 10T-C HEAD: c1241f1)
+Scene: `scott-dxf2013-import` (original audit at Phase 10T-C HEAD: c1241f1; current main: 644eb03)
 Tool: `node packages/cli/dist/index.js scene-outliers <scene> --summary`
 
 ---
@@ -145,12 +145,15 @@ There are no transform bugs visible in the outlier set. The 5,506 outlier count 
 
 ---
 
-## Recommended fix path
+## Current viewer handling / remaining fix path
 
-The "floater" appearance in the viewer is caused by the drawing border (category A) pulling the fit-scene bounding box far from the equipment. No importer changes are needed.
+The original "floater" appearance was caused by the drawing border (category A) pulling the raw full-scene bounding box far from the equipment. No importer changes are needed.
 
-**Recommended viewer improvement (ISSUE-004):**
-When fit-scene is triggered, use percentile-based bounds (e.g. exclude entities >2× median distance from centroid) rather than the raw bounding box. This ensures the viewport centers on the production equipment rather than zooming out to include the title block at the DXF origin.
+**Completed viewer improvement:**
+The viewer now has robust facility framing / Fit main behavior using percentile-style bounds, so the default review view centers on the production equipment instead of the A0 border.
+
+**Remaining viewer improvement (ISSUE-004):**
+The drawing-first UI should make this behavior easier to access and keep diagnostics/title-block details available without dominating the canvas.
 
 **Also available now:** Users can hide `layer-0` in the layer panel to remove most title block geometry from view, since the drawing border is primarily on layer-0.
 

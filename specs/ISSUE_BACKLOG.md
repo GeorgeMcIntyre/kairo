@@ -239,7 +239,7 @@ pnpm build
 
 ## ISSUE-006 — Layer controls and isolate workflow
 
-- **Status:** NEXT
+- **Status:** LATER
 - **Priority:** P1
 
 **Goal:**
@@ -394,7 +394,7 @@ pnpm build
 
 ## ISSUE-010 — Fast viewer QA workflow documentation
 
-- **Status:** NEXT
+- **Status:** LATER
 - **Priority:** P1
 
 **Goal:**
@@ -467,7 +467,7 @@ gh issue create --title "ISSUE-001: Scott DXF outlier/floater audit" --body "...
 
 ## ISSUE-012 — Claude skills for Kairo
 
-- **Status:** NEXT
+- **Status:** LATER
 - **Priority:** P2
 
 **Goal:**
@@ -521,6 +521,120 @@ JT is the target format for downstream CAD/PLM tools. But implementing it now wo
 
 ---
 
+## ISSUE-014 — Text visual QA / alignment polish
+
+- **Status:** NEXT
+- **Priority:** P1
+
+**Goal:**
+Validate text placement/readability against CAD/browser reference views and polish only confirmed viewer/import text issues.
+
+**Why it matters:**
+Text is visible and anchored with DXF alignment fields, but dense label areas still need human visual QA. Some duplicate text-overlay React key warnings remain in the browser console and need a focused follow-up.
+
+**Allowed scope:**
+- Manual browser/CAD comparison notes
+- Small text overlay fixes for proven placement/readability issues
+- Duplicate text-overlay key warning fix if scoped to overlay keys only
+- Focused tests for any changed text anchoring behavior
+
+**Not allowed:**
+- Do not redesign the viewer
+- Do not add rich MTEXT formatting
+- Do not change importer/schema unless the CAD comparison proves source data is missing or wrong
+- Do not touch GLB/JT/export
+
+**Acceptance criteria:**
+- George/browser QA notes identify pass/fail areas
+- Any remaining unknowns are marked "needs manual QA"
+- `pnpm test -- --minWorkers=1 --maxWorkers=1`, `pnpm typecheck`, and `pnpm build` pass
+
+**Suggested commit:** `fix: polish viewer text overlay qa issues`
+
+---
+
+## ISSUE-015 — Coordinate precision audit
+
+- **Status:** NEXT
+- **Priority:** P2
+
+**Goal:**
+Audit whether current world-space coordinates and Float32 viewer buffers cause high-zoom jitter or picking drift.
+
+**Allowed scope:**
+- Read-only measurements, small harnesses, and docs
+- Compare world-coordinate magnitudes against observed browser zoom behavior
+- Recommend whether origin rebasing is needed
+
+**Not allowed:**
+- Do not rewrite geometry assembly
+- Do not change importer coordinates
+- Do not implement rebasing without a separate approved plan
+
+**Acceptance criteria:**
+- Precision risk is documented with measurements
+- Recommendation says either "no action now" or proposes a bounded rebasing task
+- `pnpm test -- --minWorkers=1 --maxWorkers=1`, `pnpm typecheck`, and `pnpm build` pass if any tracked files change
+
+**Suggested commit:** `docs: audit viewer coordinate precision`
+
+---
+
+## ISSUE-016 — Cloudflare deploy check
+
+- **Status:** NEXT
+- **Priority:** P1
+
+**Goal:**
+Verify Cloudflare Pages settings and local dist payload for the current static viewer demo.
+
+**Allowed scope:**
+- Docs/config verification
+- Local `pnpm build` output inspection
+- Confirm `_redirects` and `scenes/scott-dxf2013-import` files are present in `apps/viewer/dist`
+- Use CLI `stage-viewer-scene`; there is no viewer `stage` script
+
+**Not allowed:**
+- Do not add Workers
+- Do not move scene assets to R2 yet
+- Do not change importer/viewer code unless a deploy-blocking bug is proven
+
+**Acceptance criteria:**
+- Cloudflare settings are documented and match real commands
+- Local dist contains index, assets, scenes, `_redirects`, and scene payload
+- Any dashboard-only setting is marked "needs manual QA" until George confirms it
+
+**Suggested commit:** `docs: verify cloudflare pages deploy checklist`
+
+---
+
+## ISSUE-017 — CAD Exchanger GLB primitive probe
+
+- **Status:** NEXT
+- **Priority:** P2
+
+**Goal:**
+Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB probe.
+
+**Allowed scope:**
+- Small standalone probe plan or generator
+- Primitives: LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback
+- Material/layer metadata and coordinate precision checks
+- Manual CAD Exchanger import notes from George
+
+**Not allowed:**
+- Do not implement a production exporter
+- Do not start JT output
+- Do not change importer/viewer behavior for the probe
+
+**Acceptance criteria:**
+- Probe results say which primitive/material metadata survives CAD Exchanger import
+- Exporter decision remains parked until probe evidence exists
+
+**Suggested commit:** `test: add cad exchanger glb primitive probe`
+
+---
+
 ## Summary table
 
 | ID | Title | Status | Priority |
@@ -531,9 +645,13 @@ JT is the target format for downstream CAD/PLM tools. But implementing it now wo
 | ISSUE-003 | Text placement and alignment correctness | DONE | P0 |
 | ISSUE-004 | Viewer UI drawing-first review mode | NEXT | P1 |
 | ISSUE-005 | Mouse wheel zoom toward cursor | DONE | P1 |
-| ISSUE-006 | Layer controls and isolate workflow | NEXT | P1 |
-| ISSUE-010 | Fast viewer QA workflow documentation | NEXT | P1 |
-| ISSUE-012 | Claude skills for Kairo | NEXT | P2 |
+| ISSUE-014 | Text visual QA / alignment polish | NEXT | P1 |
+| ISSUE-015 | Coordinate precision audit | NEXT | P2 |
+| ISSUE-016 | Cloudflare deploy check | NEXT | P1 |
+| ISSUE-017 | CAD Exchanger GLB primitive probe | NEXT | P2 |
+| ISSUE-006 | Layer controls and isolate workflow | LATER | P1 |
+| ISSUE-010 | Fast viewer QA workflow documentation | LATER | P1 |
+| ISSUE-012 | Claude skills for Kairo | LATER | P2 |
 | ISSUE-007 | Nested INSERT investigation | LATER | P2 |
 | ISSUE-008 | Complex POLYLINE / spline-fit policy | LATER | P2 |
 | ISSUE-009 | Render performance / batching baseline | LATER | P2 |

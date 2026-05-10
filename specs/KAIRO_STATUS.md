@@ -5,12 +5,11 @@ Last updated: 2026-05-10
 ## Git
 
 - Branch: main
-- HEAD: 02d6b59 docs: close issue-003 text alignment verification
+- HEAD: 644eb03 feat: improve batched viewer picking and cursor zoom
 - In sync with origin/main (post-push)
-- Actual HEAD during 2026-05-10 implementation: `02d6b593480c0328072674b0a7f73c22168ae5ad` (`docs: close issue-003 text alignment verification`).
-- Current working tree includes uncommitted viewer picking / zoom-to-cursor changes.
+- Current working tree has no tracked changes after verification; known local untracked entries: `.claude/`, `gem.ps1`, `tmp/`.
 
-## Verification (current working tree)
+## Verification (current main)
 
 | Check | Result |
 |---|---|
@@ -20,6 +19,21 @@ Last updated: 2026-05-10
 | `import-dxf` Scott DXF2013 | Passed — 246,045 supported, 461 warnings |
 | `validate` | Passed — 0 errors, 0 warnings |
 | `stage-viewer-scene` | Passed — staged to `scott-dxf2013-import` |
+
+## Current Staged Scott Scene
+
+Source: `apps/viewer/public/scenes/scott-dxf2013-import`
+
+| Metric | Value |
+|---|---:|
+| Geometry documents | 28 |
+| Curve entities | 244,953 |
+| Text labels | 1,092 |
+| Total curve/text entities | 246,045 |
+| Scene nodes | 29 |
+| Layers | 160 |
+| Source-map rows | 246,046 |
+| Validation report | 0 errors / 0 warnings |
 
 ## What Works
 
@@ -40,7 +54,8 @@ Last updated: 2026-05-10
 - One-level nested INSERT expansion (Phase 10M): parent blocks containing child INSERTs expand grandchild geometry via composed transform. Depth guard for depth-3+. Cycle detection.
 - Spline-fit POLYLINE expansion (Phase 10N-B): spline-fit and curve-fit POLYLINEs expanded using pre-sampled fitting vertices from the DXF file. Emits DXF_POLYLINE_SPLINE_APPROXIMATED.
 - Viewer performance (Phase 10P): scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding (~28 draw calls, one LineSegments per geometry document).
-- Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, mouse-wheel zoom toward cursor, tree selection, exact entity picking inside batched LineSegments, source-map display, layer list, diagnostics panel, text density controls.
+- Viewer inspection: top-2D and perspective modes, fit-to-scene, fit-main, fit-to-selection, orbit controls, mouse-wheel zoom toward cursor, tree selection, exact entity picking inside batched LineSegments, source-map display, layer list, diagnostics panel, text density controls.
+- Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 
@@ -51,6 +66,7 @@ Last updated: 2026-05-10
 Known visual issues still requiring work:
 - Text anchor position is now correct per-entity but visual overlap/density may still need tuning in dense label areas
 - Viewer UI is development-oriented; for drawing-first review, panels take too much screen space
+- Browser console still reports duplicate React keys in the text overlay for some expanded labels; this needs follow-up QA/fix and is separate from the picking/zoom work.
 
 ## What Is Broken / Missing
 
@@ -67,10 +83,11 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. **ISSUE-004** — Drawing-first viewer UI (maximize canvas, toolbar)
-2. **ISSUE-010** — Fast viewer QA workflow documentation
+1. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
+2. Text visual QA / alignment polish
 3. Coordinate precision audit
-4. Export/JT probe (not exporter — research only)
+4. Cloudflare deploy check
+5. CAD Exchanger GLB probe only (not exporter)
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 

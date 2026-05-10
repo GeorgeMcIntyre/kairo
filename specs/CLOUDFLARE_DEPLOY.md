@@ -23,6 +23,8 @@ If you set it to `dist` (the Vite default), Pages will look in the wrong place a
 
 No Cloudflare Workers are required. This is a fully static Pages deployment.
 
+Current main verification (2026-05-10, HEAD `644eb03`): `pnpm build` completes successfully with the expected viewer chunk-size warning only.
+
 ---
 
 ## Post-build local check
@@ -42,6 +44,8 @@ If `scenes/` is missing, run the CLI staging command before building:
 ```
 node packages/cli/dist/index.js stage-viewer-scene ".\tmp\scott-dxf2013-import" scott-dxf2013-import
 ```
+
+There is no `stage` script in `apps/viewer/package.json`; use the CLI command above.
 
 ---
 

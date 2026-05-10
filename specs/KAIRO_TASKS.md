@@ -21,6 +21,36 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ---
 
+### ISSUE-014: Text visual QA / alignment polish (P1)
+
+**Goal:** Manually compare Scott labels against CAD/reference screenshots and fix only proven viewer/import text placement issues.
+
+**Not allowed:** Redesign the viewer, add rich MTEXT formatting, or change importer/schema unless a specific mismatch is proven.
+
+---
+
+### ISSUE-015: Coordinate precision audit (P2)
+
+**Goal:** Audit high-zoom precision with current world coordinates and Float32 viewer buffers; document whether rebasing is needed.
+
+---
+
+### ISSUE-016: Cloudflare deploy check (P1)
+
+**Goal:** Confirm Pages settings, local build output, `_redirects`, and staged scene payload. This is a deploy/config/doc check, not a viewer rewrite.
+
+---
+
+### ISSUE-017: CAD Exchanger GLB primitive probe (P2 - research only)
+
+**Goal:** Create or plan only a small GLB compatibility probe for CAD Exchanger covering LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback, material/layer metadata, and coordinate precision.
+
+**Not allowed:** Do not implement a production GLB/JT exporter.
+
+---
+
+## LATER
+
 ### ISSUE-006: Layer controls and isolate workflow (P1)
 
 **Goal:** Layer search/filter, isolate layer, show all, hide all except selected, counts visible.
@@ -31,7 +61,7 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ### ISSUE-010: Fast viewer QA workflow documentation (P1)
 
-**Goal:** Update `specs/VIEWER_QA_WORKFLOW.md` to include text/MTEXT checklist items, density modes, expected warning counts, and current entity counts.
+**Goal:** Update `specs/VIEWER_QA_WORKFLOW.md` to include text/MTEXT checklist items, density modes, exact picking, zoom-to-cursor, expected warning counts, and current entity counts.
 
 ---
 
@@ -40,8 +70,6 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 **Goal:** Create `.claude/skills/kairo-*.md` skill files with allowed/not-allowed rules for each area (main workflow, viewer UI, DXF importer, planning).
 
 ---
-
-## LATER
 
 ### ISSUE-007: Nested INSERT investigation (P2)
 
