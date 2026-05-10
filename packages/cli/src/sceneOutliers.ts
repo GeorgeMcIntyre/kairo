@@ -16,6 +16,36 @@ export type FindOutliersOptions = {
   multiplier?: number;
 };
 
+export type BlockSummaryEntry = {
+  blockName: string;
+  count: number;
+  minDistance: number;
+  maxDistance: number;
+};
+
+export function extractBlockName(sourceRef: string | undefined): string {
+  if (!sourceRef) return "(no source)";
+  const match = sourceRef.match(/block-(.+?)-child-/);
+  if (match) return match[1];
+  return "(direct)";
+}
+
+export function computeOutlierBlockSummary(outliers: readonly OutlierResult[]): BlockSummaryEntry[] {
+  const map = new Map<string, BlockSummaryEntry>();
+  for (const o of outliers) {
+    const name = extractBlockName(o.sourceRef);
+    const existing = map.get(name);
+    if (existing) {
+      existing.count++;
+      if (o.distance < existing.minDistance) existing.minDistance = o.distance;
+      if (o.distance > existing.maxDistance) existing.maxDistance = o.distance;
+    } else {
+      map.set(name, { blockName: name, count: 1, minDistance: o.distance, maxDistance: o.distance });
+    }
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
+}
+
 export function computeEntityCentroid(entity: DrawingEntity): Vec3 {
   switch (entity.type) {
     case "line":

@@ -6,7 +6,7 @@ import { validateScenePackage } from "@kairo/validator";
 import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findOutliers, flattenCurveEntities } from "./sceneOutliers";
+import { computeOutlierBlockSummary, findOutliers, flattenCurveEntities } from "./sceneOutliers";
 
 type CliIo = {
   stdout: (text: string) => void;
@@ -412,6 +412,7 @@ async function stageViewerSceneCommand(args: string[], io: CliIo): Promise<numbe
 
 async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> {
   let topN = 20;
+  let summaryMode = false;
   const positional: string[] = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--top") {
@@ -423,6 +424,8 @@ async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> 
       }
       topN = Math.floor(parsed);
       i++;
+    } else if (args[i] === "--summary") {
+      summaryMode = true;
     } else {
       positional.push(args[i]);
     }
@@ -430,7 +433,7 @@ async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> 
   const scenePath = positional[0];
 
   if (!scenePath) {
-    io.stderr("Kairo scene-outliers failed\n- ERROR MISSING_SCENE_PATH: Usage: kairo scene-outliers <scene-path> [--top N]\n");
+    io.stderr("Kairo scene-outliers failed\n- ERROR MISSING_SCENE_PATH: Usage: kairo scene-outliers <scene-path> [--top N] [--summary]\n");
     return 1;
   }
 
@@ -439,22 +442,41 @@ async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> 
     const documents = await loadGeometryDocuments(sceneDirectory);
     const entities = flattenCurveEntities(documents);
     const outliers = findOutliers(entities);
-    const top = outliers.slice(0, topN);
 
-    const lines = [
+    const header = [
       "Kairo scene-outliers",
       `Scene: ${path.resolve(scenePath)}`,
       `Total entities: ${entities.length}`,
-      `Outliers (3× median distance from scene centroid): ${outliers.length}`,
-      `Showing top ${top.length}:`,
-      "",
-      "| Rank | Distance | Type | Layer | Centroid X | Centroid Y | Centroid Z | Source ref |",
-      "|---|---|---|---|---|---|---|---|",
-      ...top.map((o) =>
-        `| ${o.rank} | ${o.distance.toFixed(2)} | ${o.type} | ${o.layerId ?? "-"} | ${o.centroid[0].toFixed(2)} | ${o.centroid[1].toFixed(2)} | ${o.centroid[2].toFixed(2)} | ${o.sourceRef ?? "-"} |`
-      )
+      `Outliers (3× median distance from scene centroid): ${outliers.length}`
     ];
-    io.stdout(lines.join("\n") + "\n");
+
+    if (summaryMode) {
+      const summary = computeOutlierBlockSummary(outliers);
+      const lines = [
+        ...header,
+        "",
+        "| Block name | Count | Min dist (mm) | Max dist (mm) |",
+        "|---|---|---|---|",
+        ...summary.map(
+          (s) =>
+            `| ${s.blockName} | ${s.count} | ${Math.round(s.minDistance)} | ${Math.round(s.maxDistance)} |`
+        )
+      ];
+      io.stdout(lines.join("\n") + "\n");
+    } else {
+      const top = outliers.slice(0, topN);
+      const lines = [
+        ...header,
+        `Showing top ${top.length}:`,
+        "",
+        "| Rank | Distance | Type | Layer | Centroid X | Centroid Y | Centroid Z | Source ref |",
+        "|---|---|---|---|---|---|---|---|",
+        ...top.map((o) =>
+          `| ${o.rank} | ${o.distance.toFixed(2)} | ${o.type} | ${o.layerId ?? "-"} | ${o.centroid[0].toFixed(2)} | ${o.centroid[1].toFixed(2)} | ${o.centroid[2].toFixed(2)} | ${o.sourceRef ?? "-"} |`
+        )
+      ];
+      io.stdout(lines.join("\n") + "\n");
+    }
     return 0;
   } catch (error) {
     const normalized = normalizeError(error);

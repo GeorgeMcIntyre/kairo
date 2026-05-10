@@ -1,6 +1,12 @@
 import type { DrawingEntity } from "@kairo/schema";
 import { describe, expect, it } from "vitest";
-import { computeEntityCentroid, computeSceneCentroid, findOutliers } from "./sceneOutliers";
+import {
+  computeEntityCentroid,
+  computeOutlierBlockSummary,
+  computeSceneCentroid,
+  extractBlockName,
+  findOutliers
+} from "./sceneOutliers";
 
 function lineAt(id: string, x: number, y: number, length = 1, layerId?: string): DrawingEntity {
   return {
@@ -104,5 +110,61 @@ describe("findOutliers", () => {
 
   it("returns empty list for empty input without throwing", () => {
     expect(findOutliers([])).toEqual([]);
+  });
+});
+
+describe("extractBlockName", () => {
+  it("extracts block name from a standard insert source ref", () => {
+    expect(extractBlockName("src-dxf-insert-1773a-block-7b060-spac-child-f4ed")).toBe("7b060-spac");
+  });
+
+  it("extracts block name containing dashes without over-consuming into child segment", () => {
+    expect(extractBlockName("src-dxf-insert-178a3-block-7b-040-ped-rivet-r00-child-13863")).toBe(
+      "7b-040-ped-rivet-r00"
+    );
+  });
+
+  it("returns (direct) for a direct entity ref (no block/child pattern)", () => {
+    expect(extractBlockName("src-dxf-8bdaa")).toBe("(direct)");
+    expect(extractBlockName("src-dxf-mtext-8bdca")).toBe("(direct)");
+  });
+
+  it("returns (no source) for undefined or empty", () => {
+    expect(extractBlockName(undefined)).toBe("(no source)");
+    expect(extractBlockName("")).toBe("(no source)");
+  });
+});
+
+describe("computeOutlierBlockSummary", () => {
+  it("groups outliers by block name, counts, and tracks min/max distance", () => {
+    const outliers = [
+      { rank: 1, distance: 900, type: "polyline" as const, entityId: "e1", centroid: [0, 0, 0] as const, sourceRef: "src-dxf-insert-aaa-block-spac-child-11" },
+      { rank: 2, distance: 800, type: "polyline" as const, entityId: "e2", centroid: [0, 0, 0] as const, sourceRef: "src-dxf-insert-bbb-block-spac-child-22" },
+      { rank: 3, distance: 300, type: "line" as const, entityId: "e3", centroid: [0, 0, 0] as const, sourceRef: "src-dxf-insert-ccc-block-fence-child-33" }
+    ];
+    const summary = computeOutlierBlockSummary(outliers);
+    expect(summary[0].blockName).toBe("spac");
+    expect(summary[0].count).toBe(2);
+    expect(summary[0].minDistance).toBe(800);
+    expect(summary[0].maxDistance).toBe(900);
+    expect(summary[1].blockName).toBe("fence");
+    expect(summary[1].count).toBe(1);
+  });
+
+  it("sorts by count descending", () => {
+    const outliers = [
+      { rank: 1, distance: 100, type: "line" as const, entityId: "a", centroid: [0, 0, 0] as const, sourceRef: "src-dxf-insert-x-block-rare-child-1" },
+      { rank: 2, distance: 200, type: "line" as const, entityId: "b", centroid: [0, 0, 0] as const, sourceRef: "src-dxf-insert-x-block-common-child-1" },
+      { rank: 3, distance: 300, type: "line" as const, entityId: "c", centroid: [0, 0, 0] as const, sourceRef: "src-dxf-insert-y-block-common-child-2" }
+    ];
+    const summary = computeOutlierBlockSummary(outliers);
+    expect(summary[0].blockName).toBe("common");
+    expect(summary[0].count).toBe(2);
+    expect(summary[1].blockName).toBe("rare");
+    expect(summary[1].count).toBe(1);
+  });
+
+  it("returns empty array for no outliers", () => {
+    expect(computeOutlierBlockSummary([])).toEqual([]);
   });
 });
