@@ -13,11 +13,30 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ## NEXT
 
-*(No active task — awaiting next phase assignment.)*
+### TASK-019: Phase 10T-B — Text/ATTDEF rendering
+
+See `specs/PHASE_10T_VISUAL_QA_REPORT.md` recommendation. Adds `text` entity
+type to schema, importer extracts TEXT/ATTDEF from direct entities and block
+expansion (with INSERT transforms), viewer renders text as HTML overlay
+(no Three.js TextGeometry). 148 TEXT + 261 ATTDEF in Scott DXF2013.
 
 ---
 
 ## DONE
+
+### TASK-018: Phase 10T-A — Visual QA spike (scene-outliers CLI) ✅ DONE
+
+**Completed:** 2026-05-10
+
+Added `scene-outliers` CLI command (`packages/cli/src/sceneOutliers.ts` + tests, `index.ts`). Computes per-entity centroid, scene median centroid, and lists entities >3× median distance away.
+
+Investigation against Scott DXF2013 staged scene found 5,506 outliers (~2.25%) of which the top 30 were analyzed. **Verified by direct DXF parse** that top-6 outliers (centroids at ±800k mm) are mathematically correct: their post-transform position matches `transformBlockPoint` math to 1 mm. Equipment blocks like `7B060 SPAC`, `7B-010R_3W1`, `7B020_3W1` author their geometry at +440k mm in block-local coords; INSERT rotation 180° flips it to -440k; insert position adds another -400k offset; final result is at -800k. AutoCAD renders identically.
+
+**No transform bug.** The "floating items" George reported in the viewer are correct equipment geometry that lacks identifying text labels. Recommended next: Phase 10T-B (text rendering).
+
+8 new outlier unit tests; 124/124 pass.
+
+---
 
 ### TASK-017: Phase 10S — Uniform-magnitude mirror INSERT expansion ✅ DONE
 

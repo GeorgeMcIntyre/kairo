@@ -6,6 +6,7 @@ import { validateScenePackage } from "@kairo/validator";
 import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findOutliers, flattenCurveEntities } from "./sceneOutliers";
 
 type CliIo = {
   stdout: (text: string) => void;
@@ -409,6 +410,59 @@ async function stageViewerSceneCommand(args: string[], io: CliIo): Promise<numbe
   }
 }
 
+async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> {
+  let topN = 20;
+  const positional: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--top") {
+      const next = args[i + 1];
+      const parsed = next ? Number(next) : NaN;
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        io.stderr("Kairo scene-outliers failed\n- ERROR INVALID_TOP: --top requires a positive integer.\n");
+        return 1;
+      }
+      topN = Math.floor(parsed);
+      i++;
+    } else {
+      positional.push(args[i]);
+    }
+  }
+  const scenePath = positional[0];
+
+  if (!scenePath) {
+    io.stderr("Kairo scene-outliers failed\n- ERROR MISSING_SCENE_PATH: Usage: kairo scene-outliers <scene-path> [--top N]\n");
+    return 1;
+  }
+
+  try {
+    const sceneDirectory = await resolveSceneDirectory(scenePath);
+    const documents = await loadGeometryDocuments(sceneDirectory);
+    const entities = flattenCurveEntities(documents);
+    const outliers = findOutliers(entities);
+    const top = outliers.slice(0, topN);
+
+    const lines = [
+      "Kairo scene-outliers",
+      `Scene: ${path.resolve(scenePath)}`,
+      `Total entities: ${entities.length}`,
+      `Outliers (3× median distance from scene centroid): ${outliers.length}`,
+      `Showing top ${top.length}:`,
+      "",
+      "| Rank | Distance | Type | Layer | Centroid X | Centroid Y | Centroid Z | Source ref |",
+      "|---|---|---|---|---|---|---|---|",
+      ...top.map((o) =>
+        `| ${o.rank} | ${o.distance.toFixed(2)} | ${o.type} | ${o.layerId ?? "-"} | ${o.centroid[0].toFixed(2)} | ${o.centroid[1].toFixed(2)} | ${o.centroid[2].toFixed(2)} | ${o.sourceRef ?? "-"} |`
+      )
+    ];
+    io.stdout(lines.join("\n") + "\n");
+    return 0;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo scene-outliers failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
 export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   const [command, ...args] = argv;
 
@@ -428,8 +482,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return stageViewerSceneCommand(args, io);
   }
 
+  if (command === "scene-outliers") {
+    return sceneOutliersCommand(args, io);
+  }
+
   const message =
-    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name>";
+    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

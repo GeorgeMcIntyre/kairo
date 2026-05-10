@@ -5,14 +5,14 @@ Last updated: 2026-05-10
 ## Git
 
 - Branch: main
-- HEAD: feat: expand mirrored dxf inserts with uniform negative scale
+- HEAD: chore: add scene-outliers cli and phase 10t visual qa report
 - In sync with origin/main (post-commit)
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 116/116 passed |
+| `pnpm test` | 124/124 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
@@ -33,6 +33,7 @@ Last updated: 2026-05-10
 - Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, tree selection, source-map display, layer list, diagnostics panel. George confirmed viewer is usable.
 - Dev scene loader: reads generated scene folders from `apps/viewer/public/scenes/`.
 - Scene stats: `computeSceneStats` and `computeLayerEntityCounts` in viewer (tested).
+- Scene outliers (Phase 10T-A): `scene-outliers` CLI command lists entities >3× median distance from scene centroid. Used to verify post-Phase-10S transform pipeline produces mathematically correct geometry for blocks authored at extreme block-local coordinates.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 
 ## What Is Broken / Missing
