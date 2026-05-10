@@ -7,26 +7,7 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## NOW
 
-### ISSUE-001: Scott DXF outlier / floater audit (P0)
-
-**Goal:** Classify all 5,506 outlier entities (>3× median distance) in the Scott DXF2013 scene into categories: correct far-field equipment, transform bug, or reference geometry. Phase 10T-A confirmed top-6 are mathematically correct; the full set is unclassified.
-
-**Allowed:** Use/improve `scene-outliers` CLI. Create `specs/SCOTT_DXF_OUTLIER_AUDIT.md`. Add layer/block/entity-type to output if small change.
-
-**Not allowed:** Delete geometry, hide outliers automatically, change importer transforms without proven root cause, touch GLB/JT/export.
-
-**Acceptance:**
-- Top outliers classified by category
-- Likely cause and recommended fix path documented
-- `pnpm test` / `pnpm typecheck` / `pnpm build` pass
-
----
-
-### ISSUE-011: Repo workflow / GitHub issue fallback (P1)
-
-**Goal:** Keep planning reliable while ChatGPT issue creation is blocked. `specs/ISSUE_BACKLOG.md` is the source of truth.
-
-**Status:** This issue is fulfilled by this file and `ISSUE_BACKLOG.md` existing. Mark DONE when docs are committed and pushed.
+*(No active task — see NEXT for ready items.)*
 
 ---
 
@@ -125,6 +106,28 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-001: Scott DXF outlier / floater audit ✅ DONE
+
+**Completed:** 2026-05-10 (commit cc68042)
+
+Classified all 5,672 outliers (>3× median distance from scene centroid). No transform bugs found.
+
+- **Category A (93.7%):** Drawing border `plant-layout-a0-1189x841-v2014-01` + title block accessories at ~116k mm. A0 border is at DXF model-space origin; facility equipment is at real-world coordinates. Correct.
+- **Category B (5.7%):** Perimeter zone equipment at 32–35k mm — fencing (`fenc-1525`), reference blocks (`rbrkt-2001-topview`), anonymous blocks. Legitimately at the outer edge of the production layout; the 3× threshold catches boundary geometry, not floaters.
+- **Category C (0.5%):** Far-field equipment with block-local geometry at large coordinates. Top-6 verified by Phase 10T-A; remaining `7b-xxx` blocks consistent with verified pattern.
+
+Added `--summary` flag to `scene-outliers` CLI (groups outliers by block name). `extractBlockName()` and `computeOutlierBlockSummary()` added with 7 new tests (178/171 total). `specs/SCOTT_DXF_OUTLIER_AUDIT.md` created.
+
+Recommended fix: viewer fit-scene should use percentile bounds to exclude title block from initial view (ISSUE-004).
+
+---
+
+### ISSUE-011: Repo workflow / GitHub issue fallback ✅ DONE
+
+**Completed:** 2026-05-10 (commit 22bd551). `specs/ISSUE_BACKLOG.md` and `specs/KAIRO_TASKS.md` are the source of truth. GitHub issue creation from ChatGPT still blocked (403).
+
+---
 
 ### TASK-019: Phase 10T-C — MTEXT extraction and label density improvements ✅ DONE
 
