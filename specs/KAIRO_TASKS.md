@@ -1,242 +1,118 @@
 # Kairo Tasks
 
-Last updated: 2026-05-10  
-Use this file instead of GitHub Issues for now. Update section headers as tasks move.
+Last updated: 2026-05-10
+Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
 
 ## NOW
 
-*(No active task — awaiting next phase assignment.)*
+### ISSUE-001: Scott DXF outlier / floater audit (P0)
+
+**Goal:** Classify all 5,506 outlier entities (>3× median distance) in the Scott DXF2013 scene into categories: correct far-field equipment, transform bug, or reference geometry. Phase 10T-A confirmed top-6 are mathematically correct; the full set is unclassified.
+
+**Allowed:** Use/improve `scene-outliers` CLI. Create `specs/SCOTT_DXF_OUTLIER_AUDIT.md`. Add layer/block/entity-type to output if small change.
+
+**Not allowed:** Delete geometry, hide outliers automatically, change importer transforms without proven root cause, touch GLB/JT/export.
+
+**Acceptance:**
+- Top outliers classified by category
+- Likely cause and recommended fix path documented
+- `pnpm test` / `pnpm typecheck` / `pnpm build` pass
+
+---
+
+### ISSUE-011: Repo workflow / GitHub issue fallback (P1)
+
+**Goal:** Keep planning reliable while ChatGPT issue creation is blocked. `specs/ISSUE_BACKLOG.md` is the source of truth.
+
+**Status:** This issue is fulfilled by this file and `ISSUE_BACKLOG.md` existing. Mark DONE when docs are committed and pushed.
 
 ---
 
 ## NEXT
 
-*(No active task — awaiting next phase assignment.)*
+### ISSUE-002: Selection and inspection usability (P0)
+
+**Goal:** Click visible entity → see layer/type/handle/source chain → fit selected. George needs practical review flow.
+
+**Allowed:** Improve picking tolerance, hover highlight, selection panel details, fit-selected, isolate-by-layer.
+
+**Not allowed:** Redesign viewer, change importer, touch GLB/JT/export.
+
+**Verification:** Manual QA at `http://localhost:5173/?scene=scott-dxf2013-import`
 
 ---
 
-## DONE
+### ISSUE-003: Text placement and alignment correctness (P0)
 
-### TASK-019: Phase 10T-B — TEXT/ATTDEF rendering ✅ DONE
+**Goal:** Improve TEXT/MTEXT placement accuracy — horizontal alignment (group 72), vertical alignment (group 73), MTEXT attachment point (group 71).
 
-**Completed:** 2026-05-10
+**Allowed:** Schema-safe fields only if proven needed, overlay placement tests.
 
-Schema gained `text` entity type with `text`, `position`, `rotationDeg`, `height`, `origin (TEXT|ATTDEF)`, `tag`, `layerId`, `sourceRef`. Importer extracts direct TEXT entities and TEXT/ATTDEF inside block expansion (depth-1 and depth-2) using `transformBlockPoint` for position and additive rotation composition (no mirror reflection — AutoCAD MIRRTEXT=0 default). ATTDEF uses `value` if non-empty, else `tag`. Viewer renders text via new `<SceneTextOverlay>` HTML overlay component above the Three.js canvas — no TextGeometry, no per-character meshes. Font size clamped 5px–48px (sub-threshold labels hidden). Layer toggle hides matching text. Camera changes drive an rAF tick that mutates DOM `transform` strings imperatively.
-
-**Scott DXF2013 results:**
-- Supported entities: 244,953 → 245,922 (+969 = 230 TEXT + 739 ATTDEF)
-- DXF_BLOCK_PARTIAL_EXPAND: 550 → 160 (TEXT/ATTDEF no longer skipped)
-- Validation: passed
-- Bundle size: 770.55 → 772.87 kB (+2.32 kB)
-
-7 new importer tests + 3 viewer overlay tests; 133/133 pass.
+**Not allowed:** Full rich MTEXT formatting, viewer redesign, break existing display, touch GLB/JT/export.
 
 ---
 
-### TASK-018: Phase 10T-A — Visual QA spike (scene-outliers CLI) ✅ DONE
+### ISSUE-004: Viewer UI drawing-first review mode (P1)
 
-**Completed:** 2026-05-10
+**Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers as main side panel. Diagnostics collapsed.
 
-Added `scene-outliers` CLI command (`packages/cli/src/sceneOutliers.ts` + tests, `index.ts`). Computes per-entity centroid, scene median centroid, and lists entities >3× median distance away.
-
-Investigation against Scott DXF2013 staged scene found 5,506 outliers (~2.25%) of which the top 30 were analyzed. **Verified by direct DXF parse** that top-6 outliers (centroids at ±800k mm) are mathematically correct: their post-transform position matches `transformBlockPoint` math to 1 mm. Equipment blocks like `7B060 SPAC`, `7B-010R_3W1`, `7B020_3W1` author their geometry at +440k mm in block-local coords; INSERT rotation 180° flips it to -440k; insert position adds another -400k offset; final result is at -800k. AutoCAD renders identically.
-
-**No transform bug.** The "floating items" George reported in the viewer are correct equipment geometry that lacks identifying text labels. Recommended next: Phase 10T-B (text rendering).
-
-8 new outlier unit tests; 124/124 pass.
+**Not allowed:** Touch importer/schema/GLB/JT/export. Remove sample scene support.
 
 ---
 
-### TASK-017: Phase 10S — Uniform-magnitude mirror INSERT expansion ✅ DONE
+### ISSUE-005: Mouse wheel zoom toward cursor (P1)
 
-**Completed:** 2026-05-10
+**Goal:** `controls.zoomToCursor = true` if OrbitControls supports it. Test orthographic and top-2D views. If not supported, report smallest safe custom approach without implementing it.
 
-All INSERTs with uniform-magnitude negative scale (e.g. `xScale=-25.4, yScale=25.4, zScale=25.4` or `xScale=-1, yScale=1, zScale=1`) now expand with per-axis scale and arc angle reflection.
-
-**Key changes:**
-- `hardInsertTransformReason` updated: uses abs-value non-uniformity check only; negative scale alone no longer a hard failure
-- `hasMirrorAxes(insert)`: detects any negative axis
-- `transformBlockPoint` updated to per-axis scale (`scale.x` for X, `scale.y` for Y, `scale.z` for Z — was using `scale.x` for all)
-- `transformArcAngles`: handles X-mirror, Y-mirror, X+Y both, and no-mirror cases
-- `composeInserts` updated to per-axis composed scale
-- `DXF_INSERT_MIRROR_FLATTENED` warning emitted for any mirror INSERT
-- All three expansion paths updated: direct, depth-1, depth-2
-
-**Results (Scott DXF2013):**
-- DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED: 130 → 0
-- DXF_INSERT_MIRROR_FLATTENED: 132
-- Supported entities: 142,393 → 244,953 (+102,560)
-- 116/116 tests pass
+**Not allowed:** Touch importer/schema/GLB/export.
 
 ---
 
-### TASK-017-PREP: Phase 10R-A — Transform complexity audit ✅ DONE
+### ISSUE-006: Layer controls and isolate workflow (P1)
 
-**Completed:** 2026-05-10
+**Goal:** Layer search/filter, isolate layer, show all, hide all except selected, counts visible.
 
-Added `DxfTransformAuditSummary` type and `computeTransformAudit()` to `analyzeDxfBlocks.ts`. Classifies hard-blocked INSERTs by cause (flag counts: negX/negY/negZ/nonUniform/negDet/hasRotation/zOffsetAlso) and exclusive category (pureNegativeUniform, pureNonUniformPositive, nonUniformNegative, other). Reports option unlock estimates (A/B/C).
-
-Scott DXF2013 findings: 108 top-level hard-blocked INSERTs, ALL pureNegativeUniform (xScale=-25.4 or -1, yScale/zScale positive, uniform magnitude). Option A unlocks all 108. No pureNonUniformPositive cases.
-
-7 new tests; 108/108 pass.
+**Not allowed:** Change importer, redesign full viewer.
 
 ---
 
-### TASK-016: Phase 10O-A — Text/attribute/equipment audit ✅ DONE
+### ISSUE-010: Fast viewer QA workflow documentation (P1)
 
-**Completed:** 2026-05-10
-
-Extended `inspect-dxf` with text audit. `output-base-path` is now optional — audit prints to stdout. New `DxfTextAuditSummary` type and `computeTextAudit()` in `analyzeDxfBlocks.ts`.
-
-**Scott DXF2013 audit findings:**
-- TEXT: 148 (all in block definitions, 0 direct)
-- MTEXT: 0
-- ATTDEF: 261 (all in block definitions, 0 direct)
-- ATTRIB: 0
-
-Equipment/robot block matches (5 blocks, all blocked by transform complexity):
-- `Fanuc_Henrob Controller` — 18 inserts, FANUC pattern
-- `W704949_de_...CONTROLLER_20250113` — 6 inserts, CONTROLLER pattern
-- `70ZF-20013171_rbt_pwr_dist_400A` — 5 inserts, RBT pattern
-- `FANUC_RBT_CNTR_R-J3iB` — 4 inserts, FANUC pattern
-- `7B060 SPAC` — 2 inserts, SPAC pattern
-
-Hard-transform blocks with text (20 blocks): top is `FENC-1525` (70 inserts, 3 ATTDEFs).
-
-Partial-expand blocks where ATTDEF/TEXT was skipped (20 blocks): same top — `FENC-1525`, `*U36`, `BUCKET`, `*U48`, `FENC-1025`.
-
-Richest text block: `Plant_Layout_A0-1189x841_v2014.01` — 114 TEXT + 16 ATTDEF (title block, 1 use).
-
-Sample ATTDEF strings: fence panel descriptions, custom height labels, part codes.
-
-Top text layer: `0` (403 text entities), then `FG-FENCE-TEXT` (2), `DES-AUTOMATION` (2).
-
-101/101 tests pass. No viewer or importer changes.
+**Goal:** Update `specs/VIEWER_QA_WORKFLOW.md` to include text/MTEXT checklist items, density modes, expected warning counts, and current entity counts.
 
 ---
 
-### TASK-015: Phase 10N-B — Spline-fit POLYLINE expansion ✅ DONE
+### ISSUE-012: Claude skills for Kairo (P2)
 
-**Completed:** 2026-05-09
-
-- `extractFittingVertices(entity)` filters VERTEX entities: flag & 8 (spline curve) and flag & 1 (curve-fit arc) — skips flag & 16 (frame control points).
-- Spread-override pattern `{ ...entity, vertices: fittingVertices }` reuses existing `legacyPolylineToEntity` and `expandBlockLegacyPolyline` without new function signatures.
-- `blockSkippableEntityTypes` and `blockSkippedEntityCounts` predicates updated: POLYLINEs with usable fitting vertices no longer counted as COMPLEX_POLYLINE.
-- Three-path POLYLINE loop: simple chain → direct import; spline/curve-fit with fitting vertices → import + `DXF_POLYLINE_SPLINE_APPROXIMATED`; else → `DXF_POLYLINE_UNSUPPORTED`.
-- Same pattern applied to depth-1 block expansion and depth-2 grandchild expansion loops.
-- 7 new tests; 97/97 pass.
-- Scott DXF2013: 142,378 → 142,393 entities; DXF_POLYLINE_UNSUPPORTED 15 → 0; DXF_POLYLINE_SPLINE_APPROXIMATED 0 → 15.
+**Goal:** Create `.claude/skills/kairo-*.md` skill files with allowed/not-allowed rules for each area (main workflow, viewer UI, DXF importer, planning).
 
 ---
 
-### TASK-014: Phase 10N-A — POLYLINE parser investigation ✅ DONE
+## LATER
 
-**Completed:** 2026-05-10
+### ISSUE-007: Nested INSERT investigation (P2)
 
-**Findings:**
-- `@dxfjs/parser` maps DXF group 70 to `VertexEntity.flag` (parser source: `VertexEntitySpec.set(70, "flag")`).
-- Values 8 and 16 are preserved at runtime — confirmed by permanent diagnostic test.
-- VERTEX `flag & 8` = spline vertex on the fitted curve (pre-sampled by AutoCAD) — safe to use as import chain.
-- VERTEX `flag & 16` = spline frame control point — skip; not on the fitted curve.
-- No B-spline math required for Phase 10N-B.
-
-**Decision:** Phase 10N-B (spline-fit POLYLINE expansion) is viable. See ADR-010.
-
-**Test added:** `"@dxfjs/parser exposes VERTEX flag (group 70) on spline-fit POLYLINE vertices"` — 90/90 pass.
+**Goal:** Audit and plan safe depth-3 expansion for the 14 remaining depth-guard-blocked INSERTs. Plan only — do not implement without approval.
 
 ---
 
-### TASK-013: Phase 10P — Viewer performance for large DXF scenes ✅ DONE
+### ISSUE-008: Complex POLYLINE / spline-fit policy (P2)
 
-**Completed:** 2026-05-09, commits ee7eb30 + 2fc3bdf
-
-Stage 10P-1 (`perf: avoid full viewer rebuilds for large dxf scenes`):
-- Split single `useEffect` (deps: `[fitRequest, hiddenLayerIds, onSelect, scenePackage, viewMode]`) into four independent effects.
-- Build effect `[scenePackage, viewMode]`: full Three.js setup + GPU dispose on cleanup.
-- Visibility effect `[hiddenLayerIds]`: toggles `object.visible` only.
-- Fit effect `[fitRequest]`: repositions camera using cached bounds + refs.
-- Selection effect `[selectedNodeId]`: updates material colors only.
-- Latest-ref pattern for `hiddenLayerIds`, `selectedNodeId`, `onSelect` to avoid stale closures.
-
-Stage 10P-2 (`perf: merge per-layer curve geometry to reduce draw calls`):
-- Replaced one `Line2` per entity (~142,378 draw calls) with one `THREE.LineSegments` per geometry document (~24 draw calls).
-- Removed `Line2`, `LineGeometry`, `LineMaterial` imports and `updateLineMaterialResolution`.
-- Circle segments 64 → 32; arc segments 48 → 24.
-- Bundle size 796 kB → 771 kB.
-
-Result: Scott DXF2013 scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding.
+**Goal:** Document policy for remaining complex POLYLINE variants (3D mesh, polyface, etc.) not covered by Phase 10N-B.
 
 ---
 
-### TASK-010: Phase 10K — Partial block expansion ✅ DONE
+### ISSUE-009: Render performance / batching baseline (P2)
 
-**Completed:** 2026-05-09
-- Blocks with ATTDEF/TEXT/SPLINE/ELLIPSE expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC).
-- New warning code `DXF_BLOCK_PARTIAL_EXPAND`.
-- Scott DXF2013: 13,711 → 30,442 supported entities.
+**Goal:** Document performance baseline at current entity counts. Identify next bottleneck if entity count grows.
 
 ---
 
-### TASK-002: Human visual QA of Scott DXF2013 in viewer ✅
+### ISSUE-013: JT export future roadmap (P3 — PARKED)
 
-**Completed:** 2026-05-09. George confirmed viewer is usable: top-2D, fit, lines, layers all working.
-
----
-
-### TASK-003: Phase 10I — Z-axis rotation tested INSERT regression ✅
-
-**Completed:** 2026-05-09, commit 744d679  
-- `packages/importer-dxf/test-fixtures/insert-rotation-basic.dxf`
-- Inline tests: 90°, 45°, rotation+scale, circle, arc, LWPOLYLINE, layer inheritance, skip tests
-- 70/70 tests pass
-
----
-
-### TASK-006: Nested INSERT investigation (read-only audit) ✅
-
-**Completed:** 2026-05-09 as part of Phase 10J missing geometry audit.  
-See `specs/SCOTT_DXF_MISSING_GEOMETRY_AUDIT.md` for full findings.  
-- 314 nested INSERTs inside block definitions
-- 138 INSERT instances blocked by nested INSERT (22.9% of total)
-- Top parent blocks: *U104 (9 inserts), *U133 (6), *U239 (5)
-- Expansion deferred; partial block expansion (TASK-010) is higher priority
-
----
-
-## NEXT
-
-### TASK-011: Phase 10L — Z-offset INSERT expansion (2D projection) ✅ DONE
-
-**Completed:** 2026-05-09, commit f40910b  
-- `hardInsertTransformReason` replaces `unsupportedInsertTransformReason` (z-offset no longer a hard failure)
-- `hasZOffset` helper; `expandInsert = {...entity, z: 0}` used for geometry expansion
-- New warning code `DXF_INSERT_Z_FLATTENED` with original Z value in message
-- 6 new inline tests + 1 updated test; 79/79 pass
-- Scott DXF2013: 30,442 → 102,562 supported entities; 109 DXF_INSERT_Z_FLATTENED warnings
-
----
-
-### TASK-012: Phase 10M — One-level nested INSERT expansion ✅ DONE
-
-**Completed:** 2026-05-09, commit 6111938  
-- `composeInserts()` computes world position + composed scale/rotation for child INSERT
-- Nested expansion loop: cycle detection (`DXF_BLOCK_INSERT_CYCLE`), missing block, hard transform check, z-flattening, partial expand, depth guard (`DXF_BLOCK_INSERT_NESTED_UNSUPPORTED`)
-- 10 new inline tests + 2 updated tests; 89/89 pass
-- Scott DXF2013: 102,562 → 142,378 supported entities; DXF_BLOCK_INSERT_NESTED_UNSUPPORTED dropped 132 → 14
-
----
-
-### TASK-004: CLI scene-stats command
-
-**Goal:** Expose `computeSceneStats` from viewer as a CLI command for quick import QA.  
-**Scope:** `packages/cli/src/index.ts` only; reuse existing `sceneStats.ts` logic.  
-**Not allowed:** New schema fields; viewer changes.  
-**Acceptance criteria:**
-```
-node packages/cli/dist/index.js scene-stats ".\tmp\scott-dxf2013-import"
-```
+**Goal:** Keep parked. No work until DXF coverage and viewer are stable. Requires Siemens JT Open Toolkit.
 
 ---
 
@@ -244,18 +120,106 @@ node packages/cli/dist/index.js scene-stats ".\tmp\scott-dxf2013-import"
 
 ### TASK-005: Fast automated viewer QA
 
-**Blocked by:** No Playwright/Puppeteer setup; viewer requires real browser context for Three.js.
+**Blocked by:** No Playwright/Puppeteer setup. Viewer requires real browser context for Three.js. No plan to unblock in current phase.
 
 ---
 
-## DO NOT DO YET
+## DONE
 
-- JT export (licensed Siemens toolkit required)
-- GLB export (parked until DXF coverage is stable)
-- DWG direct parsing (convert to DXF first)
-- Non-uniform scale INSERT expansion
-- Negative / mirror scale INSERT expansion
-- Text / attribute geometry rendering
-- SPLINE / ELLIPSE / complex POLYLINE approximation
-- Full browser automation / backend / auth / cloud
-- Major viewer redesign
+### TASK-019: Phase 10T-C — MTEXT extraction and label density improvements ✅ DONE
+
+**Completed:** 2026-05-10 (commits 703725b, c1241f1)
+
+MTEXT scanner added (`extractMtext.ts`) — `@dxfjs/parser` does not surface MTEXT, so a direct ENTITIES-section text scanner was written. Strips DXF formatting codes (`\P`, `\X`, `\~`, `\C`, `\H`, `\f`, `\U+XXXX`, stacked text, grouping braces). Scott DXF2013 had 343 MTEXT records silently dropped before this; large station headers like "7B-070L RACK LOAD" at 457.2 mm are now visible.
+
+Label density modes added: Auto / All / Off. Auto uses 90th-percentile world-height threshold so large headers stay visible at fit-scene even when small annotations would be hidden. Readable toggle flips upside-down labels (rotation mod 360 in 90–270°) left-to-right.
+
+Scott DXF2013: 969 text entities → 1092 (+123 MTEXT). 151/151 tests pass.
+
+---
+
+### TASK-019: Phase 10T-B — TEXT/ATTDEF rendering ✅ DONE
+
+**Completed:** 2026-05-10
+
+Schema gained `text` entity type. Importer extracts direct TEXT entities and TEXT/ATTDEF inside block expansion (depth-1 and depth-2). Viewer renders text as `<SceneTextOverlay>` HTML overlay — no TextGeometry. Font size clamped 5–48 px. Layer toggle hides matching text. Camera changes drive rAF projection.
+
+Scott DXF2013: 244,953 → 245,922 entities (+969 = 230 TEXT + 739 ATTDEF). DXF_BLOCK_PARTIAL_EXPAND: 550 → 160. 133/133 pass.
+
+---
+
+### TASK-018: Phase 10T-A — Visual QA spike (scene-outliers CLI) ✅ DONE
+
+**Completed:** 2026-05-10. Added `scene-outliers` CLI command. Found 5,506 outliers (~2.25%); top 30 analyzed; top-6 verified as mathematically correct (block-local coordinates at ±440k mm, INSERT rotation + position produce ±800k). No transform bug.
+
+---
+
+### TASK-017: Phase 10S — Uniform-magnitude mirror INSERT expansion ✅ DONE
+
+**Completed:** 2026-05-10. All INSERTs with uniform-magnitude negative scale now expand with per-axis scale and arc angle reflection. `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED`: 130 → 0. Supported entities: 142,393 → 244,953.
+
+---
+
+### TASK-017-PREP: Phase 10R-A — Transform complexity audit ✅ DONE
+
+**Completed:** 2026-05-10. All 108 top-level hard-blocked INSERTs were pureNegativeUniform. Option A unlocks all 108.
+
+---
+
+### TASK-016: Phase 10O-A — Text/attribute/equipment audit ✅ DONE
+
+**Completed:** 2026-05-10. TEXT: 148, MTEXT: 0, ATTDEF: 261 in Scott DXF2013. Richest text block: `Plant_Layout_A0-1189x841_v2014.01` (114 TEXT + 16 ATTDEF).
+
+---
+
+### TASK-015: Phase 10N-B — Spline-fit POLYLINE expansion ✅ DONE
+
+**Completed:** 2026-05-09. `DXF_POLYLINE_UNSUPPORTED`: 15 → 0. +15 `DXF_POLYLINE_SPLINE_APPROXIMATED`.
+
+---
+
+### TASK-014: Phase 10N-A — POLYLINE parser investigation ✅ DONE
+
+**Completed:** 2026-05-10. VERTEX flag & 8 = spline curve vertex (safe to use). flag & 16 = control point (skip).
+
+---
+
+### TASK-013: Phase 10P — Viewer performance for large DXF scenes ✅ DONE
+
+**Completed:** 2026-05-09. Split useEffect into 4 independent effects. Replaced per-entity Line2 with per-document LineSegments (~24 draw calls). Scott scene: ~5 s load time.
+
+---
+
+### TASK-012: Phase 10M — One-level nested INSERT expansion ✅ DONE
+
+**Completed:** 2026-05-09. `composeInserts()`. Supported entities: 102,562 → 142,378. `DXF_BLOCK_INSERT_NESTED_UNSUPPORTED`: 132 → 14.
+
+---
+
+### TASK-011: Phase 10L — Z-offset INSERT expansion ✅ DONE
+
+**Completed:** 2026-05-09. Z-offset INSERTs expanded with z=0. `DXF_INSERT_Z_FLATTENED`. Entities: 30,442 → 102,562.
+
+---
+
+### TASK-010: Phase 10K — Partial block expansion ✅ DONE
+
+**Completed:** 2026-05-09. Entities: 13,711 → 30,442.
+
+---
+
+### TASK-002: Human visual QA of Scott DXF2013 in viewer ✅ DONE
+
+**Completed:** 2026-05-09. George confirmed viewer usable.
+
+---
+
+### TASK-003: Phase 10I — Z-axis rotation tested INSERT regression ✅ DONE
+
+**Completed:** 2026-05-09. Inline tests: 90°, 45°, rotation+scale, circle, arc, LWPOLYLINE, layer inheritance.
+
+---
+
+### TASK-006: Nested INSERT investigation (read-only audit) ✅ DONE
+
+**Completed:** 2026-05-09. 314 nested INSERTs in block definitions, 138 INSERT instances blocked. Top parents: *U104, *U133, *U239.

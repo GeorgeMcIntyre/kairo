@@ -1,19 +1,21 @@
 # Kairo Roadmap
 
-Last updated: 2026-05-09  
-HEAD: 5a7c008 feat: improve dxf viewer fit and line visibility
+Last updated: 2026-05-10
+HEAD: c1241f1 feat: extract MTEXT entities and keep big labels visible at fit-scene
 
-## Overall POC Readiness: ~50%
+## Overall POC Readiness: ~70%
 
 | Area | Readiness | Notes |
 |---|---|---|
-| Repo / workspace baseline | 85% | Monorepo, schema, validator, CLI, viewer all running |
-| DXF parser compatibility | 80% | Pre-clean solves ACAD_REACTORS; R12, 2010, 2013 verified |
-| DXF geometry coverage | 55% | LINE/LWPOLYLINE/CIRCLE/ARC/POLYLINE/simple INSERT done; hatches, splines, text, nested INSERT missing |
-| Viewer usability | 50% | Top-2D and perspective modes, fit, selection; ergonomics improved for large layouts; visual QA still needed |
-| QA / repeatability | 45% | 68 tests passing; no automated visual QA yet |
-| Production robustness | 20% | PoC only; no error recovery, no streaming, no auth |
-| JT / export | 5% | Parked; licensed toolkit work not started |
+| Repo / workspace baseline | 90% | Monorepo, schema, validator, CLI, viewer all running; tests 151/151 |
+| DXF parser compatibility | 85% | Pre-clean solves ACAD_REACTORS; R12, 2010, 2013 verified; MTEXT scanner added |
+| DXF geometry coverage | 75% | LINE/LWPOLYLINE/CIRCLE/ARC/POLYLINE/INSERT (incl. mirror, z-offset, nested)/TEXT/ATTDEF/MTEXT done; hatches, dimensions, splines missing |
+| Text completeness | 70% | TEXT, ATTDEF, MTEXT visible; alignment/attachment semantics approximate; MTEXT inside block INSERTs not expanded |
+| Viewer usability | 65% | Top-2D, perspective, fit, selection, layers, text overlay with density modes; drawing-first UI and zoom-to-cursor still needed |
+| Selection / inspection | 35% | Functional but not practical: panel shows minimal details, picking tolerance needs work |
+| QA / repeatability | 70% | 151 tests passing; documented QA workflow; no automated visual QA yet |
+| Production robustness | 25% | PoC only; no error recovery, no streaming, no auth |
+| JT / export | 5% | Parked — requires Siemens JT Open Toolkit |
 
 ## Phase History
 
@@ -36,11 +38,29 @@ HEAD: 5a7c008 feat: improve dxf viewer fit and line visibility
 | 10F | INSERT rotation support (Z-axis) | Done |
 | 10G | Viewer ergonomics for large 2D DXF layouts | Done |
 | 10H | Viewer fit and line visibility improvements | Done |
-| **10I** | **Z-axis rotation tested, full INSERT regression** | **Next** |
-| 10J | Nested INSERT investigation (read-only audit, no expansion yet) | Planned |
-| 10K | Text / ATTDEF metadata strategy (report only) | Planned |
-| 10L | Complex POLYLINE (spline-fit, curve-fit) strategy | Planned |
-| 10M | Performance / batching for large scenes | Planned |
+| 10I | Z-axis rotation tested, full INSERT regression | Done |
+| 10J | Nested INSERT investigation (read-only audit) | Done |
+| 10K | Partial block expansion (mixed entity types) | Done |
+| 10L | Z-offset INSERT expansion (2D projection) | Done |
+| 10M | One-level nested INSERT expansion | Done |
+| 10N-A | POLYLINE parser investigation | Done |
+| 10N-B | Spline-fit POLYLINE expansion via pre-sampled vertices | Done |
+| 10O-A | Text/attribute/equipment audit | Done |
+| 10P | Viewer performance — LineSegments batching, 4-effect split | Done |
+| 10R-A | Transform complexity audit | Done |
+| 10S | Uniform-magnitude mirror INSERT expansion | Done |
+| 10T-A | Visual QA spike — scene-outliers CLI | Done |
+| 10T-B | TEXT/ATTDEF rendering (HTML overlay) | Done |
+| 10T-C | MTEXT scanner + label density modes + readable toggle | Done |
+| **ISSUE-001** | **Scott DXF outlier/floater audit** | **Next** |
+| **ISSUE-002** | **Selection and inspection usability** | **Next** |
+| **ISSUE-003** | **Text placement and alignment correctness** | **Next** |
+| **ISSUE-004** | **Viewer UI drawing-first review mode** | **Next** |
+| **ISSUE-005** | **Mouse wheel zoom toward cursor** | **Next** |
+| **ISSUE-006** | **Layer controls and isolate workflow** | **Next** |
+| ISSUE-007 | Nested INSERT investigation (depth-3+) | Later |
+| ISSUE-008 | Complex POLYLINE / spline-fit policy | Later |
+| ISSUE-009 | Render performance / batching baseline | Later |
 | 11 | GLB export | Parked |
 | 12 | JT export | Parked — requires licensed Siemens toolkit |
 
@@ -48,11 +68,23 @@ HEAD: 5a7c008 feat: improve dxf viewer fit and line visibility
 
 A useful engineering PoC demo requires all of:
 
-1. A real DXF file (e.g. Scott DSP layout) loads without errors in the viewer.
+1. A real DXF file (Scott DSP layout) loads without errors in the viewer.
 2. Viewer ergonomics allow comfortable inspection of a large flat 2D layout.
-3. Scene tree, layer list, and selection highlight are usable.
-4. Validation report shows zero errors.
-5. Import report accounts for all skipped entities — no silent drops.
-6. The full QA workflow runs in under 5 minutes from a fresh DXF file.
+3. Text labels including station headers are visible and approximately correct.
+4. Scene tree, layer list, selection highlight, and text density controls are usable.
+5. Validation report shows zero errors.
+6. Import report accounts for all skipped entities — no silent drops.
+7. The full QA workflow runs in under 5 minutes from a fresh DXF file.
 
-Current estimate for demo-ready: **Phase 10I + visual QA confirmation**.
+Current estimate for demo-ready: **After ISSUE-002 (selection) + ISSUE-004 (drawing-first UI)**. The geometry, layers, and text are largely in place. What's missing is practical ergonomics for inspection and review.
+
+## Parked Work
+
+| Area | Reason |
+|---|---|
+| JT export | Requires Siemens JT Open Toolkit; not started; do not begin without re-authorization |
+| GLB export | Parked until DXF geometry coverage is stable |
+| DWG direct parsing | Convert to DXF first (ODA or AutoCAD) |
+| Full MTEXT rich formatting | Color, font, bold, italic, tables — not needed for current POC |
+| Non-uniform scale INSERT expansion | 0 instances in Scott DXF2013; not worth implementing yet |
+| Full browser automation / backend / auth / cloud | Scope far beyond current POC |
