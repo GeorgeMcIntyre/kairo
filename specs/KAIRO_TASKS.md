@@ -13,26 +13,34 @@ Use this file instead of GitHub Issues for now. Update section headers as tasks 
 
 ## NEXT
 
-### TASK-017: Phase 10S — Negative X mirror INSERT expansion
-
-**Goal:** Expand INSERTs where `xScale < 0` and `|xScale|=|yScale|=|zScale|` (pure X-axis mirror with uniform magnitude). Apply `abs(scale)` and negate X of all expanded geometry points.
-
-**Unlocks:** 108 top-level hard-blocked INSERTs (all pureNegativeUniform in Scott DXF2013). Expected entity count gain: large (FENC-1525 has significant geometry).
-
-**Approach:**
-- New helper `isNegativeUniformMirror(insert)`: returns true if `|sx|=|sy|=|sz|` and `sx < 0`
-- New helper `negativeAxes(insert)`: returns `{ x: sx < 0, y: sy < 0, z: sz < 0 }`
-- In expansion loop after `hardInsertTransformReason` check: if insert has uniform magnitude but some negative axes, expand with `abs(scale)` and flip point coordinates on negative axes
-- New warning code `DXF_INSERT_MIRROR_FLATTENED` (info-level)
-- Apply same pattern to depth-1 and depth-2 expansion loops
-
-**Risk:** Low-Medium. Geometry will be mirror-flipped. For 2D top-down inspection, this is acceptable — the topology and connectivity are preserved.
-
-**Acceptance criteria:** All pureNegativeUniform INSERTs expand; DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED drops by ~108; new test coverage.
+*(No active task — awaiting next phase assignment.)*
 
 ---
 
 ## DONE
+
+### TASK-017: Phase 10S — Uniform-magnitude mirror INSERT expansion ✅ DONE
+
+**Completed:** 2026-05-10
+
+All INSERTs with uniform-magnitude negative scale (e.g. `xScale=-25.4, yScale=25.4, zScale=25.4` or `xScale=-1, yScale=1, zScale=1`) now expand with per-axis scale and arc angle reflection.
+
+**Key changes:**
+- `hardInsertTransformReason` updated: uses abs-value non-uniformity check only; negative scale alone no longer a hard failure
+- `hasMirrorAxes(insert)`: detects any negative axis
+- `transformBlockPoint` updated to per-axis scale (`scale.x` for X, `scale.y` for Y, `scale.z` for Z — was using `scale.x` for all)
+- `transformArcAngles`: handles X-mirror, Y-mirror, X+Y both, and no-mirror cases
+- `composeInserts` updated to per-axis composed scale
+- `DXF_INSERT_MIRROR_FLATTENED` warning emitted for any mirror INSERT
+- All three expansion paths updated: direct, depth-1, depth-2
+
+**Results (Scott DXF2013):**
+- DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED: 130 → 0
+- DXF_INSERT_MIRROR_FLATTENED: 132
+- Supported entities: 142,393 → 244,953 (+102,560)
+- 116/116 tests pass
+
+---
 
 ### TASK-017-PREP: Phase 10R-A — Transform complexity audit ✅ DONE
 

@@ -5,14 +5,14 @@ Last updated: 2026-05-10
 ## Git
 
 - Branch: main
-- HEAD: chore: add dxf transform complexity audit
+- HEAD: feat: expand mirrored dxf inserts with uniform negative scale
 - In sync with origin/main (post-commit)
 
 ## Verification (as of HEAD)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 108/108 passed |
+| `pnpm test` | 116/116 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle 771 kB — chunk size warning only) |
 
@@ -22,13 +22,14 @@ Last updated: 2026-05-10
 - CLI commands: `validate`, `import-dxf`, `inspect-dxf`, `stage-viewer-scene`.
 - DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains.
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
-- INSERT expansion: up to two levels deep (parent + one nested child), curve-only blocks, positive uniform scale, Z-axis rotation, z-offset flattening.
+- INSERT expansion: up to two levels deep (parent + one nested child), curve-only blocks, uniform scale (positive or negative mirror), Z-axis rotation, z-offset flattening.
 - INSERT rotation: verified by dedicated DXF file fixture and inline tests for 90°, 45°, rotation+scale, circle, arc, LWPOLYLINE, layer inheritance.
+- INSERT mirror expansion (Phase 10S): INSERTs with uniform-magnitude negative scale (e.g. xScale=-25.4, yScale=25.4) now expand with per-axis scale and arc angle reflection. DXF_INSERT_MIRROR_FLATTENED warning emitted. Works at depth-1 and depth-2 via per-axis composeInserts.
 - INSERT partial expansion (Phase 10K): blocks with ATTDEF/TEXT/SPLINE/ELLIPSE now expand supported geometry (LINE/LWPOLYLINE/CIRCLE/ARC) instead of being fully skipped.
-- INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position are expanded with z=0 and a DXF_INSERT_Z_FLATTENED warning. Hard failures (non-uniform/negative scale) still skip.
+- INSERT z-offset flattening (Phase 10L): INSERTs with non-zero Z position are expanded with z=0 and a DXF_INSERT_Z_FLATTENED warning.
 - One-level nested INSERT expansion (Phase 10M): parent blocks containing child INSERTs now expand grandchild geometry via composed transform. Child z-offsets flattened. Depth guard emits DXF_BLOCK_INSERT_NESTED_UNSUPPORTED for depth-3+. Cycle detection emits DXF_BLOCK_INSERT_CYCLE.
 - Spline-fit POLYLINE expansion (Phase 10N-B): spline-fit (flag & 4) and curve-fit (flag & 2) POLYLINEs expanded using pre-sampled fitting vertices from the DXF file. No B-spline math required. Emits DXF_POLYLINE_SPLINE_APPROXIMATED. Works in direct entities, depth-1 block expansion, and depth-2 grandchild expansion.
-- Viewer performance (Phase 10P): 142,393-entity Scott scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding. See Viewer Performance section below.
+- Viewer performance (Phase 10P): scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding. See Viewer Performance section below.
 - Viewer: top-2D and perspective modes, fit-to-scene, fit-to-selection, orbit controls, tree selection, source-map display, layer list, diagnostics panel. George confirmed viewer is usable.
 - Dev scene loader: reads generated scene folders from `apps/viewer/public/scenes/`.
 - Scene stats: `computeSceneStats` and `computeLayerEntityCounts` in viewer (tested).
@@ -37,8 +38,7 @@ Last updated: 2026-05-10
 ## What Is Broken / Missing
 
 - 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
-- 130 INSERT instances blocked by hard transform failures (non-uniform/negative scale).
-  - Phase 10R-A audit: 108 of these (top-level) are ALL pure X-axis mirrors (xScale=-25.4 or -1, yScale/zScale positive same magnitude). Option A (flip X geometry, apply abs scale) would unlock all 108. See Phase 10R-A findings below.
+- 0 INSERT instances now blocked by hard transform failures (all 130 were uniform-magnitude mirrors — resolved by Phase 10S).
 - Text, ATTDEF, ATTRIB geometry is not rendered (by design). Phase 10O-A audit: 148 TEXT + 261 ATTDEF in block definitions; 5 equipment blocks all blocked by transform complexity; 20 partial-expand blocks skip ATTDEFs.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
@@ -76,15 +76,16 @@ Run: `node packages/cli/dist/index.js inspect-dxf <scott.dxf>`
 
 Note: 130 total `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED` in importer vs 108 in audit — the 22-count gap is from INSERTs inside block definitions that fail during nested expansion; same X-mirror pattern expected.
 
-## Known Import Warning Buckets (Scott DXF2013 — after Phase 10N-B)
+## Known Import Warning Buckets (Scott DXF2013 — after Phase 10S)
 
 | Warning code | Count | Notes |
 |---|---|---|
-| DXF_BLOCK_PARTIAL_EXPAND | 453 | Blocks with mixed supported/unsupported entity types |
-| DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED | 130 | Non-uniform/negative scale — hard skip |
-| DXF_INSERT_Z_FLATTENED | 110 | z-offset INSERTs expanded with z=0 |
+| DXF_BLOCK_PARTIAL_EXPAND | 550 | Blocks with mixed supported/unsupported entity types (increased as more blocks now expand) |
+| DXF_INSERT_Z_FLATTENED | 140 | z-offset INSERTs expanded with z=0 |
+| DXF_INSERT_MIRROR_FLATTENED | 132 | Uniform-magnitude negative-scale INSERTs expanded with coordinate flip |
 | DXF_POLYLINE_SPLINE_APPROXIMATED | 15 | Spline-fit POLYLINEs expanded via pre-sampled fitting vertices |
 | DXF_BLOCK_INSERT_NESTED_UNSUPPORTED | 14 | Depth-3+ inserts hit depth guard |
+| DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED | 0 | All resolved by Phase 10S |
 
 ## Scott DXF2013 Entity Progression
 
@@ -95,10 +96,11 @@ Note: 130 total `DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED` in importer vs 108 in a
 | After Phase 10L | 102,562 | Z-offset INSERTs expanded: SPR-CNT_TM_RIP, Fanuc controllers, etc. |
 | After Phase 10M | 142,378 | One-level nested INSERT expansion via composed transform |
 | After Phase 10N-B | 142,393 | Spline-fit POLYLINEs expanded (+15 entities, 0 DXF_POLYLINE_UNSUPPORTED) |
+| After Phase 10S | 244,953 | Mirror INSERT expansion: +102,560 entities (FENC-1525 ×35, SPR-CNT_TM_RIP ×9, etc.) |
 
 ## Viewer Performance Baseline (after Phase 10P)
 
-Scott DXF2013: 142,393 curve entities across ~24 geometry documents.
+Scott DXF2013: 244,953 curve entities across ~24 geometry documents (post-Phase 10S).
 
 | Metric | Value |
 |---|---|
