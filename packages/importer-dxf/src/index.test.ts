@@ -492,7 +492,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("skips non-uniform-scale and negative-scale INSERTs; expands z-offset-only INSERT flattened", async () => {
+  it("skips non-uniform-scale INSERTs; expands uniform-negative-scale and z-offset INSERTs", async () => {
     const content = blockScene(
       [...blockHeader("TRANSFORMS"), ...blockLine("L1"), ...blockFooter],
       [
@@ -505,7 +505,7 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.summary.supportedEntityCount).toBe(2);
       expect(result.warnings).toEqual([
         {
           code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
@@ -514,8 +514,8 @@ describe("importDxfToKairo", () => {
           handle: "I1"
         },
         {
-          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-          message: "DXF INSERT transform is not supported by the simple expander (negative scale); entity was skipped.",
+          code: "DXF_INSERT_MIRROR_FLATTENED",
+          message: "DXF INSERT mirror scale was expanded by flipping output coordinates for 2D layout import.",
           entityType: "INSERT",
           handle: "I2"
         },
@@ -753,7 +753,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("still skips INSERT with z-offset AND negative scale", async () => {
+  it("expands INSERT with z-offset AND uniform negative scale: z flattened and mirror applied", async () => {
     const content = blockScene(
       [...blockHeader("ZNEG"), ...blockLine("L1"), ...blockFooter],
       blockInsert("ZNEG", "I1", "CUT", ["30", "5", "41", "-1", "42", "-1", "43", "-1"])
@@ -762,13 +762,10 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-        handle: "I1"
-      });
-      expect(result.warnings[0].message).toContain("negative scale");
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings.some((w) => w.code === "DXF_INSERT_MIRROR_FLATTENED" && w.handle === "I1")).toBe(true);
+      expect(result.warnings.some((w) => w.code === "DXF_INSERT_Z_FLATTENED" && w.handle === "I1")).toBe(true);
     });
   });
 
@@ -954,7 +951,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("child INSERT with negative scale still skips that child INSERT", async () => {
+  it("child INSERT with uniform negative scale expands mirrored grandchild geometry", async () => {
     const content = blockScene(
       [
         ...blockHeader("PARENT"),
@@ -970,13 +967,157 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.summary.supportedEntityCount).toBe(1);
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        code: "DXF_INSERT_MIRROR_FLATTENED",
         handle: "BI1"
       });
-      expect(result.warnings[0].message).toContain("negative scale");
+    });
+  });
+
+  it("expands X-mirror INSERT (xScale=-1): LINE reflected in X", async () => {
+    const content = blockScene(
+      [...blockHeader("XMIRROR"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("XMIRROR", "I1", "CUT", ["41", "-1", "42", "1", "43", "1"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({ code: "DXF_INSERT_MIRROR_FLATTENED", handle: "I1" });
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [-5, 6, 0]);
+      }
+    });
+  });
+
+  it("expands X-mirror INSERT with uniform scale -2: LINE reflected and scaled", async () => {
+    const content = blockScene(
+      [...blockHeader("XMIRSCALE"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("XMIRSCALE", "I1", "CUT", ["41", "-2", "42", "2", "43", "2"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({ code: "DXF_INSERT_MIRROR_FLATTENED", handle: "I1" });
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [-15, 6, 0]);
+      }
+    });
+  });
+
+  it("expands X-mirror INSERT with rotation 90°: LINE reflected then rotated", async () => {
+    const content = blockScene(
+      [...blockHeader("XMIRROT"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("XMIRROT", "I1", "CUT", ["41", "-1", "42", "1", "43", "1", "50", "90"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [5, -4, 0]);
+      }
+    });
+  });
+
+  it("expands X-mirror INSERT with z-offset: both DXF_INSERT_MIRROR_FLATTENED and DXF_INSERT_Z_FLATTENED", async () => {
+    const content = blockScene(
+      [...blockHeader("XMIRZ"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("XMIRZ", "I1", "CUT", ["30", "5", "41", "-1", "42", "1", "43", "1"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(2);
+      expect(result.warnings.some((w) => w.code === "DXF_INSERT_MIRROR_FLATTENED" && w.handle === "I1")).toBe(true);
+      expect(result.warnings.some((w) => w.code === "DXF_INSERT_Z_FLATTENED" && w.handle === "I1")).toBe(true);
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "line") {
+        expectPointClose(geometry.entities[0].start, [5, 6, 0]);
+        expectPointClose(geometry.entities[0].end, [-5, 6, 0]);
+      }
+    });
+  });
+
+  it("expands Y-mirror INSERT (yScale=-1) with uniform magnitude", async () => {
+    const content = blockScene(
+      [...blockHeader("YMIRROR"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("YMIRROR", "I1", "CUT", ["41", "1", "42", "-1", "43", "1"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({ code: "DXF_INSERT_MIRROR_FLATTENED", handle: "I1" });
+    });
+  });
+
+  it("still skips non-uniform positive INSERT (magnitudes differ)", async () => {
+    const content = blockScene(
+      [...blockHeader("NONUNI"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("NONUNI", "I1", "CUT", ["41", "2", "42", "3", "43", "2"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({ code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED", handle: "I1" });
+      expect(result.warnings[0].message).toContain("non-uniform scale");
+    });
+  });
+
+  it("still skips non-uniform negative INSERT (magnitudes differ)", async () => {
+    const content = blockScene(
+      [...blockHeader("NONUNINEG"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("NONUNINEG", "I1", "CUT", ["41", "-2", "42", "3", "43", "1"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+
+      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toMatchObject({ code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED", handle: "I1" });
+      expect(result.warnings[0].message).toContain("non-uniform scale");
+    });
+  });
+
+  it("mirror INSERT expansion preserves non-empty source ref", async () => {
+    const content = blockScene(
+      [...blockHeader("MIRSRC"), ...blockLine("L1"), ...blockFooter],
+      blockInsert("MIRSRC", "I1", "CUT", ["41", "-1", "42", "1", "43", "1"])
+    );
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      if (geometry.kind === "curve-set") {
+        expect(geometry.entities[0].sourceRef).toBeTruthy();
+        expect(geometry.entities[0].sourceRef).toContain("insert-i1");
+      }
     });
   });
 

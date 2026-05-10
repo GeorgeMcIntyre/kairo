@@ -338,10 +338,17 @@ function insertScale(insert: DxfInsertEntity) {
 
 function hardInsertTransformReason(insert: DxfInsertEntity) {
   const scale = insertScale(insert);
+  const absX = Math.abs(scale.x);
+  const absY = Math.abs(scale.y);
+  const absZ = Math.abs(scale.z);
   const reasons: string[] = [];
-  if (Math.abs(scale.x - scale.y) > 1e-9 || Math.abs(scale.x - scale.z) > 1e-9) reasons.push("non-uniform scale");
-  if (scale.x < 0 || scale.y < 0 || scale.z < 0) reasons.push("negative scale");
+  if (Math.abs(absX - absY) > 1e-9 || Math.abs(absX - absZ) > 1e-9) reasons.push("non-uniform scale");
   return reasons.join(", ");
+}
+
+function hasMirrorAxes(insert: DxfInsertEntity) {
+  const scale = insertScale(insert);
+  return scale.x < 0 || scale.y < 0 || scale.z < 0;
 }
 
 function hasZOffset(insert: DxfInsertEntity) {
@@ -413,11 +420,11 @@ function effectiveLayerName(child: EntityCommons, insert: DxfInsertEntity) {
 }
 
 function transformBlockPoint(x: number | undefined, y: number | undefined, z: number | undefined, insert: DxfInsertEntity, block: DxfBlockDefinition): [number, number, number] {
-  const scale = insertScale(insert).x;
+  const scale = insertScale(insert);
   const radians = ((insert.rotation ?? 0) * Math.PI) / 180;
-  const localX = ((x ?? 0) - (block.basePointX ?? 0)) * scale;
-  const localY = ((y ?? 0) - (block.basePointY ?? 0)) * scale;
-  const localZ = ((z ?? 0) - (block.basePointZ ?? 0)) * scale;
+  const localX = ((x ?? 0) - (block.basePointX ?? 0)) * scale.x;
+  const localY = ((y ?? 0) - (block.basePointY ?? 0)) * scale.y;
+  const localZ = ((z ?? 0) - (block.basePointZ ?? 0)) * scale.z;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
 
@@ -428,22 +435,32 @@ function transformBlockPoint(x: number | undefined, y: number | undefined, z: nu
   ];
 }
 
-function rotateAngle(angle: number, insert: DxfInsertEntity) {
-  return angle + (insert.rotation ?? 0);
+function transformArcAngles(startAngle: number, endAngle: number, insert: DxfInsertEntity): [number, number] {
+  const scale = insertScale(insert);
+  const mirrorX = scale.x < 0;
+  const mirrorY = scale.y < 0;
+  const rot = insert.rotation ?? 0;
+  // X mirror reflects angles in the Y axis (θ → 180−θ), also reverses arc direction
+  if (mirrorX && !mirrorY) return [180 - endAngle + rot, 180 - startAngle + rot];
+  // Y mirror reflects angles in the X axis (θ → −θ), also reverses arc direction
+  if (!mirrorX && mirrorY) return [-endAngle + rot, -startAngle + rot];
+  // Both X and Y mirror = 180° rotation, no direction reversal
+  if (mirrorX && mirrorY) return [startAngle + 180 + rot, endAngle + 180 + rot];
+  return [startAngle + rot, endAngle + rot];
 }
 
 function composeInserts(outerInsert: DxfInsertEntity, outerBlock: DxfBlockDefinition, flatChildInsert: DxfInsertEntity): DxfInsertEntity {
-  const outerScale = insertScale(outerInsert).x;
-  const childScale = insertScale(flatChildInsert).x;
+  const outerScale = insertScale(outerInsert);
+  const childScale = insertScale(flatChildInsert);
   const [composedX, composedY] = transformBlockPoint(flatChildInsert.x ?? 0, flatChildInsert.y ?? 0, 0, outerInsert, outerBlock);
   return {
     ...flatChildInsert,
     x: composedX,
     y: composedY,
     z: 0,
-    xScale: outerScale * childScale,
-    yScale: outerScale * childScale,
-    zScale: outerScale * childScale,
+    xScale: outerScale.x * childScale.x,
+    yScale: outerScale.y * childScale.y,
+    zScale: outerScale.z * childScale.z,
     rotation: (outerInsert.rotation ?? 0) + (flatChildInsert.rotation ?? 0)
   };
 }
@@ -521,18 +538,19 @@ function expandBlockCircle(entity: CircleEntity, insert: DxfInsertEntity, block:
     ...expandedEntityBase("circle", insert, blockName, entity, fallbackIndex),
     type: "circle",
     center: transformBlockPoint(entity.centerX, entity.centerY, entity.centerZ, insert, block),
-    radius: entity.radius * insertScale(insert).x
+    radius: entity.radius * Math.abs(insertScale(insert).x)
   };
 }
 
 function expandBlockArc(entity: ArcEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  const [startAngleDeg, endAngleDeg] = transformArcAngles(entity.startAngle, entity.endAngle, insert);
   return {
     ...expandedEntityBase("arc", insert, blockName, entity, fallbackIndex),
     type: "arc",
     center: transformBlockPoint(entity.centerX, entity.centerY, entity.centerZ, insert, block),
-    radius: entity.radius * insertScale(insert).x,
-    startAngleDeg: rotateAngle(entity.startAngle, insert),
-    endAngleDeg: rotateAngle(entity.endAngle, insert)
+    radius: entity.radius * Math.abs(insertScale(insert).x),
+    startAngleDeg,
+    endAngleDeg
   };
 }
 
@@ -652,6 +670,14 @@ function convertEntities(parsed: DxfGlobalObject) {
         handle: entity.handle
       });
     }
+    if (hasMirrorAxes(entity)) {
+      warnings.push({
+        code: "DXF_INSERT_MIRROR_FLATTENED",
+        message: `DXF INSERT mirror scale was expanded by flipping output coordinates for 2D layout import.`,
+        entityType: "INSERT",
+        handle: entity.handle
+      });
+    }
 
     const skippableTypes = blockSkippableEntityTypes(block);
     if (skippableTypes.length > 0) {
@@ -739,6 +765,14 @@ function convertEntities(parsed: DxfGlobalObject) {
         warnings.push({
           code: "DXF_INSERT_Z_FLATTENED",
           message: `DXF INSERT was expanded with Z offset (${(childInsertRaw.z ?? 0).toFixed(4)}) flattened to 0 for 2D layout import.`,
+          entityType: "INSERT",
+          handle: childInsertRaw.handle
+        });
+      }
+      if (hasMirrorAxes(childInsertRaw)) {
+        warnings.push({
+          code: "DXF_INSERT_MIRROR_FLATTENED",
+          message: `DXF INSERT mirror scale was expanded by flipping output coordinates for 2D layout import.`,
           entityType: "INSERT",
           handle: childInsertRaw.handle
         });
