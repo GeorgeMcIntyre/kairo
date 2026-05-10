@@ -14,8 +14,11 @@ export type TextOverlayItem = {
 
 export type TextOverlayCamera = THREE.OrthographicCamera | THREE.PerspectiveCamera;
 
-const MIN_FONT_PX = 2;
-const MAX_FONT_PX = 48;
+export type LabelDensityMode = "auto" | "all" | "off";
+
+export const MIN_DISPLAY_PX = 2;
+export const MAX_DISPLAY_PX = 48;
+export const AUTO_HIDE_BELOW_PX = 5;
 
 export type TextOverlayMetrics = {
   itemCount: number;
@@ -24,9 +27,11 @@ export type TextOverlayMetrics = {
   clampedUpCount: number;
   frustumCulledCount: number;
   layerHiddenCount: number;
+  densityHiddenCount: number;
   pxPerUnit: number;
   cameraReady: boolean;
   hostReady: boolean;
+  densityMode: LabelDensityMode;
 };
 
 export function collectTextItems(scenePackage: ScenePackage): TextOverlayItem[] {
@@ -52,18 +57,90 @@ export function collectTextItems(scenePackage: ScenePackage): TextOverlayItem[] 
   return items;
 }
 
-function computePixelsPerWorldUnit(camera: TextOverlayCamera, host: HTMLElement): number {
+export function computePixelsPerWorldUnit(camera: TextOverlayCamera, host: { clientHeight: number }): number {
+  const pixelHeight = host.clientHeight || 1;
   if (camera instanceof THREE.OrthographicCamera) {
     const worldHeight = (camera.top - camera.bottom) / camera.zoom;
-    const pixelHeight = host.clientHeight || 1;
     return pixelHeight / Math.max(worldHeight, 1e-6);
   }
   // Perspective: use distance from camera to (0,0,0) as a reasonable proxy for now.
   const distance = camera.position.length();
   const fovRad = (camera.fov * Math.PI) / 180;
   const worldHeight = 2 * Math.tan(fovRad / 2) * Math.max(distance, 1e-6);
-  const pixelHeight = host.clientHeight || 1;
   return pixelHeight / Math.max(worldHeight, 1e-6);
+}
+
+// Normalize a DXF rotation in degrees to (-180, 180].
+export function normalizeRotation(deg: number): number {
+  const wrapped = ((deg % 360) + 360) % 360;
+  return wrapped > 180 ? wrapped - 360 : wrapped;
+}
+
+// True when the rotation, applied to text reading along +X, would make the text
+// appear upside-down to a top-down viewer (90 < rot mod 360 < 270, exclusive).
+export function isUpsideDown(rotationDeg: number): boolean {
+  const wrapped = ((rotationDeg % 360) + 360) % 360;
+  return wrapped > 90 && wrapped < 270;
+}
+
+// Compute the CSS rotation (degrees, CW positive) for a DXF rotation
+// (CCW positive in world space, +Y world maps to -Y screen). Optionally flip
+// 180° to keep the text readable when readableOrientation is true.
+export function cssRotationFor(rotationDeg: number, readableOrientation: boolean): number {
+  let css = -rotationDeg;
+  if (readableOrientation && isUpsideDown(rotationDeg)) {
+    css += 180;
+  }
+  // Normalize -0 to 0 so callers (and tests) get a stable sign.
+  return css === 0 ? 0 : css;
+}
+
+export type ProjectedLabel = {
+  inFrustum: boolean;
+  screenX: number;
+  screenY: number;
+  ndcZ: number;
+};
+
+const projectionScratch = new THREE.Vector3();
+
+export function projectLabel(
+  position: readonly [number, number, number],
+  camera: TextOverlayCamera,
+  width: number,
+  height: number,
+  scratch: THREE.Vector3 = projectionScratch
+): ProjectedLabel {
+  scratch.set(position[0], position[1], position[2]);
+  scratch.project(camera);
+  const inFrustum = scratch.z >= -1 && scratch.z <= 1;
+  return {
+    inFrustum,
+    screenX: (scratch.x + 1) * 0.5 * width,
+    screenY: (1 - scratch.y) * 0.5 * height,
+    ndcZ: scratch.z
+  };
+}
+
+export type DisplayDecision =
+  | { display: false; reason: "layer" | "frustum" | "density" }
+  | { display: true; fontPx: number; clampedUp: boolean };
+
+export function decideDisplay(
+  worldFontPx: number,
+  inFrustum: boolean,
+  layerHidden: boolean,
+  densityMode: LabelDensityMode
+): DisplayDecision {
+  if (densityMode === "off") return { display: false, reason: "density" };
+  if (layerHidden) return { display: false, reason: "layer" };
+  if (!inFrustum) return { display: false, reason: "frustum" };
+  if (densityMode === "auto" && worldFontPx < AUTO_HIDE_BELOW_PX) {
+    return { display: false, reason: "density" };
+  }
+  const clampedUp = worldFontPx < MIN_DISPLAY_PX;
+  const fontPx = Math.max(MIN_DISPLAY_PX, Math.min(worldFontPx, MAX_DISPLAY_PX));
+  return { display: true, fontPx, clampedUp };
 }
 
 export function SceneTextOverlay({
@@ -72,6 +149,8 @@ export function SceneTextOverlay({
   host,
   hiddenLayerIds,
   rafTick,
+  densityMode,
+  readableOrientation,
   onMetrics
 }: {
   items: TextOverlayItem[];
@@ -79,6 +158,8 @@ export function SceneTextOverlay({
   host: HTMLElement | null;
   hiddenLayerIds: Set<string>;
   rafTick: number;
+  densityMode: LabelDensityMode;
+  readableOrientation: boolean;
   onMetrics?: (metrics: TextOverlayMetrics) => void;
 }) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -100,9 +181,11 @@ export function SceneTextOverlay({
         clampedUpCount: 0,
         frustumCulledCount: 0,
         layerHiddenCount: 0,
+        densityHiddenCount: 0,
         pxPerUnit: 0,
         cameraReady,
-        hostReady
+        hostReady,
+        densityMode
       });
       return;
     }
@@ -116,37 +199,29 @@ export function SceneTextOverlay({
     let clampedUpCount = 0;
     let frustumCulledCount = 0;
     let layerHiddenCount = 0;
+    let densityHiddenCount = 0;
     for (const item of items) {
       const el = labelRefs.current.get(item.entityId);
       if (!el) continue;
 
-      if (item.layerId && hiddenLayerIds.has(item.layerId)) {
+      const layerHidden = item.layerId !== undefined && hiddenLayerIds.has(item.layerId);
+      const projected = projectLabel(item.position, camera, width, height, projectVec);
+      const worldFontPx = item.height * pxPerUnit;
+      const decision = decideDisplay(worldFontPx, projected.inFrustum, layerHidden, densityMode);
+
+      if (!decision.display) {
         el.style.display = "none";
-        layerHiddenCount += 1;
+        if (decision.reason === "layer") layerHiddenCount += 1;
+        else if (decision.reason === "frustum") frustumCulledCount += 1;
+        else densityHiddenCount += 1;
         continue;
       }
 
-      const fontPx = item.height * pxPerUnit;
-      // Always render: clamp display size up to MIN_FONT_PX so labels remain
-      // visible at fit-scene zoom (CAD scenes can span 60m, making true world-
-      // scale text sub-pixel). Track how many we clamped up for diagnostics.
-      if (fontPx < MIN_FONT_PX) clampedUpCount += 1;
-      const displayPx = Math.max(MIN_FONT_PX, Math.min(fontPx, MAX_FONT_PX));
-
-      projectVec.set(item.position[0], item.position[1], item.position[2]);
-      projectVec.project(camera);
-      // Cull labels behind/outside the frustum.
-      if (projectVec.z < -1 || projectVec.z > 1) {
-        el.style.display = "none";
-        frustumCulledCount += 1;
-        continue;
-      }
-      const screenX = (projectVec.x + 1) * 0.5 * width;
-      const screenY = (1 - projectVec.y) * 0.5 * height;
-
+      if (decision.clampedUp) clampedUpCount += 1;
+      const cssRotation = cssRotationFor(item.rotationDeg, readableOrientation);
       el.style.display = "";
-      el.style.fontSize = `${displayPx.toFixed(2)}px`;
-      el.style.transform = `translate(${screenX.toFixed(2)}px, ${screenY.toFixed(2)}px) rotate(${(-item.rotationDeg).toFixed(2)}deg)`;
+      el.style.fontSize = `${decision.fontPx.toFixed(2)}px`;
+      el.style.transform = `translate(${projected.screenX.toFixed(2)}px, ${projected.screenY.toFixed(2)}px) rotate(${cssRotation.toFixed(2)}deg)`;
       visibleCount += 1;
     }
 
@@ -157,19 +232,21 @@ export function SceneTextOverlay({
       clampedUpCount,
       frustumCulledCount,
       layerHiddenCount,
+      densityHiddenCount,
       pxPerUnit,
       cameraReady,
-      hostReady
+      hostReady,
+      densityMode
     });
 
     const meta = import.meta as { env?: { DEV?: boolean } };
     if (meta.env?.DEV) {
       // eslint-disable-next-line no-console
       console.debug(
-        `[SceneTextOverlay] items=${items.length} dom=${labelRefs.current.size} visible=${visibleCount} clampedUp=${clampedUpCount} frustumCulled=${frustumCulledCount} layerHidden=${layerHiddenCount} pxPerUnit=${pxPerUnit.toFixed(4)} cameraReady=${cameraReady} hostReady=${hostReady}`
+        `[SceneTextOverlay] items=${items.length} dom=${labelRefs.current.size} visible=${visibleCount} clampedUp=${clampedUpCount} frustumCulled=${frustumCulledCount} layerHidden=${layerHiddenCount} densityHidden=${densityHiddenCount} pxPerUnit=${pxPerUnit.toFixed(4)} mode=${densityMode} readable=${readableOrientation} cameraReady=${cameraReady} hostReady=${hostReady}`
       );
     }
-  }, [items, camera, host, hiddenLayerIds, rafTick, projectVec]);
+  }, [items, camera, host, hiddenLayerIds, rafTick, projectVec, densityMode, readableOrientation]);
 
   return (
     <div ref={overlayRef} className="text-overlay">

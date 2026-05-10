@@ -6,7 +6,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
-import { collectTextItems, SceneTextOverlay, type TextOverlayCamera, type TextOverlayMetrics } from "./SceneTextOverlay";
+import {
+  collectTextItems,
+  SceneTextOverlay,
+  type LabelDensityMode,
+  type TextOverlayCamera,
+  type TextOverlayMetrics
+} from "./SceneTextOverlay";
 
 const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 
@@ -268,7 +274,9 @@ function Viewport({
   hiddenLayerIds,
   fitRequest,
   selectedNodeId,
-  onSelect
+  onSelect,
+  labelDensity,
+  readableOrientation
 }: {
   scenePackage: ScenePackage;
   viewMode: ViewMode;
@@ -276,6 +284,8 @@ function Viewport({
   fitRequest: FitRequest;
   selectedNodeId: string;
   onSelect: (nodeId: string) => void;
+  labelDensity: LabelDensityMode;
+  readableOrientation: boolean;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const recordsRef = useRef<RenderRecord[]>([]);
@@ -517,6 +527,8 @@ function Viewport({
         host={overlayHost}
         hiddenLayerIds={hiddenLayerIds}
         rafTick={rafTick}
+        densityMode={labelDensity}
+        readableOrientation={readableOrientation}
         onMetrics={DEV_MODE ? setOverlayMetrics : undefined}
       />
       {DEV_MODE && overlayMetrics ? (
@@ -527,8 +539,10 @@ function Viewport({
           <span>visible={overlayMetrics.visibleCount}</span>
           <span>clampedUp={overlayMetrics.clampedUpCount}</span>
           <span>frustumCulled={overlayMetrics.frustumCulledCount}</span>
+          <span>densityHidden={overlayMetrics.densityHiddenCount}</span>
           <span>layerHidden={overlayMetrics.layerHiddenCount}</span>
           <span>pxPerUnit={overlayMetrics.pxPerUnit.toFixed(4)}</span>
+          <span>mode={overlayMetrics.densityMode}</span>
           <span>camera={overlayMetrics.cameraReady ? "yes" : "no"}</span>
           <span>host={overlayMetrics.hostReady ? "yes" : "no"}</span>
         </div>
@@ -584,6 +598,8 @@ export function App() {
   const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
   const nodeMap = useMemo(() => nodesById(scenePackage), [scenePackage]);
   const [selectedNodeId, setSelectedNodeId] = useState(scenePackage.scene.rootNodeId);
+  const [labelDensity, setLabelDensity] = useState<LabelDensityMode>("auto");
+  const [readableOrientation, setReadableOrientation] = useState(true);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
   const sceneStats = useMemo(() => computeSceneStats(scenePackage), [scenePackage]);
@@ -695,6 +711,40 @@ export function App() {
             <button onClick={() => requestFit("selected")} type="button">
               Fit selected
             </button>
+            <span className="toolbar-divider" aria-hidden="true" />
+            <span className="toolbar-label">Labels</span>
+            <button
+              className={labelDensity === "auto" ? "active" : ""}
+              onClick={() => setLabelDensity("auto")}
+              title="Hide labels smaller than ~5px (cleaner fit-scene view)"
+              type="button"
+            >
+              Auto
+            </button>
+            <button
+              className={labelDensity === "all" ? "active" : ""}
+              onClick={() => setLabelDensity("all")}
+              title="Show every label, clamping tiny labels up to 2px"
+              type="button"
+            >
+              All
+            </button>
+            <button
+              className={labelDensity === "off" ? "active" : ""}
+              onClick={() => setLabelDensity("off")}
+              title="Hide all text labels"
+              type="button"
+            >
+              Off
+            </button>
+            <button
+              className={readableOrientation ? "active" : ""}
+              onClick={() => setReadableOrientation((current) => !current)}
+              title="Flip upside-down labels so they read left-to-right"
+              type="button"
+            >
+              Readable
+            </button>
           </div>
         </div>
         <Viewport
@@ -704,6 +754,8 @@ export function App() {
           selectedNodeId={selectedNodeId}
           viewMode={viewMode}
           onSelect={setSelectedNodeId}
+          labelDensity={labelDensity}
+          readableOrientation={readableOrientation}
         />
       </section>
 
