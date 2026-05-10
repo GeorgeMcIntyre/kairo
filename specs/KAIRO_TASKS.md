@@ -13,15 +13,13 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## NEXT
 
-### ISSUE-002: Selection and inspection usability (P0)
+### ISSUE-003: Text placement and alignment correctness (P0)
 
-**Goal:** Click visible entity → see layer/type/handle/source chain → fit selected. George needs practical review flow.
+**Goal:** Improve TEXT/MTEXT placement accuracy — horizontal alignment (group 72), vertical alignment (group 73), MTEXT attachment point (group 71).
 
-**Allowed:** Improve picking tolerance, hover highlight, selection panel details, fit-selected, isolate-by-layer.
+**Allowed:** Schema-safe fields only if proven needed, overlay placement tests.
 
-**Not allowed:** Redesign viewer, change importer, touch GLB/JT/export.
-
-**Verification:** Manual QA at `http://localhost:5173/?scene=scott-dxf2013-import`
+**Not allowed:** Full rich MTEXT formatting, viewer redesign, break existing display, touch GLB/JT/export.
 
 ---
 
@@ -106,6 +104,22 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-002: Selection and inspection usability ✅ DONE
+
+**Completed:** 2026-05-10
+
+- **Dynamic picking tolerance**: raycaster threshold now 6 screen pixels (ortho and perspective formulas) — usable at any zoom level on the 300 m facility.
+- **Hover highlight**: light-blue (#7ec8e3) highlight + pointer cursor on hover; latch optimized so `applyHighlight` only called on change; `hoveredNodeIdRef` shared between build effect and selection effect.
+- **Fit main**: `computeRobustBounds` uses P95 of entity distances from the median centroid (same math as ISSUE-001 audit). Viewer now opens framing the facility layout, not the full extent including A0 border at DXF origin. "Fit main" button added to toolbar.
+- **Properties panel**: Layer name + ID (when layerId present), Source ref, Entity type, Entity ID, Note, Kind, Handle/Insert/Block/Child (conditional on sourceRef kind). Geometry refs row removed.
+- **Core utilities**: `Vec3`, `computeEntityCentroid`, `computeSceneCentroid`, `flattenCurveEntities`, `parseSourceRef`, `sourceEntryForNode` moved/added to `@kairo/core`. CLI re-exports from core. 10 new core tests.
+- **Dark theme**: Full dark UI (navy/slate palette). Three.js scene background and grid also dark.
+- **Camera angle fix**: Perspective initial position changed to balanced isometric (0.7d, -0.7d, 0.7d).
+
+Scott DXF2013: 188/188 tests pass. Viewer opens on facility layout, not title block.
+
+---
 
 ### ISSUE-001: Scott DXF outlier / floater audit ✅ DONE
 

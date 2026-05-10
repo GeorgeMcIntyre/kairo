@@ -1,6 +1,13 @@
-import type { DrawingEntity, GeometryDocument } from "@kairo/schema";
+import {
+  computeEntityCentroid,
+  computeSceneCentroid,
+  flattenCurveEntities,
+  type Vec3
+} from "@kairo/core";
+import type { DrawingEntity } from "@kairo/schema";
 
-export type Vec3 = readonly [number, number, number];
+export type { Vec3 };
+export { computeEntityCentroid, computeSceneCentroid, flattenCurveEntities };
 
 export type OutlierResult = {
   rank: number;
@@ -46,57 +53,11 @@ export function computeOutlierBlockSummary(outliers: readonly OutlierResult[]): 
   return [...map.values()].sort((a, b) => b.count - a.count);
 }
 
-export function computeEntityCentroid(entity: DrawingEntity): Vec3 {
-  switch (entity.type) {
-    case "line":
-      return [
-        (entity.start[0] + entity.end[0]) / 2,
-        (entity.start[1] + entity.end[1]) / 2,
-        (entity.start[2] + entity.end[2]) / 2
-      ];
-    case "polyline": {
-      let minX = Infinity;
-      let minY = Infinity;
-      let minZ = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      let maxZ = -Infinity;
-      for (const p of entity.points) {
-        if (p[0] < minX) minX = p[0];
-        if (p[1] < minY) minY = p[1];
-        if (p[2] < minZ) minZ = p[2];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] > maxY) maxY = p[1];
-        if (p[2] > maxZ) maxZ = p[2];
-      }
-      return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
-    }
-    case "circle":
-    case "arc":
-      return [entity.center[0], entity.center[1], entity.center[2]];
-    case "text":
-      return [entity.position[0], entity.position[1], entity.position[2]];
-  }
-}
-
-function median(values: readonly number[]): number {
+function medianOf(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-export function computeSceneCentroid(centroids: readonly Vec3[]): Vec3 {
-  if (centroids.length === 0) return [0, 0, 0];
-  const xs: number[] = [];
-  const ys: number[] = [];
-  const zs: number[] = [];
-  for (const c of centroids) {
-    xs.push(c[0]);
-    ys.push(c[1]);
-    zs.push(c[2]);
-  }
-  return [median(xs), median(ys), median(zs)];
 }
 
 function distance3(a: Vec3, b: Vec3): number {
@@ -104,20 +65,6 @@ function distance3(a: Vec3, b: Vec3): number {
   const dy = a[1] - b[1];
   const dz = a[2] - b[2];
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
-
-export function flattenCurveEntities(documents: readonly GeometryDocument[]): DrawingEntity[] {
-  const result: DrawingEntity[] = [];
-  for (const doc of documents) {
-    for (const geom of doc.geometries) {
-      if (geom.kind === "curve-set") {
-        for (const entity of geom.entities) {
-          result.push(entity);
-        }
-      }
-    }
-  }
-  return result;
 }
 
 export function findOutliers(
@@ -131,7 +78,7 @@ export function findOutliers(
   const sceneCentroid = computeSceneCentroid(centroids);
 
   const distances = centroids.map((c) => distance3(c, sceneCentroid));
-  const medianDistance = median(distances);
+  const medianDistance = medianOf(distances);
   const threshold = medianDistance * multiplier;
 
   const outliers: Array<{ entity: DrawingEntity; centroid: Vec3; distance: number }> = [];

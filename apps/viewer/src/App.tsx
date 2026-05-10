@@ -1,4 +1,12 @@
-import { geometryById, nodesById, sourcePathForNode } from "@kairo/core";
+import {
+  computeEntityCentroid,
+  computeSceneCentroid,
+  flattenCurveEntities,
+  geometryById,
+  nodesById,
+  parseSourceRef,
+  sourceEntryForNode
+} from "@kairo/core";
 import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +33,7 @@ type RenderRecord = {
 };
 
 type ViewMode = "top2d" | "perspective";
-type FitTarget = "scene" | "selected";
+type FitTarget = "scene" | "main" | "selected";
 
 type FitRequest = {
   target: FitTarget;
@@ -33,6 +41,7 @@ type FitRequest = {
 };
 
 const selectedColor = new THREE.Color("#ffb020");
+const hoverColor = new THREE.Color("#7ec8e3");
 const matrixFromArray = (values: number[]) => new THREE.Matrix4().fromArray(values);
 
 function layerColor(scenePackage: ScenePackage, layerId?: string): THREE.Color {
@@ -194,11 +203,12 @@ function makeCurveSet(scenePackage: ScenePackage, geometry: Extract<Geometry, { 
   return lineSegments;
 }
 
-function applyHighlight(records: RenderRecord[], selectedNodeId: string) {
+function applyHighlight(records: RenderRecord[], selectedNodeId: string, hoveredNodeId?: string) {
   for (const record of records) {
     const selected = record.nodeId === selectedNodeId;
-    const color = selected ? selectedColor : record.baseColor;
-    record.object.renderOrder = selected ? 20 : 1;
+    const hovered = !selected && record.nodeId === hoveredNodeId;
+    const color = selected ? selectedColor : hovered ? hoverColor : record.baseColor;
+    record.object.renderOrder = selected ? 20 : hovered ? 10 : 1;
     const materials = Array.isArray(record.material) ? record.material : [record.material];
     for (const material of materials) {
       if ("color" in material && material.color instanceof THREE.Color) {
@@ -259,13 +269,47 @@ function fitCameraToBounds(
     const distance = maxDimension * 1.45;
     camera.near = Math.max(maxDimension / 100000, 0.1);
     camera.far = maxDimension * 20;
-    camera.position.set(center.x + distance * 0.7, center.y - distance * 1.05, center.z + distance * 0.7);
+    camera.position.set(center.x + distance * 0.7, center.y - distance * 0.7, center.z + distance * 0.7);
   }
 
   camera.lookAt(center);
   camera.updateProjectionMatrix();
   controls.target.copy(center);
   controls.update();
+}
+
+// Compute robust scene bounds using P95 of entity distances from the median centroid.
+// Excludes outlier geometry (A0 border at origin, far-field equipment) from the initial view.
+function computeRobustBounds(scenePackage: ScenePackage): THREE.Box3 {
+  const entities = flattenCurveEntities(scenePackage.geometry);
+  if (entities.length === 0) return new THREE.Box3();
+
+  const centroids = entities.map(computeEntityCentroid);
+  const [cx, cy] = computeSceneCentroid(centroids);
+
+  const distances = centroids.map((c) => Math.hypot(c[0] - cx, c[1] - cy));
+  const sortedDist = [...distances].sort((a, b) => a - b);
+  const p95 = sortedDist[Math.min(Math.floor(0.95 * sortedDist.length), sortedDist.length - 1)];
+
+  const box = new THREE.Box3();
+  for (let i = 0; i < entities.length; i++) {
+    if (distances[i] > p95) continue;
+    const entity = entities[i];
+    if (entity.type === "line") {
+      box.expandByPoint(new THREE.Vector3(entity.start[0], entity.start[1], entity.start[2]));
+      box.expandByPoint(new THREE.Vector3(entity.end[0], entity.end[1], entity.end[2]));
+    } else if (entity.type === "polyline") {
+      for (const p of entity.points) box.expandByPoint(new THREE.Vector3(p[0], p[1], p[2]));
+    } else if (entity.type === "circle" || entity.type === "arc") {
+      const [ex, ey, ez] = entity.center;
+      const r = entity.radius;
+      box.expandByPoint(new THREE.Vector3(ex - r, ey - r, ez));
+      box.expandByPoint(new THREE.Vector3(ex + r, ey + r, ez));
+    } else if (entity.type === "text") {
+      box.expandByPoint(new THREE.Vector3(entity.position[0], entity.position[1], entity.position[2]));
+    }
+  }
+  return box;
 }
 
 function Viewport({
@@ -292,6 +336,8 @@ function Viewport({
   const cameraRef = useRef<THREE.OrthographicCamera | THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const sceneBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
+  const mainBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
+  const hoveredNodeIdRef = useRef("");
   const [overlayCamera, setOverlayCamera] = useState<TextOverlayCamera | null>(null);
   const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
   const [rafTick, setRafTick] = useState(0);
@@ -313,8 +359,10 @@ function Viewport({
       return;
     }
 
+    hoveredNodeIdRef.current = "";
+
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#f6f8fa");
+    scene.background = new THREE.Color("#111927");
 
     const camera =
       viewMode === "top2d"
@@ -353,7 +401,7 @@ function Viewport({
     key.position.set(90, -70, 130);
     scene.add(ambient, key);
 
-    const grid = new THREE.GridHelper(160, 16, "#c8d1d8", "#e1e6ea");
+    const grid = new THREE.GridHelper(160, 16, "#2a3e52", "#1a2d3e");
     grid.rotation.x = Math.PI / 2;
     scene.add(grid);
 
@@ -397,7 +445,12 @@ function Viewport({
 
     const sceneBounds = boundsForRecords(records, { hiddenLayerIds: hiddenLayerIdsRef.current });
     sceneBoundsRef.current = sceneBounds;
-    fitCameraToBounds(camera, controls, sceneBounds, host);
+
+    const mainBounds = computeRobustBounds(scenePackage);
+    mainBoundsRef.current = mainBounds;
+
+    const initialFitBounds = !mainBounds.isEmpty() ? mainBounds : sceneBounds;
+    fitCameraToBounds(camera, controls, initialFitBounds, host);
 
     if (!sceneBounds.isEmpty()) {
       const center = sceneBounds.getCenter(new THREE.Vector3());
@@ -408,41 +461,67 @@ function Viewport({
     }
 
     const raycaster = new THREE.Raycaster();
-    raycaster.params.Line.threshold = 4;
     const pointer = new THREE.Vector2();
 
-    const onPointerDown = (event: PointerEvent) => {
-      const bounds = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
-      pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-      const intersections = raycaster.intersectObjects(
-        records.flatMap((record) => [record.object, ...record.object.children]),
-        true
-      );
+    const setDynamicThreshold = () => {
+      const pixelTolerance = 6;
+      if (camera instanceof THREE.OrthographicCamera) {
+        raycaster.params.Line.threshold =
+          ((camera.right - camera.left) / renderer.domElement.width) * pixelTolerance;
+      } else {
+        const dist = camera.position.distanceTo(controls.target);
+        raycaster.params.Line.threshold =
+          ((dist * Math.tan(THREE.MathUtils.degToRad((camera as THREE.PerspectiveCamera).fov / 2)) * 2) /
+            renderer.domElement.height) *
+          pixelTolerance;
+      }
+    };
+
+    const resolveHitNodeId = (intersections: THREE.Intersection[]): string => {
       const hit = intersections.find((intersection) => {
         let current: THREE.Object3D | null = intersection.object;
         while (current) {
-          if (current.userData.nodeId && nodeMap.has(current.userData.nodeId)) {
-            return true;
-          }
+          if (current.userData.nodeId && nodeMap.has(current.userData.nodeId)) return true;
           current = current.parent;
         }
         return false;
       });
+      if (!hit) return "";
+      let current: THREE.Object3D | null = hit.object;
+      while (current && !current.userData.nodeId) current = current.parent;
+      return (current?.userData.nodeId as string) ?? "";
+    };
 
-      if (hit) {
-        let current: THREE.Object3D | null = hit.object;
-        while (current && !current.userData.nodeId) {
-          current = current.parent;
-        }
-        if (current?.userData.nodeId) {
-          onSelectRef.current(current.userData.nodeId);
-        }
+    const castRay = (event: PointerEvent) => {
+      const bounds = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+      pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+      setDynamicThreshold();
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(
+        records.flatMap((record) => [record.object, ...record.object.children]),
+        true
+      );
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      const nodeId = resolveHitNodeId(castRay(event));
+      if (nodeId) {
+        onSelectRef.current(nodeId);
+      }
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      const nodeId = resolveHitNodeId(castRay(event));
+      if (nodeId !== hoveredNodeIdRef.current) {
+        hoveredNodeIdRef.current = nodeId;
+        renderer.domElement.style.cursor = nodeId ? "pointer" : "default";
+        applyHighlight(records, selectedNodeIdRef.current, hoveredNodeIdRef.current);
       }
     };
 
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointermove", onPointerMove);
 
     let frame = 0;
     const animate = () => {
@@ -468,6 +547,7 @@ function Viewport({
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointermove", onPointerMove);
       controls.removeEventListener("change", onCameraChange);
       for (const record of records) {
         record.object.traverse((child) => {
@@ -509,6 +589,8 @@ function Viewport({
             hiddenLayerIds: hiddenLayerIdsRef.current,
             selectedNodeId: selectedNodeIdRef.current
           })
+        : fitRequest.target === "main"
+        ? mainBoundsRef.current
         : sceneBoundsRef.current;
     fitCameraToBounds(camera, controls, bounds.isEmpty() ? sceneBoundsRef.current : bounds, host);
     setRafTick((tick) => tick + 1);
@@ -516,7 +598,7 @@ function Viewport({
 
   // Selection highlight: update material colors without rebuilding geometry.
   useEffect(() => {
-    applyHighlight(recordsRef.current, selectedNodeId);
+    applyHighlight(recordsRef.current, selectedNodeId, hoveredNodeIdRef.current);
   }, [selectedNodeId]);
 
   return (
@@ -594,7 +676,7 @@ export function App() {
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<ViewMode>("perspective");
-  const [fitRequest, setFitRequest] = useState<FitRequest>({ target: "scene", serial: 0 });
+  const [fitRequest, setFitRequest] = useState<FitRequest>({ target: "main", serial: 0 });
   const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
   const nodeMap = useMemo(() => nodesById(scenePackage), [scenePackage]);
   const [selectedNodeId, setSelectedNodeId] = useState(scenePackage.scene.rootNodeId);
@@ -613,8 +695,11 @@ export function App() {
     [scenePackage]
   );
   const rootNode = nodeMap.get(scenePackage.scene.rootNodeId)!;
-  const sourcePath = sourcePathForNode(scenePackage, selectedNode);
   const selectedLayerId = selectedNode.layerId;
+
+  const sourceEntry = sourceEntryForNode(scenePackage, selectedNode);
+  const parsedRef = selectedNode.sourceRef ? parseSourceRef(selectedNode.sourceRef) : undefined;
+  const selectedLayerName = scenePackage.layers.layers.find((l) => l.id === selectedNode.layerId)?.name;
 
   const requestFit = (target: FitTarget) => {
     setFitRequest((current) => ({ target, serial: current.serial + 1 }));
@@ -648,7 +733,7 @@ export function App() {
             setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
             setHiddenLayerIds(new Set());
             setViewMode(loadedScenePackage.manifest.axisSystem.up === "Z" ? "top2d" : "perspective");
-            setFitRequest((current) => ({ target: "scene", serial: current.serial + 1 }));
+            setFitRequest((current) => ({ target: "main", serial: current.serial + 1 }));
             setSceneStatus(`Loaded ${request.sceneName}`);
             setSceneLoadError(undefined);
           }
@@ -707,6 +792,9 @@ export function App() {
             </button>
             <button onClick={() => requestFit("scene")} type="button">
               Fit scene
+            </button>
+            <button onClick={() => requestFit("main")} type="button">
+              Fit main
             </button>
             <button onClick={() => requestFit("selected")} type="button">
               Fit selected
@@ -769,12 +857,58 @@ export function App() {
           <dd>{selectedNode.displayName}</dd>
           <dt>ID</dt>
           <dd>{selectedNode.id}</dd>
-          <dt>Layer</dt>
-          <dd>{selectedNode.layerId ?? "None"}</dd>
-          <dt>Geometry</dt>
-          <dd>{selectedNode.geometryRefs?.join(", ") ?? "None"}</dd>
-          <dt>Source Path</dt>
-          <dd>{sourcePath ?? "None"}</dd>
+          {selectedNode.layerId ? (
+            <>
+              <dt>Layer</dt>
+              <dd>{selectedLayerName ? `${selectedLayerName} (${selectedNode.layerId})` : selectedNode.layerId}</dd>
+            </>
+          ) : null}
+          {selectedNode.sourceRef ? (
+            <>
+              <dt>Source ref</dt>
+              <dd>{selectedNode.sourceRef}</dd>
+            </>
+          ) : null}
+          {sourceEntry?.entityType ? (
+            <>
+              <dt>Entity type</dt>
+              <dd>{sourceEntry.entityType}</dd>
+            </>
+          ) : null}
+          {sourceEntry?.entityId ? (
+            <>
+              <dt>Entity ID</dt>
+              <dd>{sourceEntry.entityId}</dd>
+            </>
+          ) : null}
+          {sourceEntry?.note ? (
+            <>
+              <dt>Note</dt>
+              <dd>{sourceEntry.note}</dd>
+            </>
+          ) : null}
+          {parsedRef && parsedRef.kind !== "unknown" && parsedRef.kind !== "file" ? (
+            <>
+              <dt>Kind</dt>
+              <dd>{parsedRef.kind}</dd>
+            </>
+          ) : null}
+          {parsedRef && (parsedRef.kind === "direct" || parsedRef.kind === "mtext") ? (
+            <>
+              <dt>Handle</dt>
+              <dd>{parsedRef.handle}</dd>
+            </>
+          ) : null}
+          {parsedRef && parsedRef.kind === "block-child" ? (
+            <>
+              <dt>Insert</dt>
+              <dd>{parsedRef.insertHandle}</dd>
+              <dt>Block</dt>
+              <dd>{parsedRef.blockName}</dd>
+              <dt>Child</dt>
+              <dd>{parsedRef.childHandle}</dd>
+            </>
+          ) : null}
         </dl>
         <div className="metadata">
           <h2>Metadata</h2>
