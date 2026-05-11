@@ -8,6 +8,30 @@ import layers from "../../../examples/example-scene/layers.json";
 import materials from "../../../examples/example-scene/materials.json";
 import sourceMap from "../../../examples/example-scene/source-map.json";
 
+export const PUBLIC_SCENE_ASSETS_UNAVAILABLE_MESSAGE =
+  "Demo scene assets are not included in this slim Cloudflare preview. Use Open DXF to load a local DXF.";
+
+export class PublicSceneAssetLoadError extends Error {
+  readonly code = "PUBLIC_SCENE_ASSETS_UNAVAILABLE";
+
+  constructor(
+    readonly url: string,
+    reason: string
+  ) {
+    super(`Public scene asset unavailable at ${url}: ${reason}`);
+    this.name = "PublicSceneAssetLoadError";
+  }
+}
+
+export function isPublicSceneAssetLoadError(error: unknown): error is PublicSceneAssetLoadError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "PUBLIC_SCENE_ASSETS_UNAVAILABLE"
+  );
+}
+
 export type ViewerSceneRequest =
   | {
       kind: "bundled";
@@ -57,9 +81,15 @@ export function resolveViewerSceneRequest(search: string): ViewerSceneRequest {
 async function fetchJson(fetcher: FetchLike, url: string) {
   const response = await fetcher(url);
   if (!response.ok) {
-    throw new Error(`Failed to load ${url}: HTTP ${response.status}.`);
+    throw new PublicSceneAssetLoadError(url, `HTTP ${response.status}`);
   }
-  return response.json();
+
+  try {
+    return await response.json();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new PublicSceneAssetLoadError(url, `invalid JSON (${reason})`);
+  }
 }
 
 function geometryRefsFromScene(sceneDocument: SceneDocument) {
