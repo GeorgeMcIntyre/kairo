@@ -15,7 +15,14 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import viewerPackage from "../package.json";
 import { createCurveBatchData, pickEntryForIntersectionIndex, type CurveSegmentPickEntry, type PickableCurveEntity } from "./curveBatch";
-import { loadDxfFileScenePackage, loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+import {
+  PUBLIC_SCENE_ASSETS_UNAVAILABLE_MESSAGE,
+  isPublicSceneAssetLoadError,
+  loadDxfFileScenePackage,
+  loadPublicScenePackage,
+  resolveViewerSceneRequest,
+  sampleScenePackage
+} from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics } from "./semantic/layoutSemantics";
@@ -971,7 +978,9 @@ export function App() {
       setActiveSceneName(undefined);
       setSceneStatus("Demo layout failed to load");
       setSceneLoadError(
-        error instanceof Error
+        isPublicSceneAssetLoadError(error)
+          ? PUBLIC_SCENE_ASSETS_UNAVAILABLE_MESSAGE
+          : error instanceof Error
           ? `Could not load ${sceneName}. ${error.message}`
           : `Could not load ${sceneName}. ${String(error)}`
       );
@@ -1305,8 +1314,8 @@ export function App() {
         <section className="scene-error" role="alert">
           <strong>Scene could not be loaded</strong>
           <span>{sceneLoadError}</span>
-          <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
-            Retry Demo Layout
+          <button onClick={openDxfFilePicker} type="button">
+            Open DXF
           </button>
         </section>
       ) : null}

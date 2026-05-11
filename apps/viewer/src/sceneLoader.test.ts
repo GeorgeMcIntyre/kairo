@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { loadDxfFileScenePackage, loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+import {
+  isPublicSceneAssetLoadError,
+  loadDxfFileScenePackage,
+  loadPublicScenePackage,
+  resolveViewerSceneRequest,
+  sampleScenePackage
+} from "./sceneLoader";
 
 const oneLineDxf = `0
 SECTION
@@ -104,6 +110,28 @@ describe("viewer scene loader", () => {
     expect(loaded.geometry.map((document) => document.geometries[0].id)).toEqual(["geom-bracket-body", "geom-reference-outline"]);
     expect(requestedUrls).toContain("/scenes/sample/geometry/geom-bracket-body.json");
     expect(requestedUrls).toContain("/scenes/sample/geometry/geom-reference-outline.json");
+  });
+
+  it("classifies missing public scene assets as slim-preview scene asset errors", async () => {
+    await expect(
+      loadPublicScenePackage("/scenes/missing", async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({})
+      }))
+    ).rejects.toSatisfy(isPublicSceneAssetLoadError);
+  });
+
+  it("classifies HTML fallback responses as slim-preview scene asset errors", async () => {
+    await expect(
+      loadPublicScenePackage("/scenes/missing", async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<', \"<!doctype\" is not valid JSON");
+        }
+      }))
+    ).rejects.toSatisfy(isPublicSceneAssetLoadError);
   });
 
   it("loads a local DXF file through the browser importer", async () => {
