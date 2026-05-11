@@ -1,6 +1,14 @@
 import { computeEntityBounds, computeEntityCentroid, type Bounds3, type RobustSceneBounds, type Vec3 } from "@kairo/core";
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { parseDeviceText, type DeviceDictionaryMatch, type DeviceKind } from "./deviceDictionary";
+import {
+  associateLabelToGeometry,
+  buildSemanticGeometryGroups,
+  type DeviceGeometryAssociationCandidate,
+  type DeviceGeometryAssociationStatus,
+  type SemanticGeometryGroup,
+  type SemanticGeometryGroupSource
+} from "./semanticDevices";
 
 export type SemanticTextSourceKind = "TEXT" | "MTEXT" | "ATTDEF";
 
@@ -50,13 +58,21 @@ export type DeviceSemantic = {
   layerId?: string;
   color?: DrawingEntity["color"];
   bounds: Bounds3;
+  centroid: Vec3;
   sourceTextEntityIds: string[];
   nearbyEntityIds: string[];
+  linkedEntityIds: string[];
+  geometryGroupId?: string;
+  geometryGroupSource?: SemanticGeometryGroupSource;
   stationId?: string;
   stationAssociationMethod: DeviceStationAssociationMethod;
   tagSuffix?: string;
   confidence: number;
   evidence: string[];
+  associationStatus: DeviceGeometryAssociationStatus;
+  associationConfidence: number;
+  associationReason: string[];
+  associationCandidates: DeviceGeometryAssociationCandidate[];
 };
 
 export type DeviceCandidate = {
@@ -75,6 +91,7 @@ export type StationSemantic = StationAnchor & {
 export type LayoutSemantics = {
   textEntities: SemanticTextEntity[];
   mergedTextLabels: SemanticTextLabel[];
+  geometryGroups: SemanticGeometryGroup[];
   stations: StationSemantic[];
   devices: DeviceSemantic[];
   unknownTextEntities: SemanticTextEntity[];
@@ -93,6 +110,8 @@ export type LayoutSemanticOptions = {
   stationGroupingRadiusY?: number;
   deviceGroupingRadiusX?: number;
   deviceGroupingRadiusY?: number;
+  deviceAssociationRadius?: number;
+  geometryClusterCellSize?: number;
   stationAssociationRadius?: number;
   outlierEntityIds?: ReadonlySet<string>;
 };
@@ -529,42 +548,51 @@ function stationAssociationFor(
   return { stationId: nearest.station.stationId, method: "nearest-station", confidenceBoost };
 }
 
-function nearbyRecordsForLabel(
-  label: SemanticTextLabel,
-  records: readonly EntityRecord[],
-  options: LayoutSemanticOptions
-): EntityRecord[] {
-  const radiusX = options.deviceGroupingRadiusX ?? 1800;
-  const radiusY = options.deviceGroupingRadiusY ?? 1200;
-  return records.filter((record) => {
-    const dx = Math.abs(record.centroid[0] - label.position[0]);
-    const dy = Math.abs(record.centroid[1] - label.position[1]);
-    return dx <= radiusX && dy <= radiusY;
-  });
+function deviceBoundsFromAssociation(label: SemanticTextLabel, associationBounds?: Bounds3): Bounds3 {
+  if (!associationBounds) return label.bounds;
+  return mergeBounds([label.bounds, associationBounds]);
 }
 
-function deviceBoundsFor(label: SemanticTextLabel, records: readonly EntityRecord[]): Bounds3 {
-  if (records.length === 0) return label.bounds;
-  return mergeBounds([label.bounds, ...records.map((record) => record.bounds)]);
+function semanticIdPart(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "none";
+}
+
+function semanticDeviceId(label: SemanticTextLabel, kind: DeviceKind, fallbackIndex: number): string {
+  const sourceIds = label.sourceTextEntityIds.map(semanticIdPart).filter(Boolean).sort();
+  if (sourceIds.length > 0) return `semantic-device-${semanticIdPart(kind)}-${sourceIds.join("_")}`;
+  return `semantic-device-${semanticIdPart(kind)}-${fallbackIndex}`;
 }
 
 export function buildDeviceSemantics(
   labels: readonly SemanticTextLabel[],
   stations: readonly StationAnchor[],
-  records: readonly EntityRecord[],
+  geometryGroups: readonly SemanticGeometryGroup[],
   options: LayoutSemanticOptions = {}
 ): DeviceSemantic[] {
   const devices: DeviceSemantic[] = [];
   for (const label of labels) {
     const parsed = parseDeviceText(label.normalizedText);
     if (!parsed) continue;
-    const nearbyRecords = nearbyRecordsForLabel(label, records, options);
+    const geometryAssociation = associateLabelToGeometry(label, geometryGroups, parsed, options);
+    const linkedGroup = geometryAssociation.status === "linked" ? geometryAssociation.group : undefined;
     const association = stationAssociationFor(label, stations, options, parsed);
-    const nearbyBoost = Math.min(0.08, nearbyRecords.length / 80);
-    const confidence = Math.max(0.1, Math.min(0.98, parsed.confidence + association.confidenceBoost + nearbyBoost));
+    const associatedEntityCount = linkedGroup?.entityIds.length ?? 0;
+    const nearbyBoost = Math.min(0.08, associatedEntityCount / 80);
+    const geometryBoost =
+      geometryAssociation.status === "linked"
+        ? Math.min(0.08, geometryAssociation.confidence * 0.08)
+        : geometryAssociation.status === "ambiguous"
+        ? -0.05
+        : -0.1;
+    const confidence = Math.max(
+      0.1,
+      Math.min(0.98, parsed.confidence + association.confidenceBoost + nearbyBoost + geometryBoost)
+    );
     const deviceNumber = devices.length + 1;
+    const linkedEntityIds = linkedGroup?.entityIds ?? [];
+    const nearbyEntityIds = linkedEntityIds;
     devices.push({
-      id: `device-${deviceNumber}-${parsed.kind}`,
+      id: semanticDeviceId(label, parsed.kind, deviceNumber),
       kind: parsed.kind,
       labelText: label.text,
       normalizedText: label.normalizedText,
@@ -573,14 +601,22 @@ export function buildDeviceSemantics(
       height: label.height,
       layerId: label.layerId,
       color: label.color,
-      bounds: deviceBoundsFor(label, nearbyRecords),
+      bounds: linkedGroup ? deviceBoundsFromAssociation(label, linkedGroup.bounds) : label.bounds,
+      centroid: linkedGroup?.centroid ?? label.position,
       sourceTextEntityIds: label.sourceTextEntityIds,
-      nearbyEntityIds: nearbyRecords.map((record) => record.entity.id),
+      nearbyEntityIds,
+      linkedEntityIds,
+      geometryGroupId: linkedGroup?.id,
+      geometryGroupSource: linkedGroup?.source,
       stationId: association.stationId,
       stationAssociationMethod: association.method,
       tagSuffix: parsed.tagSuffix,
       confidence,
-      evidence: parsed.evidence
+      evidence: [...parsed.evidence, ...geometryAssociation.reason],
+      associationStatus: geometryAssociation.status,
+      associationConfidence: geometryAssociation.confidence,
+      associationReason: geometryAssociation.reason,
+      associationCandidates: geometryAssociation.candidates
     });
   }
   return devices;
@@ -596,9 +632,10 @@ export function computeLayoutSemantics(
   const stationTextEntityIds = new Set(stations.flatMap((station) => station.sourceTextEntityIds));
   const outlierEntityIds = options.outlierEntityIds ?? (robustBounds ? new Set(robustBounds.outlierEntityIds) : undefined);
   const records = entityRecords(scenePackage, outlierEntityIds);
+  const geometryGroups = buildSemanticGeometryGroups(scenePackage, { ...options, outlierEntityIds });
   const grouped = groupNearbyEntities(stations, records, options);
   const mergedTextLabels = mergeDeviceTextLabels(textEntities, stationTextEntityIds, options);
-  const devices = buildDeviceSemantics(mergedTextLabels, stations, records, options);
+  const devices = buildDeviceSemantics(mergedTextLabels, stations, geometryGroups, options);
   const deviceTextEntityIds = new Set(devices.flatMap((device) => device.sourceTextEntityIds));
   const devicesByStationId = new Map<string, DeviceSemantic[]>();
 
@@ -612,6 +649,7 @@ export function computeLayoutSemantics(
   return {
     textEntities,
     mergedTextLabels,
+    geometryGroups,
     devices,
     unknownTextEntities: textEntities.filter(
       (text) => !stationTextEntityIds.has(text.entityId) && !deviceTextEntityIds.has(text.entityId)

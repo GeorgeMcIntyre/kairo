@@ -538,6 +538,16 @@ button:hover {
   stroke-width: 2;
 }
 
+.semantic-association-lines line.ambiguous {
+  stroke: rgba(255, 202, 87, 0.58);
+  stroke-dasharray: 2 5;
+}
+
+.semantic-association-lines line.unlinked {
+  stroke: rgba(230, 105, 92, 0.54);
+  stroke-dasharray: 1 6;
+}
+
 .semantic-device-candidate-bounds rect {
   fill: rgba(47, 151, 222, 0.08);
   stroke: rgba(79, 190, 255, 0.54);
@@ -554,6 +564,7 @@ button:hover {
 }
 
 .semantic-station-markers g,
+.semantic-device-label-markers g,
 .semantic-unknown-labels circle {
   cursor: pointer;
   pointer-events: auto;
@@ -569,6 +580,26 @@ button:hover {
   fill: #fff2a6;
   stroke: #f4a51c;
   stroke-width: 3;
+}
+
+.semantic-device-label-markers rect {
+  fill: #5ac8fa;
+  stroke: #111927;
+  stroke-width: 1.5;
+}
+
+.semantic-device-label-markers g.ambiguous rect {
+  fill: #ffc857;
+}
+
+.semantic-device-label-markers g.unlinked rect {
+  fill: #e6695c;
+}
+
+.semantic-device-label-markers g.selected rect {
+  fill: #fff2a6;
+  stroke: #f4a51c;
+  stroke-width: 2.5;
 }
 
 .semantic-unknown-labels circle {
@@ -758,6 +789,34 @@ button:hover {
   border-bottom: 1px solid #29344a;
 }
 
+.semantic-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #29344a;
+}
+
+.semantic-summary-grid span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #29344a;
+  border-radius: 4px;
+  background: #111927;
+  color: #6a8499;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.semantic-summary-grid strong {
+  color: #f4f8fc;
+  font-size: 17px;
+  line-height: 1;
+}
+
 .semantic-filter-grid label {
   display: grid;
   gap: 5px;
@@ -799,6 +858,7 @@ button:hover {
 
 .semantic-panel-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid #29344a;
@@ -913,6 +973,38 @@ button:hover {
   color: #8aa2b6;
   font-size: 11px;
   overflow-wrap: anywhere;
+}
+
+.semantic-override-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.semantic-override-controls label {
+  display: grid;
+  gap: 4px;
+  color: #6a8499;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.semantic-override-controls select {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid #34445c;
+  border-radius: 4px;
+  background: #111927;
+  color: #c9d4df;
+  font: inherit;
+  font-size: 12px;
+}
+
+.semantic-override-controls button {
+  min-height: 28px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .diagnostics {
@@ -1099,6 +1191,7 @@ button:hover {
   }
 
   .semantic-filter-grid,
+  .semantic-summary-grid,
   .semantic-outlier-grid {
     grid-template-columns: 1fr;
   }

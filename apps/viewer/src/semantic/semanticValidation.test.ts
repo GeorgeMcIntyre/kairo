@@ -44,6 +44,7 @@ function semanticsFixture(): LayoutSemantics {
       }
     ],
     mergedTextLabels: [],
+    geometryGroups: [],
     unknownTextEntities: [
       {
         entityId: "text-unknown",
@@ -66,12 +67,20 @@ function semanticsFixture(): LayoutSemantics {
         rotationDeg: 0,
         height: 100,
         bounds: { min: [450, -50, 0], max: [800, 250, 0] },
+        centroid: [625, 100, 0],
         sourceTextEntityIds: ["text-device"],
         nearbyEntityIds: ["geom-controller"],
+        linkedEntityIds: ["geom-controller"],
+        geometryGroupId: "group-controller",
+        geometryGroupSource: "cluster",
         stationId: "7B-010L",
         stationAssociationMethod: "nearest-station",
         confidence: 0.92,
-        evidence: ["ROBOT CONTROLLER"]
+        evidence: ["ROBOT CONTROLLER"],
+        associationStatus: "linked",
+        associationConfidence: 0.86,
+        associationReason: ["ROBOT CONTROLLER", "distance to group 0 mm"],
+        associationCandidates: []
       },
       {
         id: "device-lift",
@@ -82,11 +91,17 @@ function semanticsFixture(): LayoutSemantics {
         rotationDeg: 0,
         height: 100,
         bounds: { min: [2000, -50, 0], max: [2300, 250, 0] },
+        centroid: [2150, 100, 0],
         sourceTextEntityIds: ["text-lift"],
         nearbyEntityIds: [],
+        linkedEntityIds: [],
         stationAssociationMethod: "none",
         confidence: 0.58,
-        evidence: ["LIFT & TILT"]
+        evidence: ["LIFT & TILT"],
+        associationStatus: "unlinked",
+        associationConfidence: 0.2,
+        associationReason: ["no nearby geometry group found"],
+        associationCandidates: []
       }
     ],
     stations: [

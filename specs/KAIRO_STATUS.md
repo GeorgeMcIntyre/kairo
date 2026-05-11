@@ -1,24 +1,23 @@
 # Kairo Status
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 
 ## Git
 
-- Branch: main
-- HEAD: 644eb03 feat: improve batched viewer picking and cursor zoom
-- In sync with origin/main (post-push)
-- Current working tree has no tracked changes after verification; known local untracked entries: `.claude/`, `gem.ps1`, `tmp/`.
+- Branch: `codex/kairo-viewer-semantics`
+- HEAD: `5751b35 feat: stabilize viewer semantics validation`
+- Working tree is dirty with the semantic device MVP implementation.
+- Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
-## Verification (current main)
+## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm test -- --minWorkers=1 --maxWorkers=1` | 206/206 passed |
-| `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~780 kB — chunk size warning only) |
-| `import-dxf` Scott DXF2013 | Passed — 246,045 supported, 461 warnings |
-| `validate` | Passed — 0 errors, 0 warnings |
-| `stage-viewer-scene` | Passed — staged to `scott-dxf2013-import` |
+| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 245/245 passed |
+| `pnpm.cmd typecheck` | Clean |
+| `pnpm.cmd build` | Clean (viewer bundle ~831 kB, chunk size warning only) |
+| `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
+| Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
 ## Current Staged Scott Scene
 
@@ -55,6 +54,11 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Spline-fit POLYLINE expansion (Phase 10N-B): spline-fit and curve-fit POLYLINEs expanded using pre-sampled fitting vertices from the DXF file. Emits DXF_POLYLINE_SPLINE_APPROXIMATED.
 - Viewer performance (Phase 10P): scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding (~28 draw calls, one LineSegments per geometry document).
 - Viewer inspection: top-2D and perspective modes, fit-to-scene, fit-main, fit-to-selection, orbit controls, mouse-wheel zoom toward cursor, tree selection, exact entity picking inside batched LineSegments, source-map display, layer list, diagnostics panel, text density controls.
+- Semantic classification MVP: extracted text labels are classified as station, robot/device, nest, dunnage, known support equipment, or unknown with confidence and evidence. Numeric station-suffix tags such as `7B-020L-04` are treated as device tags, not stations. `DN1`/`DN2` classify as dunnage and `1N` classifies as nest.
+- Semantic device association MVP: labels are linked to nearby geometry groups using block-insert provenance first and fallback geometry clusters second. Each semantic device records linked entity IDs, label entity IDs, bounds, centroid, association status (`linked`, `ambiguous`, `unlinked`), association confidence, candidates, and reason strings.
+- Viewer semantic workflow: semantic overlays show station/device outlines, label markers, and label-to-geometry link lines. Selecting a label/device shows class, confidence, evidence, association candidates, linked entity IDs, and bounds. Selecting linked geometry shows the assigned semantic device.
+- Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
+- Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
@@ -75,6 +79,9 @@ Known visual issues still requiring work:
 - MTEXT inside block definitions: not expanded during INSERT expansion (only direct ENTITIES-section MTEXT is imported via scanner).
 - Mirror-aware text rotation: text rotation does NOT reflect under mirrored INSERT (AutoCAD MIRRTEXT=0 default semantics). Position is mirror-correct. Acceptable v1 limitation.
 - Text overlay does not collision-detect or z-order against curves.
+- Direct raw DXF browser upload is not implemented; the current viewer loads staged scene packages produced by the CLI/importer path.
+- Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
+- Manual semantic overrides are session-only and are not persisted to a project file yet.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented.
 - No CI pipeline; tests run locally only.
@@ -83,11 +90,11 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
-2. Text visual QA / alignment polish
-3. Coordinate precision audit
-4. Cloudflare deploy check
-5. CAD Exchanger GLB probe only (not exporter)
+1. Semantic association QA on the Scott DXF and persistence format for reviewed overrides
+2. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
+3. Text visual QA / alignment polish
+4. Coordinate precision audit
+5. Cloudflare deploy check
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 

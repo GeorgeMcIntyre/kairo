@@ -57,7 +57,7 @@ function match(kind: DeviceKind, confidence: number, evidence: string[]): Device
   return { kind, confidence, evidence };
 }
 
-const STATION_DEVICE_TAG_PATTERN = /^([A-Z0-9]+-\d{3}[LR])-(.+)$/i;
+const STATION_DEVICE_TAG_PATTERN = /^([A-Z0-9]+-\d{3}[LR])-([A-Z0-9]+)(?:\b|[\s(].*)?$/i;
 
 export function parseStationDeviceTag(text: string): ParsedStationDeviceTag | undefined {
   const normalized = normalizeDeviceText(text);
@@ -89,7 +89,11 @@ export function parseDeviceText(text: string): DeviceDictionaryMatch | undefined
     return {
       kind: stationDeviceTag.kind,
       confidence: stationDeviceTag.kind === "station_device_tag" ? 0.7 : 0.88,
-      evidence: [`parent station ${stationDeviceTag.parentStationId}`, `suffix ${stationDeviceTag.suffix}`],
+      evidence: [
+        `parent station ${stationDeviceTag.parentStationId}`,
+        `suffix ${stationDeviceTag.suffix}`,
+        stationDeviceTag.kind === "device_number" ? "numeric suffix is a device tag, not a station" : "station-device suffix pattern"
+      ],
       parentStationId: stationDeviceTag.parentStationId,
       tagSuffix: stationDeviceTag.suffix
     };

@@ -118,6 +118,21 @@ export function SemanticOverlay({
             />
           );
         })}
+        {model.deviceCandidates.map((device) => {
+          const from = projectPoint(device.position, camera, width, height);
+          const to = projectPoint(device.centroid, camera, width, height);
+          if (!from.inFrustum && !to.inFrustum) return null;
+          return (
+            <line
+              className={`${device.selected ? "selected" : ""} ${device.associationStatus}`}
+              key={`label-link-${device.id}`}
+              x1={from.x}
+              x2={to.x}
+              y1={from.y}
+              y2={to.y}
+            />
+          );
+        })}
       </g>
 
       <g className="semantic-device-candidate-bounds">
@@ -157,6 +172,27 @@ export function SemanticOverlay({
                 {station.label}
               </text>
               <title>{`${station.label} station candidate: ${station.processName}`}</title>
+            </g>
+          );
+        })}
+      </g>
+
+      <g className="semantic-device-label-markers">
+        {model.deviceCandidates.map((device) => {
+          const point = projectPoint(device.position, camera, width, height);
+          if (!point.inFrustum) return null;
+          return (
+            <g
+              className={`${device.selected ? "selected" : ""} ${device.associationStatus}`}
+              key={`device-label-${device.id}`}
+              onClick={clickSelection({ kind: "device", id: device.id }, onSelect)}
+              transform={`translate(${point.x.toFixed(2)} ${point.y.toFixed(2)})`}
+            >
+              <rect height={10} rx={2} width={10} x={-5} y={-5} />
+              <text x={8} y={4}>
+                {device.label}
+              </text>
+              <title>{`${device.kind}: ${device.label} (${device.associationStatus})`}</title>
             </g>
           );
         })}

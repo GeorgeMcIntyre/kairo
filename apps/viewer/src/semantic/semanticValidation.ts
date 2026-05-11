@@ -1,6 +1,7 @@
 import type { Bounds3, EntityBounds, RobustSceneBounds, Vec3 } from "@kairo/core";
 import type { DeviceKind } from "./deviceDictionary";
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity, StationSemantic } from "./layoutSemantics";
+import type { DeviceGeometryAssociationCandidate, DeviceGeometryAssociationStatus } from "./semanticDevices";
 
 export type SemanticSelection =
   | { kind: "station"; id: string }
@@ -29,9 +30,12 @@ export type SemanticSelectionDetails = {
   bounds?: Bounds3;
   sourceTextEntityIds: string[];
   nearbyEntityIds: string[];
+  linkedEntityIds: string[];
   stationId?: string;
   candidateKind?: DeviceKind;
   associationMethod?: DeviceSemantic["stationAssociationMethod"];
+  geometryAssociationStatus?: DeviceGeometryAssociationStatus;
+  associationCandidates: DeviceGeometryAssociationCandidate[];
   evidence: string[];
 };
 
@@ -50,8 +54,10 @@ export type SemanticOverlayDevice = {
   label: string;
   kind: DeviceKind;
   position: Vec3;
+  centroid: Vec3;
   bounds: Bounds3;
   confidence: number;
+  associationStatus: DeviceGeometryAssociationStatus;
   stationId?: string;
   selected: boolean;
 };
@@ -172,7 +178,9 @@ export function resolveSemanticSelection(
       bounds: station.bounds,
       sourceTextEntityIds: station.sourceTextEntityIds,
       nearbyEntityIds: station.nearbyEntityIds,
+      linkedEntityIds: station.nearbyEntityIds,
       stationId: station.stationId,
+      associationCandidates: [],
       evidence: [`side ${station.side}`, `${station.deviceIds.length} device candidates`]
     };
   }
@@ -188,9 +196,12 @@ export function resolveSemanticSelection(
       bounds: device.bounds,
       sourceTextEntityIds: device.sourceTextEntityIds,
       nearbyEntityIds: device.nearbyEntityIds,
+      linkedEntityIds: device.linkedEntityIds,
       stationId: device.stationId,
       candidateKind: device.kind,
       associationMethod: device.stationAssociationMethod,
+      geometryAssociationStatus: device.associationStatus,
+      associationCandidates: device.associationCandidates,
       evidence: device.evidence
     };
   }
@@ -204,6 +215,8 @@ export function resolveSemanticSelection(
     bounds: unknown.bounds,
     sourceTextEntityIds: [unknown.entityId],
     nearbyEntityIds: [],
+    linkedEntityIds: [],
+    associationCandidates: [],
     evidence: [unknown.sourceKind]
   };
 }
@@ -278,8 +291,10 @@ export function buildSemanticOverlayModel(
       label: device.labelText,
       kind: device.kind,
       position: device.position,
+      centroid: device.centroid,
       bounds: device.bounds,
       confidence: device.confidence,
+      associationStatus: device.associationStatus,
       stationId: device.stationId,
       selected: selectedKeyValue === `device:${device.id}` || selectedKeyValue === `station:${device.stationId ?? ""}`
     })),
