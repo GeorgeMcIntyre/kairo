@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSceneCentroid, parseSourceRef } from "./index";
+import { computeEntityBounds, computeRobustSceneBounds, computeSceneCentroid, parseSourceRef } from "./index";
 
 describe("parseSourceRef", () => {
   it("parses src-dxf-file", () => {
@@ -68,5 +68,71 @@ describe("computeSceneCentroid", () => {
 
   it("returns [0,0,0] for empty input", () => {
     expect(computeSceneCentroid([])).toEqual([0, 0, 0]);
+  });
+});
+
+describe("computeEntityBounds", () => {
+  it("computes curve entity bounds without Three.js", () => {
+    expect(
+      computeEntityBounds({
+        id: "circle-1",
+        type: "circle",
+        center: [10, 20, 0],
+        radius: 5
+      })
+    ).toEqual({ min: [5, 15, 0], max: [15, 25, 0] });
+  });
+});
+
+describe("computeRobustSceneBounds", () => {
+  it("keeps raw bounds while excluding a far tiny entity from fit bounds", () => {
+    const mainLines = Array.from({ length: 20 }, (_, index) => ({
+      id: `main-${index}`,
+      type: "line" as const,
+      start: [index, 0, 0],
+      end: [index, 10, 0],
+      layerId: "main-layer"
+    }));
+    const farPointLine = {
+      id: "far-left-tiny",
+      type: "line" as const,
+      start: [-10000, -10000, 0],
+      end: [-9999.9, -10000, 0],
+      layerId: "junk-layer"
+    };
+
+    const result = computeRobustSceneBounds([...mainLines, farPointLine]);
+
+    expect(result.rawBounds.min[0]).toBeCloseTo(-10000, 6);
+    expect(result.rawBounds.min[1]).toBeCloseTo(-10000, 6);
+    expect(result.fitBounds.min[0]).toBeGreaterThan(-100);
+    expect(result.fitBounds.min[1]).toBeGreaterThan(-100);
+    expect(result.outlierEntityIds).toContain("far-left-tiny");
+    expect(result.entityBounds.find((entry) => entry.entityId === "far-left-tiny")?.isOutlier).toBe(true);
+    expect(result.outlierBounds?.min[0]).toBeCloseTo(-10000, 6);
+  });
+
+  it("falls back to zero bounds for empty input", () => {
+    const result = computeRobustSceneBounds([]);
+    expect(result.rawBounds).toEqual({ min: [0, 0, 0], max: [0, 0, 0] });
+    expect(result.outlierEntityIds).toEqual([]);
+  });
+
+  it("does not hide legitimate uniformly distributed edge geometry", () => {
+    const grid = Array.from({ length: 100 }, (_, index) => {
+      const x = index % 10;
+      const y = Math.floor(index / 10);
+      return {
+        id: `grid-${index}`,
+        type: "line" as const,
+        start: [x * 1000, y * 1000, 0],
+        end: [x * 1000 + 200, y * 1000, 0]
+      };
+    });
+
+    const result = computeRobustSceneBounds(grid);
+
+    expect(result.outlierEntityIds).toEqual([]);
+    expect(result.fitBounds).toEqual(result.rawBounds);
   });
 });

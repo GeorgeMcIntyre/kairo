@@ -39,6 +39,13 @@ button:hover {
   background: #111927;
 }
 
+.app-shell.landing-mode {
+  background:
+    radial-gradient(circle at 72% 42%, rgba(20, 178, 235, 0.14), transparent 30%),
+    radial-gradient(circle at 12% 84%, rgba(244, 165, 28, 0.12), transparent 24%),
+    #09111d;
+}
+
 .layers-shell,
 .properties-panel,
 .viewport-panel,
@@ -68,6 +75,20 @@ button:hover {
 .properties-panel {
   right: 12px;
   width: min(380px, calc(50vw - 24px));
+}
+
+.semantic-validation-panel {
+  position: absolute;
+  z-index: 5;
+  top: 58px;
+  left: min(344px, calc(50vw + 4px));
+  width: min(460px, max(320px, calc(100vw - 748px)));
+  max-height: calc(100vh - 74px);
+  overflow: auto;
+  border: 1px solid #29344a;
+  border-radius: 6px;
+  background: rgba(22, 30, 46, 0.96);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.34);
 }
 
 .panel-heading,
@@ -127,6 +148,46 @@ button:hover {
   display: grid;
   grid-template-rows: 48px 1fr;
   background: #111927;
+}
+
+.landing-mode .viewport-panel {
+  grid-template-rows: 1fr;
+}
+
+.landing-mode .viewport-toolbar {
+  display: none;
+}
+
+.landing-mode .viewport {
+  opacity: 1;
+}
+
+.landing-mode .viewport canvas,
+.landing-mode .text-overlay,
+.landing-mode .text-overlay-diagnostics {
+  opacity: 0;
+}
+
+.landing-mode .viewport::before,
+.landing-mode .viewport::after {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+.landing-mode .viewport::before {
+  background:
+    linear-gradient(90deg, rgba(9, 17, 29, 0.98) 0%, rgba(9, 17, 29, 0.64) 32%, rgba(9, 17, 29, 0.1) 60%),
+    linear-gradient(0deg, rgba(9, 17, 29, 0.95) 0%, transparent 32%, rgba(9, 17, 29, 0.45) 100%);
+}
+
+.landing-mode .viewport::after {
+  background:
+    repeating-linear-gradient(90deg, rgba(82, 174, 218, 0.12) 0 1px, transparent 1px 88px),
+    repeating-linear-gradient(0deg, rgba(82, 174, 218, 0.1) 0 1px, transparent 1px 88px);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 28%, #000 100%);
 }
 
 .viewport-toolbar {
@@ -190,6 +251,12 @@ button:hover {
   color: #6ab4e8;
 }
 
+.toolbar-actions button.warning {
+  border-color: #8c6a22;
+  background: #3a2c11;
+  color: #ffd37a;
+}
+
 .toolbar-divider {
   display: inline-block;
   width: 1px;
@@ -209,6 +276,195 @@ button:hover {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.demo-landing {
+  position: absolute;
+  z-index: 7;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+  padding: clamp(40px, 8vw, 128px);
+  pointer-events: none;
+}
+
+.demo-landing::before,
+.demo-landing::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+}
+
+.demo-landing::before {
+  right: -5vw;
+  top: 13vh;
+  width: min(820px, 58vw);
+  height: min(560px, 62vh);
+  transform: rotate(-7deg) skewX(-9deg);
+  border: 1px solid rgba(102, 201, 255, 0.34);
+  background:
+    linear-gradient(90deg, transparent 0 7%, rgba(0, 191, 255, 0.85) 7% 7.25%, transparent 7.25% 100%),
+    linear-gradient(0deg, transparent 0 18%, rgba(0, 191, 255, 0.7) 18% 18.25%, transparent 18.25% 100%),
+    radial-gradient(circle at 28% 68%, transparent 0 18%, rgba(0, 191, 255, 0.95) 18.2% 18.6%, transparent 18.8% 100%),
+    linear-gradient(135deg, transparent 0 42%, rgba(0, 191, 255, 0.8) 42.1% 42.45%, transparent 42.55% 100%),
+    repeating-linear-gradient(90deg, rgba(102, 201, 255, 0.16) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(0deg, rgba(102, 201, 255, 0.12) 0 1px, transparent 1px 64px),
+    rgba(8, 24, 38, 0.36);
+  box-shadow:
+    0 0 0 1px rgba(102, 201, 255, 0.08),
+    0 0 80px rgba(0, 150, 220, 0.18),
+    inset 0 0 80px rgba(0, 140, 220, 0.12);
+}
+
+.demo-landing::after {
+  right: 19vw;
+  bottom: 16vh;
+  width: 340px;
+  height: 340px;
+  transform: rotate(-7deg);
+  border: 1px solid rgba(102, 201, 255, 0.22);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 72px rgba(102, 201, 255, 0.018),
+    0 0 0 146px rgba(102, 201, 255, 0.012),
+    0 0 70px rgba(0, 150, 220, 0.16);
+}
+
+.demo-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(760px, 58vw);
+  gap: 20px;
+  pointer-events: auto;
+}
+
+.demo-landing h1 {
+  margin: 0;
+  max-width: 13ch;
+  color: #f4f8fc;
+  font-size: clamp(48px, 7.2vw, 112px);
+  font-weight: 850;
+  line-height: 0.92;
+  text-shadow: 0 18px 48px rgba(0, 0, 0, 0.58);
+}
+
+.demo-landing p {
+  margin: 0;
+  max-width: 680px;
+  color: #a9c0d2;
+  font-size: clamp(16px, 1.25vw, 22px);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.demo-landing button,
+.scene-error button {
+  width: fit-content;
+  min-height: 42px;
+  border-radius: 4px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.demo-landing button {
+  border-color: #1b86c9;
+  background: #0b5c9d;
+  color: #f4f8fc;
+  box-shadow: 0 14px 36px rgba(0, 102, 180, 0.28);
+}
+
+.demo-version {
+  color: #66c9ff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.demo-metrics {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(240px, 22vw);
+  gap: 14px;
+  align-self: flex-end;
+  margin-bottom: 8vh;
+  pointer-events: none;
+}
+
+.demo-metrics span {
+  display: grid;
+  gap: 2px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(102, 201, 255, 0.32);
+  color: #8ca6b8;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.demo-metrics strong {
+  color: #f4f8fc;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.scene-loading {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px;
+  transform: translate(-50%, -50%);
+  border: 1px solid #29344a;
+  border-radius: 6px;
+  background: rgba(13, 21, 34, 0.94);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+}
+
+.scene-loading span {
+  color: #66c9ff;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.scene-loading strong {
+  overflow-wrap: anywhere;
+  color: #f4f8fc;
+  font-size: 18px;
+}
+
+.scene-error {
+  position: absolute;
+  z-index: 8;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  width: min(460px, calc(100vw - 24px));
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #bd3f32;
+  border-radius: 6px;
+  background: rgba(48, 20, 26, 0.96);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+}
+
+.scene-error strong {
+  color: #ffc9c2;
+}
+
+.scene-error span {
+  color: #f0b4ad;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .viewport {
@@ -251,6 +507,95 @@ button:hover {
 .text-overlay-label.attdef {
   color: #9bc4e8;
   font-style: italic;
+}
+
+.semantic-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.semantic-overlay text {
+  fill: #f5d26c;
+  paint-order: stroke;
+  stroke: rgba(5, 10, 18, 0.9);
+  stroke-width: 3px;
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.semantic-association-lines line {
+  stroke: rgba(118, 185, 255, 0.34);
+  stroke-dasharray: 5 5;
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.semantic-association-lines line.selected {
+  stroke: rgba(255, 212, 106, 0.82);
+  stroke-width: 2;
+}
+
+.semantic-device-candidate-bounds rect {
+  fill: rgba(47, 151, 222, 0.08);
+  stroke: rgba(79, 190, 255, 0.54);
+  stroke-width: 1.5;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.semantic-device-candidate-bounds rect:hover,
+.semantic-device-candidate-bounds rect.selected {
+  fill: rgba(255, 190, 72, 0.12);
+  stroke: #ffc85a;
+  stroke-width: 2.5;
+}
+
+.semantic-station-markers g,
+.semantic-unknown-labels circle {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.semantic-station-markers circle {
+  fill: #f4a51c;
+  stroke: #111927;
+  stroke-width: 2;
+}
+
+.semantic-station-markers g.selected circle {
+  fill: #fff2a6;
+  stroke: #f4a51c;
+  stroke-width: 3;
+}
+
+.semantic-unknown-labels circle {
+  fill: rgba(190, 198, 210, 0.58);
+  stroke: #111927;
+  stroke-width: 1.5;
+}
+
+.semantic-unknown-labels circle.selected {
+  fill: #ffffff;
+  stroke: #f4a51c;
+  stroke-width: 2.5;
+}
+
+.semantic-source-markers rect {
+  fill: #ffffff;
+  stroke: #111927;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.semantic-selected-bounds {
+  fill: none;
+  stroke: #ffe27d;
+  stroke-dasharray: 8 4;
+  stroke-width: 2.5;
+  pointer-events: none;
 }
 
 .text-overlay-diagnostics {
@@ -405,6 +750,171 @@ button:hover {
   text-align: right;
 }
 
+.semantic-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid #29344a;
+}
+
+.semantic-filter-grid label {
+  display: grid;
+  gap: 5px;
+  color: #6a8499;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.semantic-filter-grid input,
+.semantic-filter-grid select {
+  min-width: 0;
+  height: 30px;
+  border: 1px solid #34445c;
+  border-radius: 4px;
+  background: #111927;
+  color: #c9d4df;
+  font: inherit;
+  font-size: 12px;
+}
+
+.semantic-filter-grid input[type="search"] {
+  padding: 0 8px;
+}
+
+.semantic-filter-grid input[type="range"] {
+  accent-color: #f4a51c;
+}
+
+.semantic-filter-grid .semantic-check {
+  grid-template-columns: 18px 1fr;
+  align-items: center;
+  text-transform: none;
+}
+
+.semantic-filter-grid .semantic-check input {
+  height: auto;
+}
+
+.semantic-panel-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #29344a;
+}
+
+.semantic-panel-actions button {
+  min-height: 28px;
+  border-radius: 4px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.semantic-panel-actions button.active {
+  border-color: #8c6a22;
+  background: #3a2c11;
+  color: #ffd37a;
+}
+
+.semantic-validation-lists {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.semantic-validation-lists section {
+  min-width: 0;
+}
+
+.semantic-validation-lists h3 {
+  margin: 0 0 8px;
+  color: #c9d4df;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.semantic-validation-lists p {
+  margin: 0;
+  color: #6a8499;
+  font-size: 12px;
+}
+
+.semantic-validation-lists ol {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.semantic-validation-lists li {
+  min-width: 0;
+}
+
+.semantic-validation-lists li button {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  gap: 3px;
+  padding: 8px;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.semantic-validation-lists li button.selected {
+  border-color: #f4a51c;
+  background: #2f2816;
+  color: #ffe2a0;
+}
+
+.semantic-validation-lists li button strong,
+.semantic-validation-lists li button span,
+.semantic-validation-lists li button em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.semantic-validation-lists li button strong {
+  color: #f4f8fc;
+  font-size: 12px;
+}
+
+.semantic-validation-lists li button span,
+.semantic-validation-lists li button em {
+  color: #8aa2b6;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.semantic-outlier-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.semantic-outlier-grid strong {
+  color: #c9d4df;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.semantic-outlier-grid ol {
+  max-height: 120px;
+  padding-top: 6px;
+}
+
+.semantic-outlier-grid li {
+  color: #8aa2b6;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 .diagnostics {
   position: absolute;
   z-index: 6;
@@ -449,11 +959,43 @@ button:hover {
   overflow: auto;
 }
 
+.bounds-diagnostics,
+.semantic-diagnostics,
 .diagnostics-tree {
   min-height: 0;
   overflow: auto;
   border: 1px solid #29344a;
   border-radius: 4px;
+}
+
+.bounds-diagnostics p,
+.semantic-diagnostics p {
+  margin: 12px;
+  color: #6a8499;
+  font-size: 13px;
+}
+
+.semantic-diagnostics h3 {
+  margin: 10px 14px 6px;
+  color: #c9d4df;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.bounds-diagnostics ol,
+.semantic-diagnostics ol {
+  padding: 10px 14px 10px 28px;
+}
+
+.bounds-diagnostics li,
+.semantic-diagnostics li {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.semantic-diagnostics li span {
+  display: block;
+  margin-top: 3px;
 }
 
 .diagnostics-tree .panel-heading {
@@ -493,8 +1035,13 @@ button:hover {
     overflow-x: auto;
   }
 
+  .demo-landing {
+    top: 124px;
+  }
+
   .layers-shell,
-  .properties-panel {
+  .properties-panel,
+  .semantic-validation-panel {
     top: auto;
     bottom: 12px;
     width: calc(50vw - 18px);
@@ -509,6 +1056,14 @@ button:hover {
     right: 12px;
   }
 
+  .semantic-validation-panel {
+    left: 12px;
+    right: 12px;
+    bottom: calc(48vh + 22px);
+    width: auto;
+    max-height: min(38vh, 360px);
+  }
+
   .diagnostics {
     top: 104px;
     bottom: 12px;
@@ -518,7 +1073,8 @@ button:hover {
 
 @media (max-width: 640px) {
   .layers-shell,
-  .properties-panel {
+  .properties-panel,
+  .semantic-validation-panel {
     left: 12px;
     right: 12px;
     width: auto;
@@ -533,7 +1089,17 @@ button:hover {
     bottom: 12px;
   }
 
+  .semantic-validation-panel {
+    bottom: calc(72vh + 28px);
+    max-height: min(30vh, 300px);
+  }
+
   .diagnostics {
+    grid-template-columns: 1fr;
+  }
+
+  .semantic-filter-grid,
+  .semantic-outlier-grid {
     grid-template-columns: 1fr;
   }
 }
