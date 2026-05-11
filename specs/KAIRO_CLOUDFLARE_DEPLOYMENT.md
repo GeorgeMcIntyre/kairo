@@ -30,6 +30,39 @@ Cloudflare dashboard settings:
 
 Only pushed commits deploy from Cloudflare's Git integration. Local commits ahead of `origin/main` are not visible to Cloudflare until pushed.
 
+## Security And Access
+
+Kairo must not be publicly reachable when it can reveal company layouts, source-map metadata, hosted DXF URLs, or generated scene assets.
+
+Configure Cloudflare Zero Trust / Access before sharing any deployment:
+
+| Access setting | Value |
+|---|---|
+| Application type | Self-hosted |
+| Production hostname | `kairo-viewer.pages.dev` |
+| Preview hostname | `*.kairo-viewer.pages.dev` |
+| Policy action | Allow |
+| Include rule | Approved email addresses or approved IdP team/group only |
+| Default posture | Everyone else denied |
+
+Setup checklist:
+
+1. In Cloudflare Zero Trust, create an Access application for `kairo-viewer.pages.dev`.
+2. Add `*.kairo-viewer.pages.dev` as an additional hostname or create a matching second Access application for preview deployments.
+3. Add only approved emails, an approved email domain, or an approved identity-provider group/team.
+4. Do not add public bypass rules.
+5. If Kairo later gets a custom domain, add that hostname to the same Access policy before use.
+6. Test in a private browser session before sharing the URL.
+
+DXF and hosted asset rules:
+
+- Do not expose company DXF files publicly.
+- Do not use public R2 bucket URLs for sensitive layouts.
+- Prefer an Access-protected domain, an authenticated proxy, or short-lived signed URLs.
+- `VITE_KAIRO_DEMO_DXF_URL` may be used only with an approved protected or signed URL.
+- The viewer must not hardcode public sensitive DXF URLs.
+- Do not commit secrets, API tokens, account IDs, private URLs, signed URLs, or customer/company file paths.
+
 ## Local Commands
 
 Install dependencies:
@@ -74,7 +107,6 @@ After `pnpm build`, confirm:
 Test-Path apps\viewer\dist\index.html
 Test-Path apps\viewer\dist\assets
 Test-Path apps\viewer\dist\_redirects
-Test-Path apps\viewer\dist\scenes\scott-dxf2013-import
 Get-Content apps\viewer\dist\_redirects
 ```
 
@@ -84,7 +116,7 @@ Expected `_redirects` content:
 /* /index.html 200
 ```
 
-Expected demo scene payload:
+The slim Cloudflare deploy should not include the Scott staged scene payload because several generated files exceed the Pages single-file asset limit. For local staged-scene development only, the expected demo scene payload is:
 
 - `manifest.json`
 - `scene.json`
@@ -123,6 +155,8 @@ The Pages runtime is static assets only:
 
 The staged scene source-map may contain source path strings from local import metadata, but Cloudflare build must not require those paths to exist.
 
+Access protection is handled by Cloudflare Zero Trust outside the viewer bundle. Do not treat client-side checks, hidden buttons, or unlisted URLs as security controls.
+
 ## Future D1 Plan
 
 D1 is not part of the current deployment. Add it later only after a product requirement exists, such as saved review sessions, annotations, user-visible issue records, or shared layer presets.
@@ -143,6 +177,8 @@ Minimum future R2 plan:
 - Keep `manifest.json` or a scene index small and CDN-cacheable.
 - Document cache headers and invalidation.
 - Preserve local static scene loading for development.
+- For sensitive layouts, do not use public bucket URLs. Put R2 behind Access, an authenticated Worker/proxy, or signed URL issuance.
+- If `VITE_KAIRO_DEMO_DXF_URL` is configured, verify the URL is approved for the data classification before deploying.
 
 ## Rollback
 
