@@ -52,6 +52,7 @@ import {
   type TextOverlayCamera,
   type TextOverlayMetrics
 } from "./SceneTextOverlay";
+import { safeDisplayText } from "./textSafety";
 import {
   computeOrthographicFitView,
   pointerClientToNdc,
@@ -305,6 +306,19 @@ function compactIdList(values: readonly string[], limit = 8): string {
   if (values.length === 0) return "none";
   const visible = values.slice(0, limit).join(", ");
   return values.length > limit ? `${visible}, +${values.length - limit} more` : visible;
+}
+
+function showingFirstLabel(visible: number, total: number): string | undefined {
+  return total > visible ? `showing first ${visible} of ${total}` : undefined;
+}
+
+function semanticStatusLabel(status: string, override?: SemanticDeviceOverride): string {
+  if (override) return "OVERRIDDEN";
+  return status.toUpperCase();
+}
+
+function semanticReasonPreview(reasons: readonly string[]): string {
+  return reasons.find((reason) => reason.trim().length > 0) ?? "heuristic evidence";
 }
 
 function downloadTextFile(filename: string, content: string, type: string) {
@@ -808,6 +822,7 @@ export function App() {
   const [semanticFilters, setSemanticFilters] = useState<SemanticValidationFilters>({
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
+  const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [dxfDragActive, setDxfDragActive] = useState(false);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
@@ -881,6 +896,12 @@ export function App() {
   const selectedSemanticDevice =
     selectedSemantic?.kind === "device" ? semanticDevicesById.get(selectedSemantic.id) : undefined;
   const selectedSemanticOverride = selectedSemanticDevice ? semanticDeviceOverrides[selectedSemanticDevice.id] : undefined;
+  const visibleSemanticStations = semanticValidation.stations.slice(0, 28);
+  const visibleSemanticDevices = semanticValidation.devices.slice(0, 48);
+  const visibleUnknownText = semanticValidation.unknownTextEntities.slice(0, 20);
+  const stationListCount = showingFirstLabel(visibleSemanticStations.length, semanticValidation.stations.length);
+  const deviceListCount = showingFirstLabel(visibleSemanticDevices.length, semanticValidation.devices.length);
+  const unknownListCount = showingFirstLabel(visibleUnknownText.length, semanticValidation.unknownTextEntities.length);
   const sceneIsLoading = sceneStatus.startsWith("Loading ");
   const landingMode = !activeSceneName && !sceneLoadError;
 
@@ -1108,7 +1129,14 @@ export function App() {
   const copySemanticExport = (format: "json" | "markdown") => {
     const content =
       format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
-    void navigator.clipboard?.writeText(content);
+    const writeText = navigator.clipboard?.writeText;
+    if (!writeText) {
+      setSemanticCopyStatus("Copy failed");
+      return;
+    }
+    void writeText.call(navigator.clipboard, content)
+      .then(() => setSemanticCopyStatus(format === "json" ? "Copied JSON" : "Copied Markdown"))
+      .catch(() => setSemanticCopyStatus("Copy failed"));
   };
 
   const downloadSemanticExport = (format: "json" | "markdown") => {
@@ -1366,6 +1394,20 @@ export function App() {
               unknown
             </span>
           </div>
+          <div className="semantic-overlay-legend" aria-label="Semantic overlay legend">
+            <span>
+              <i className="legend-line linked" aria-hidden="true" />
+              linked = solid line
+            </span>
+            <span>
+              <i className="legend-line ambiguous" aria-hidden="true" />
+              ambiguous = dashed/candidate
+            </span>
+            <span>
+              <i className="legend-marker unlinked" aria-hidden="true" />
+              unlinked = label marker only
+            </span>
+          </div>
           <div className="semantic-filter-grid">
             <label>
               <span>Station</span>
@@ -1455,15 +1497,23 @@ export function App() {
             <button onClick={() => downloadSemanticExport("markdown")} type="button">
               Download MD
             </button>
+            {semanticCopyStatus ? (
+              <span className="semantic-copy-status" role="status">
+                {semanticCopyStatus}
+              </span>
+            ) : null}
           </div>
           <div className="semantic-validation-lists">
             <section>
-              <h3>Stations</h3>
+              <div className="semantic-list-heading">
+                <h3>Stations</h3>
+                {stationListCount ? <span>{stationListCount}</span> : null}
+              </div>
               {semanticValidation.stations.length === 0 ? (
                 <p>No station candidates match the filters.</p>
               ) : (
                 <ol>
-                  {semanticValidation.stations.slice(0, 28).map((station) => (
+                  {visibleSemanticStations.map((station) => (
                     <li key={station.stationId}>
                       <button
                         className={
@@ -1484,38 +1534,52 @@ export function App() {
               )}
             </section>
             <section>
-              <h3>Device candidates</h3>
+              <div className="semantic-list-heading">
+                <h3>Device candidates</h3>
+                {deviceListCount ? <span>{deviceListCount}</span> : null}
+              </div>
               {semanticValidation.devices.length === 0 ? (
                 <p>No device candidates match the filters.</p>
               ) : (
                 <ol>
-                  {semanticValidation.devices.slice(0, 48).map((device) => (
-                    <li key={device.id}>
-                      <button
-                        className={selectedSemantic?.kind === "device" && selectedSemantic.id === device.id ? "selected" : ""}
-                        onClick={() => selectSemantic({ kind: "device", id: device.id })}
-                        type="button"
-                      >
-                        <strong>{deviceKindLabel(device.kind)}</strong>
-                        <span>
-                          {device.associationStatus} / {device.stationId ?? "unassigned"} / conf{" "}
-                          {device.confidence.toFixed(2)} / linked {device.linkedEntityIds.length}
-                        </span>
-                        <em>{device.labelText}</em>
-                      </button>
-                    </li>
-                  ))}
+                  {visibleSemanticDevices.map((device) => {
+                    const statusLabel = semanticStatusLabel(device.associationStatus, semanticDeviceOverrides[device.id]);
+                    const displayLabel = device.displayText ?? safeDisplayText(device.labelText);
+                    return (
+                      <li key={device.id}>
+                        <button
+                          className={selectedSemantic?.kind === "device" && selectedSemantic.id === device.id ? "selected" : ""}
+                          onClick={() => selectSemantic({ kind: "device", id: device.id })}
+                          type="button"
+                          title={device.rawText ?? device.normalizedText}
+                        >
+                          <span className="semantic-row-top">
+                            <strong>{displayLabel}</strong>
+                            <span className={`semantic-status ${statusLabel.toLowerCase()}`}>{statusLabel}</span>
+                          </span>
+                          <span>
+                            {deviceKindLabel(device.kind)} / {device.stationId ?? "unassigned"} / conf{" "}
+                            {device.confidence.toFixed(2)} / linked {device.linkedEntityIds.length}
+                          </span>
+                          <em>{semanticReasonPreview([...device.evidence, ...device.associationReason])}</em>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ol>
               )}
             </section>
             {semanticFilters.showUnknownLabels ? (
               <section>
-                <h3>Unknown labels</h3>
+                <div className="semantic-list-heading">
+                  <h3>Unknown labels</h3>
+                  {unknownListCount ? <span>{unknownListCount}</span> : null}
+                </div>
                 {semanticValidation.unknownTextEntities.length === 0 ? (
                   <p>No unknown labels match the filters.</p>
                 ) : (
                   <ol>
-                    {semanticValidation.unknownTextEntities.slice(0, 20).map((text) => (
+                    {visibleUnknownText.map((text) => (
                       <li key={text.entityId}>
                         <button
                           className={
@@ -1523,9 +1587,12 @@ export function App() {
                           }
                           onClick={() => selectSemantic({ kind: "unknown-text", id: text.entityId })}
                           type="button"
+                          title={text.rawText ?? text.normalizedText}
                         >
-                          <strong>{text.normalizedText}</strong>
-                          <span>{text.sourceKind} / {text.layerId ?? "no layer"}</span>
+                          <strong>{text.displayText ?? safeDisplayText(text.normalizedText)}</strong>
+                          <span>
+                            {text.noteKind ?? text.sourceKind} / {text.layerId ?? "no layer"}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -1580,6 +1647,30 @@ export function App() {
             <>
               <dt>Kind</dt>
               <dd>{selectedSemanticDetails.selection.kind}</dd>
+              {selectedSemanticDetails.displayText ? (
+                <>
+                  <dt>Primary label</dt>
+                  <dd className="semantic-full-text">{selectedSemanticDetails.displayText}</dd>
+                </>
+              ) : null}
+              {selectedSemanticDetails.rawText ? (
+                <>
+                  <dt>Raw text</dt>
+                  <dd className="semantic-full-text">{selectedSemanticDetails.rawText}</dd>
+                </>
+              ) : null}
+              {selectedSemanticDetails.associationText ? (
+                <>
+                  <dt>Association text</dt>
+                  <dd className="semantic-full-text">{selectedSemanticDetails.associationText}</dd>
+                </>
+              ) : null}
+              {selectedSemanticDetails.noteKind ? (
+                <>
+                  <dt>Text class</dt>
+                  <dd>{selectedSemanticDetails.noteKind}</dd>
+                </>
+              ) : null}
               {selectedSemanticDetails.stationId ? (
                 <>
                   <dt>Station</dt>
@@ -1638,6 +1729,9 @@ export function App() {
                   <dt>Override</dt>
                   <dd>
                     <div className="semantic-override-controls">
+                      <span className="semantic-override-state">
+                        {selectedSemanticOverride ? "Override applied" : "No override applied"}
+                      </span>
                       <label>
                         <span>Class</span>
                         <select
@@ -1721,7 +1815,8 @@ export function App() {
             <>
               <dt>Assigned semantic</dt>
               <dd>
-                {deviceKindLabel(selectedEntitySemanticDevice.kind)} / {selectedEntitySemanticDevice.labelText} /{" "}
+                {deviceKindLabel(selectedEntitySemanticDevice.kind)} /{" "}
+                {selectedEntitySemanticDevice.displayText ?? safeDisplayText(selectedEntitySemanticDevice.labelText)} /{" "}
                 {selectedEntitySemanticDevice.confidence.toFixed(2)}
               </dd>
             </>

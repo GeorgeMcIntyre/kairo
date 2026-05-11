@@ -1,10 +1,12 @@
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { MAX_TEXT_OVERLAY_CHARS, normalizeDxfText, safeDisplayText } from "./textSafety";
 
 export type TextOverlayItem = {
   entityId: string;
   text: string;
+  displayText: string;
   position: [number, number, number];
   rotationDeg: number;
   height: number;
@@ -52,6 +54,8 @@ export function collectTextItems(scenePackage: ScenePackage): TextOverlayItem[] 
         items.push({
           entityId: entity.id,
           text: entity.text,
+          // TODO: DXF text width factor/rotation/aspect fidelity needs a dedicated pass.
+          displayText: safeDisplayText(entity.text, MAX_TEXT_OVERLAY_CHARS),
           position: [entity.position[0], entity.position[1], entity.position[2]],
           rotationDeg: entity.rotationDeg,
           height: entity.height,
@@ -344,8 +348,9 @@ export function SceneTextOverlay({
           }}
           className={`text-overlay-label${item.origin === "ATTDEF" ? " attdef" : ""}`}
           style={{ display: "none" }}
+          title={item.text !== item.displayText ? normalizeDxfText(item.text) : undefined}
         >
-          {item.text}
+          {item.displayText}
         </div>
       ))}
     </div>

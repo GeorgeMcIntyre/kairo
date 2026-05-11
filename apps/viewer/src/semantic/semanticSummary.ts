@@ -1,4 +1,5 @@
 import type { Bounds3, Vec3 } from "@kairo/core";
+import type { SemanticNoteKind } from "../textSafety";
 import type { DeviceKind } from "./deviceDictionary";
 import type { DeviceSemantic, LayoutSemantics } from "./layoutSemantics";
 
@@ -13,6 +14,10 @@ export type SemanticOverrideMap = Record<string, SemanticDeviceOverride>;
 export type SemanticSummaryDevice = {
   deviceId: string;
   label: string;
+  rawLabel?: string;
+  displayLabel?: string;
+  associationText?: string;
+  noteKind?: SemanticNoteKind;
   kind: DeviceKind;
   confidence: number;
   associationStatus: DeviceSemantic["associationStatus"];
@@ -206,7 +211,11 @@ export function buildSemanticSummary(semantics: LayoutSemantics, sourcePath?: st
     })),
     devices: semantics.devices.map((device) => ({
       deviceId: device.id,
-      label: device.labelText,
+      label: device.rawText ?? device.labelText,
+      rawLabel: device.rawText,
+      displayLabel: device.displayText,
+      associationText: device.associationText,
+      noteKind: device.noteKind,
       kind: device.kind,
       confidence: device.confidence,
       associationStatus: device.associationStatus,

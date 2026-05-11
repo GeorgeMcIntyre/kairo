@@ -195,10 +195,11 @@ describe("resolveSemanticSelection", () => {
     });
   });
 
-  it("returns detected candidate wording for device selections", () => {
+  it("returns readable candidate details for device selections", () => {
     const details = resolveSemanticSelection(semanticsFixture(), { kind: "device", id: "device-controller" });
 
-    expect(details?.subtitle).toContain("Detected candidate");
+    expect(details?.title).toBe("ROBOT CONTROLLER");
+    expect(details?.subtitle).toContain("robot_controller");
     expect(details?.candidateKind).toBe("robot_controller");
   });
 });

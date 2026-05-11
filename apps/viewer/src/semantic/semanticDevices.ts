@@ -313,13 +313,20 @@ function isAmbiguous(
   return confidenceGap <= 0.08 && closeDistance;
 }
 
+function maxAssociationDistance(label: SemanticTextLabel, options: Pick<LayoutSemanticOptions, "deviceAssociationRadius">): number {
+  if (label.associationRadius !== undefined) {
+    return Math.max(label.associationRadius, 250);
+  }
+  return Math.max(options.deviceAssociationRadius ?? DEFAULT_ASSOCIATION_RADIUS, label.height * 16, 250);
+}
+
 export function associateLabelToGeometry(
   label: SemanticTextLabel,
   groups: readonly SemanticGeometryGroup[],
   parsed?: DeviceDictionaryMatch,
   options: Pick<LayoutSemanticOptions, "deviceAssociationRadius"> = {}
 ): DeviceGeometryAssociation {
-  const maxDistance = Math.max(options.deviceAssociationRadius ?? DEFAULT_ASSOCIATION_RADIUS, label.height * 16, 250);
+  const maxDistance = maxAssociationDistance(label, options);
   const candidates = groups
     .map((group) => candidateForGroup(label, group, parsed, maxDistance))
     .filter((candidate): candidate is DeviceGeometryAssociationCandidate => candidate !== undefined)
