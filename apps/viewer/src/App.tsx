@@ -17,7 +17,7 @@ import viewerPackage from "../package.json";
 import { createCurveBatchData, pickEntryForIntersectionIndex, type CurveSegmentPickEntry, type PickableCurveEntity } from "./curveBatch";
 import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
-import { DEVICE_KINDS } from "./semantic/deviceDictionary";
+import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
 import {
@@ -30,6 +30,14 @@ import {
   type SemanticOverlayModel,
   type SemanticValidationFilters
 } from "./semantic/semanticValidation";
+import {
+  applySemanticDeviceOverrides,
+  buildSemanticSummary,
+  exportSemanticSummaryJson,
+  exportSemanticSummaryMarkdown,
+  type SemanticDeviceOverride,
+  type SemanticOverrideMap
+} from "./semantic/semanticSummary";
 import {
   collectTextItems,
   SceneTextOverlay,
@@ -284,6 +292,22 @@ function formatConfidence(value: number | undefined) {
 
 function deviceKindLabel(value: string) {
   return value.replace(/_/g, " ");
+}
+
+function compactIdList(values: readonly string[], limit = 8): string {
+  if (values.length === 0) return "none";
+  const visible = values.slice(0, limit).join(", ");
+  return values.length > limit ? `${visible}, +${values.length - limit} more` : visible;
+}
+
+function downloadTextFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 function Viewport({
@@ -771,6 +795,7 @@ export function App() {
   const [showOutliers, setShowOutliers] = useState(false);
   const [semanticOverlayEnabled, setSemanticOverlayEnabled] = useState(false);
   const [selectedSemantic, setSelectedSemantic] = useState<SemanticSelection | undefined>();
+  const [semanticDeviceOverrides, setSemanticDeviceOverrides] = useState<SemanticOverrideMap>({});
   const [semanticFilters, setSemanticFilters] = useState<SemanticValidationFilters>({
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
@@ -782,11 +807,27 @@ export function App() {
     () => computeRobustSceneBounds(flattenCurveEntities(scenePackage.geometry)),
     [scenePackage]
   );
-  const layoutSemantics = useMemo(() => computeLayoutSemantics(scenePackage, robustBounds), [scenePackage, robustBounds]);
+  const detectedLayoutSemantics = useMemo(() => computeLayoutSemantics(scenePackage, robustBounds), [scenePackage, robustBounds]);
+  const layoutSemantics = useMemo(
+    () => applySemanticDeviceOverrides(detectedLayoutSemantics, semanticDeviceOverrides),
+    [detectedLayoutSemantics, semanticDeviceOverrides]
+  );
   const semanticDevicesById = useMemo(
     () => new Map(layoutSemantics.devices.map((device) => [device.id, device])),
     [layoutSemantics]
   );
+  const semanticDeviceByEntityId = useMemo(() => {
+    const result = new Map<string, (typeof layoutSemantics.devices)[number]>();
+    for (const device of layoutSemantics.devices) {
+      for (const entityId of device.linkedEntityIds) {
+        if (!result.has(entityId)) result.set(entityId, device);
+      }
+      for (const textId of device.sourceTextEntityIds) {
+        if (!result.has(textId)) result.set(textId, device);
+      }
+    }
+    return result;
+  }, [layoutSemantics]);
   const semanticValidation = useMemo(
     () => filterSemanticValidation(layoutSemantics, semanticFilters),
     [layoutSemantics, semanticFilters]
@@ -798,6 +839,10 @@ export function App() {
   const selectedSemanticDetails = useMemo(
     () => resolveSemanticSelection(layoutSemantics, selectedSemantic),
     [layoutSemantics, selectedSemantic]
+  );
+  const semanticSummary = useMemo(
+    () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path),
+    [layoutSemantics, scenePackage.manifest.source.path]
   );
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
@@ -822,6 +867,10 @@ export function App() {
     : sourceEntryForNode(scenePackage, selectedNode);
   const parsedRef = selectedSourceRef ? parseSourceRef(selectedSourceRef) : undefined;
   const selectedLayerName = scenePackage.layers.layers.find((l) => l.id === selectedLayerId)?.name;
+  const selectedEntitySemanticDevice = selectedEntity ? semanticDeviceByEntityId.get(selectedEntity.entityId) : undefined;
+  const selectedSemanticDevice =
+    selectedSemantic?.kind === "device" ? semanticDevicesById.get(selectedSemantic.id) : undefined;
+  const selectedSemanticOverride = selectedSemanticDevice ? semanticDeviceOverrides[selectedSemanticDevice.id] : undefined;
   const sceneIsLoading = sceneStatus.startsWith("Loading ");
   const landingMode = !activeSceneName && !sceneLoadError;
 
@@ -873,6 +922,7 @@ export function App() {
       setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
       setSelectedEntity(undefined);
       setSelectedSemantic(undefined);
+      setSemanticDeviceOverrides({});
       setHiddenLayerIds(new Set());
       setShowOutliers(false);
       setViewMode(loadedScenePackage.manifest.axisSystem.up === "Z" ? "top2d" : "perspective");
@@ -917,6 +967,44 @@ export function App() {
       cancelled = true;
     };
   }, [loadPublicScene]);
+
+  useEffect(() => {
+    setSemanticDeviceOverrides({});
+  }, [scenePackage]);
+
+  const updateSelectedDeviceOverride = (patch: SemanticDeviceOverride) => {
+    if (!selectedSemanticDevice) return;
+    setSemanticDeviceOverrides((current) => ({
+      ...current,
+      [selectedSemanticDevice.id]: {
+        ...(current[selectedSemanticDevice.id] ?? {}),
+        ...patch
+      }
+    }));
+  };
+
+  const clearSelectedDeviceOverride = () => {
+    if (!selectedSemanticDevice) return;
+    setSemanticDeviceOverrides((current) => {
+      const next = { ...current };
+      delete next[selectedSemanticDevice.id];
+      return next;
+    });
+  };
+
+  const copySemanticExport = (format: "json" | "markdown") => {
+    const content =
+      format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
+    void navigator.clipboard?.writeText(content);
+  };
+
+  const downloadSemanticExport = (format: "json" | "markdown") => {
+    const content =
+      format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
+    const extension = format === "json" ? "json" : "md";
+    const mime = format === "json" ? "application/json" : "text/markdown";
+    downloadTextFile(`kairo-semantic-summary.${extension}`, content, mime);
+  };
 
   return (
     <main className={`app-shell${landingMode ? " landing-mode" : ""}${sceneIsLoading ? " loading-mode" : ""}`}>
@@ -1118,6 +1206,32 @@ export function App() {
               {semanticValidation.stations.length}/{semanticValidation.devices.length}
             </strong>
           </div>
+          <div className="semantic-summary-grid" aria-label="Semantic summary">
+            <span>
+              <strong>{semanticSummary.counts.stations}</strong>
+              stations
+            </span>
+            <span>
+              <strong>{semanticSummary.counts.devices}</strong>
+              devices
+            </span>
+            <span>
+              <strong>{semanticSummary.counts.linkedDevices}</strong>
+              linked
+            </span>
+            <span>
+              <strong>{semanticSummary.counts.ambiguousDevices}</strong>
+              ambiguous
+            </span>
+            <span>
+              <strong>{semanticSummary.counts.unlinkedDevices}</strong>
+              unlinked
+            </span>
+            <span>
+              <strong>{semanticSummary.counts.unknownLabels}</strong>
+              unknown
+            </span>
+          </div>
           <div className="semantic-filter-grid">
             <label>
               <span>Station</span>
@@ -1195,6 +1309,18 @@ export function App() {
             >
               Show outliers
             </button>
+            <button onClick={() => copySemanticExport("json")} type="button">
+              Copy JSON
+            </button>
+            <button onClick={() => copySemanticExport("markdown")} type="button">
+              Copy MD
+            </button>
+            <button onClick={() => downloadSemanticExport("json")} type="button">
+              Download JSON
+            </button>
+            <button onClick={() => downloadSemanticExport("markdown")} type="button">
+              Download MD
+            </button>
           </div>
           <div className="semantic-validation-lists">
             <section>
@@ -1238,8 +1364,8 @@ export function App() {
                       >
                         <strong>{deviceKindLabel(device.kind)}</strong>
                         <span>
-                          detected candidate / {device.stationId ?? "unassigned"} / conf {device.confidence.toFixed(2)} /
-                          nearby {device.nearbyEntityIds.length}
+                          {device.associationStatus} / {device.stationId ?? "unassigned"} / conf{" "}
+                          {device.confidence.toFixed(2)} / linked {device.linkedEntityIds.length}
                         </span>
                         <em>{device.labelText}</em>
                       </button>
@@ -1338,16 +1464,94 @@ export function App() {
                   <dd>{selectedSemanticDetails.associationMethod}</dd>
                 </>
               ) : null}
+              {selectedSemanticDetails.geometryAssociationStatus ? (
+                <>
+                  <dt>Geometry link</dt>
+                  <dd>
+                    {selectedSemanticDetails.geometryAssociationStatus} /{" "}
+                    {selectedSemanticDetails.linkedEntityIds.length} linked entity id(s)
+                  </dd>
+                </>
+              ) : null}
               <dt>Confidence</dt>
               <dd>{formatConfidence(selectedSemanticDetails.confidence)}</dd>
               <dt>Source text</dt>
               <dd>{selectedSemanticDetails.sourceTextEntityIds.join(", ") || "none"}</dd>
+              <dt>Linked ids</dt>
+              <dd>{compactIdList(selectedSemanticDetails.linkedEntityIds)}</dd>
+              {selectedSemanticDetails.associationCandidates.length > 0 ? (
+                <>
+                  <dt>Candidates</dt>
+                  <dd>
+                    {selectedSemanticDetails.associationCandidates
+                      .slice(0, 4)
+                      .map(
+                        (candidate) =>
+                          `${candidate.groupId} (${candidate.confidence.toFixed(2)}, ${Math.round(candidate.distanceToBounds)} mm)`
+                      )
+                      .join("; ")}
+                  </dd>
+                </>
+              ) : null}
               <dt>Nearby geometry</dt>
               <dd>{selectedSemanticDetails.nearbyEntityIds.length} tracked entities</dd>
               <dt>Bounds</dt>
               <dd>{formatBounds(selectedSemanticDetails.bounds ?? null)}</dd>
               <dt>Evidence</dt>
               <dd>{selectedSemanticDetails.evidence.join(", ") || "heuristic match"}</dd>
+              {selectedSemanticDevice ? (
+                <>
+                  <dt>Override</dt>
+                  <dd>
+                    <div className="semantic-override-controls">
+                      <label>
+                        <span>Class</span>
+                        <select
+                          value={selectedSemanticOverride?.kind ?? selectedSemanticDevice.kind}
+                          onChange={(event) =>
+                            updateSelectedDeviceOverride({ kind: event.target.value as DeviceKind })
+                          }
+                        >
+                          {DEVICE_KINDS.map((kind) => (
+                            <option key={kind} value={kind}>
+                              {deviceKindLabel(kind)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Geometry</span>
+                        <select
+                          value={
+                            selectedSemanticOverride?.unlink
+                              ? "__unlink"
+                              : selectedSemanticOverride?.geometryGroupId ?? selectedSemanticDevice.geometryGroupId ?? ""
+                          }
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value === "__unlink") {
+                              updateSelectedDeviceOverride({ geometryGroupId: undefined, unlink: true });
+                              return;
+                            }
+                            updateSelectedDeviceOverride({ geometryGroupId: value || undefined, unlink: false });
+                          }}
+                        >
+                          <option value="">Auto: {selectedSemanticDevice.associationStatus}</option>
+                          <option value="__unlink">Manual unlinked</option>
+                          {selectedSemanticDevice.associationCandidates.map((candidate) => (
+                            <option key={candidate.groupId} value={candidate.groupId}>
+                              {candidate.groupId} ({candidate.confidence.toFixed(2)})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button onClick={clearSelectedDeviceOverride} type="button">
+                        Revert override
+                      </button>
+                    </div>
+                  </dd>
+                </>
+              ) : null}
             </>
           ) : (
             <>
@@ -1377,6 +1581,15 @@ export function App() {
             <>
               <dt>Batch node</dt>
               <dd>{selectedNode.id}</dd>
+            </>
+          ) : null}
+          {selectedEntitySemanticDevice ? (
+            <>
+              <dt>Assigned semantic</dt>
+              <dd>
+                {deviceKindLabel(selectedEntitySemanticDevice.kind)} / {selectedEntitySemanticDevice.labelText} /{" "}
+                {selectedEntitySemanticDevice.confidence.toFixed(2)}
+              </dd>
             </>
           ) : null}
           {selectedEntity || sourceEntry?.entityType ? (

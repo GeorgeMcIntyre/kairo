@@ -89,19 +89,40 @@ The association method is preserved on each device.
 
 ## Geometry Grouping
 
-Each detected device collects nearby non-text entity IDs and computes combined bounds from the source label and nearby geometry. The device keeps:
+The semantic device layer now creates candidate geometry groups before assigning labels:
 
+- block-insert groups when DXF source refs identify expanded INSERT children
+- fallback nearby geometry clusters when no block ownership is available
+- outlier entity IDs from the robust bounds pass are excluded from normal semantic grouping
+
+Each text label is associated to the nearest plausible candidate group using:
+
+- distance from label position to group bounds and centroid
+- label pattern confidence
+- layer/block/name hints where available
+- geometry size sanity
+
+The association status is one of:
+
+- `linked` - one candidate is clearly best
+- `ambiguous` - multiple nearby candidates are plausible
+- `unlinked` - no candidate is close enough
+
+Each semantic device keeps:
+
+- device ID and label text
+- class/type
+- confidence and evidence
 - source text entity IDs
-- nearby entity IDs
-- bounds
-- confidence
-- evidence strings from the dictionary
-
-Outlier entity IDs from the robust bounds pass are excluded from normal semantic grouping.
+- linked entity IDs
+- candidate group IDs with distance/confidence/reasons
+- label entity ID(s)
+- bounds and centroid
+- association status, association confidence, and association reasons
 
 ## Confidence Rules
 
-Confidence starts with dictionary confidence, then receives a small boost for station association and nearby geometry. Missing station association lowers confidence. Kairo should not treat these as CAD ownership facts until validated.
+Confidence starts with dictionary confidence, then adjusts for station association and geometry association. Clear nearby geometry can raise confidence. Ambiguous or missing geometry lowers confidence. Kairo should not treat these as CAD ownership facts until validated.
 
 ## Debug Output
 
@@ -113,15 +134,20 @@ The diagnostics panel reports:
 - station association
 - confidence
 - source text
-- nearby entity count
+- linked entity IDs
+- association status
+- association candidates
+
+The viewer semantic panel also exposes session-only overrides for device class and geometry association, plus JSON/Markdown summary exports.
 
 ## Known Limitations
 
 - This pass is text-driven. Unlabeled devices are not inferred.
-- Geometry grouping is proximity-based, not block ownership or CAD assembly ownership.
+- Geometry grouping is block-provenance/proximity-based, not authoritative CAD assembly ownership.
 - Device labels can be duplicated if the drawing repeats notes near multiple views.
 - Dictionary rules are intentionally narrow and should be expanded from validated DXF examples.
+- User overrides are currently session-only and are not persisted.
 
 ## Next Recommended Work
 
-Add selectable station/device overlays, then compare detected stations and devices against manually reviewed DXF screenshots before persisting semantic output.
+Manually QA semantic associations on the Scott DXF, then persist reviewed overrides and confirmed device records to a project-level semantic model.

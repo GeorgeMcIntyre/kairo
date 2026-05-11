@@ -1,17 +1,33 @@
 # Kairo Tasks
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
 
 ## NOW
 
-*(No active task — see NEXT for ready items.)*
+*(No active task - see NEXT for ready items.)*
 
 ---
 
 ## NEXT
+
+### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
+
+**Goal:** Save user-confirmed semantic device records, class overrides, geometry association overrides, and unlinked warnings to a project-level JSON model that can be reloaded with the staged scene.
+
+**Not allowed:** Replace the current staged scene format, make raw DXF upload a blocker, or treat automatic classification as final truth.
+
+---
+
+### ISSUE-019: Scott DXF semantic association QA pass (P1)
+
+**Goal:** Manually inspect the primary Scott DXF staged scene and record whether high-value labels such as `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N` link to the expected nearby geometry. Tune only proven association thresholds or layer/block hints.
+
+**Not allowed:** Rewrite viewer batching, create per-entity Three.js objects, or hardcode the Scott DXF path into production code.
+
+---
 
 ### ISSUE-004: Viewer UI drawing-first review mode (P1)
 
@@ -104,6 +120,20 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### Semantic label-to-geometry device MVP - DONE
+
+**Completed:** 2026-05-11
+
+Kairo now builds semantic device records from DXF text labels and nearby geometry groups. Block-insert provenance is used when available; otherwise nearby geometry clusters are used. Each detected device includes class/type, confidence, evidence, linked entity IDs, label entity IDs, bounds, centroid, association status, association confidence, and candidate groups.
+
+Protected BIW rules are covered by tests: `7B-020L-04` is a robot/device tag, not a station; `7B-070L-DN1` and `7B-070L-DN2` classify as dunnage; `7B-060L-1N` classifies as nest. Association tests cover close link, ambiguous middle label, far unlinked label, and distance-based confidence drop.
+
+The viewer semantic panel now shows summary counts, device association details, linked geometry IDs, candidate groups, session-only class/geometry/unlink overrides, and JSON/Markdown summary copy/download actions.
+
+Verification: 245/245 tests pass with `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1`; `pnpm.cmd typecheck` and `pnpm.cmd build` pass; `validate apps/viewer/public/scenes/scott-dxf2013-import` passes with 0 errors / 0 warnings.
+
+---
 
 ### Viewer batched entity picking + zoom-to-cursor - DONE
 

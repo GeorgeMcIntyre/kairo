@@ -1,4 +1,4 @@
-import type { ScenePackage } from "@kairo/schema";
+import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { describe, expect, it } from "vitest";
 import { parseDeviceText, parseStationDeviceTag } from "./deviceDictionary";
 import {
@@ -155,6 +155,48 @@ function scenePackage(): ScenePackage {
   };
 }
 
+function textDrawingEntity(id: string, text: string, x: number, y: number): DrawingEntity {
+  return {
+    id,
+    type: "text",
+    text,
+    position: [x, y, 0],
+    rotationDeg: 0,
+    height: 100,
+    origin: "TEXT",
+    layerId: "layer-text"
+  };
+}
+
+function lineDrawingEntity(id: string, x: number, y: number, sourceRef?: string): DrawingEntity {
+  return {
+    id,
+    type: "line",
+    start: [x - 100, y - 100, 0],
+    end: [x + 100, y + 100, 0],
+    layerId: "layer-robot",
+    sourceRef
+  };
+}
+
+function scenePackageWithEntities(entities: DrawingEntity[]): ScenePackage {
+  return {
+    ...scenePackage(),
+    geometry: [
+      {
+        geometries: [
+          {
+            id: "curves",
+            kind: "curve-set",
+            layerId: "layer-robot",
+            entities
+          }
+        ]
+      }
+    ]
+  };
+}
+
 describe("parseStationLabel", () => {
   it("parses base station IDs without requiring process text", () => {
     expect(parseStationLabel("7B-020L")).toMatchObject({
@@ -222,6 +264,16 @@ describe("parseDeviceText", () => {
       parentStationId: "7B-020L",
       tagSuffix: "04"
     });
+    expect(parseStationLabel("7B-020L-04")).toBeUndefined();
+  });
+
+  it("parses descriptive robot/device tags without treating them as stations", () => {
+    expect(parseDeviceText("7B-020L-04 (RIVET) BASE PLATE")).toMatchObject({
+      kind: "device_number",
+      parentStationId: "7B-020L",
+      tagSuffix: "04"
+    });
+    expect(parseStationLabel("7B-020L-04 (RIVET) BASE PLATE")).toBeUndefined();
   });
 
   it("parses dunnage and nest station-device tags", () => {
@@ -315,5 +367,45 @@ describe("computeLayoutSemantics", () => {
     expect(semantics.devices.every((device) => device.stationId === "7B-010L")).toBe(true);
     expect(semantics.devices.every((device) => device.nearbyEntityIds.length > 0)).toBe(true);
     expect(semantics.unknownTextEntities.map((text) => text.entityId)).toContain("label-unknown");
+  });
+
+  it("keeps ambiguous device associations unlinked while preserving candidates", () => {
+    const semantics = computeLayoutSemantics(
+      scenePackageWithEntities([
+        textDrawingEntity("label-device", "7B-020L-04", 0, 0),
+        lineDrawingEntity("left-line", -500, 0, "src-dxf-insert-L-block-robot-base-child-L1"),
+        lineDrawingEntity("right-line", 500, 0, "src-dxf-insert-R-block-robot-base-child-L1")
+      ])
+    );
+    const device = semantics.devices.find((entry) => entry.sourceTextEntityIds.includes("label-device"));
+
+    expect(device).toMatchObject({
+      associationStatus: "ambiguous",
+      linkedEntityIds: [],
+      bounds: { min: [-50, -50, 0], max: [50, 50, 0] }
+    });
+    expect(device?.geometryGroupId).toBeUndefined();
+    expect(device?.geometryGroupSource).toBeUndefined();
+    expect(device?.associationCandidates).toHaveLength(2);
+  });
+
+  it("keeps device IDs stable when earlier parsed labels are added or removed", () => {
+    const withoutEarlier = computeLayoutSemantics(
+      scenePackageWithEntities([textDrawingEntity("target-label", "7B-020L-04", 0, 0)])
+    );
+    const withEarlier = computeLayoutSemantics(
+      scenePackageWithEntities([
+        textDrawingEntity("earlier-label", "ROBOT CONTROLLER", -1000, 0),
+        textDrawingEntity("target-label", "7B-020L-04", 0, 0)
+      ])
+    );
+
+    const targetIdWithoutEarlier = withoutEarlier.devices.find((device) =>
+      device.sourceTextEntityIds.includes("target-label")
+    )?.id;
+    const targetIdWithEarlier = withEarlier.devices.find((device) => device.sourceTextEntityIds.includes("target-label"))?.id;
+
+    expect(targetIdWithoutEarlier).toBe("semantic-device-device_number-target-label");
+    expect(targetIdWithEarlier).toBe(targetIdWithoutEarlier);
   });
 });

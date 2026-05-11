@@ -1,12 +1,12 @@
 # Next Phase Recommendation
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 
 ---
 
 ## Current Position
 
-ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, and zoom-to-cursor are complete on current `main` (`644eb03`). The Scott DXF2013 layout:
+ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, semantic validation, and the semantic label-to-geometry device MVP are complete on `codex/kairo-viewer-semantics` (`5751b35` plus current uncommitted implementation). The Scott DXF2013 staged scene:
 
 - Opens framing the facility with P95 robust bounds.
 - Has 246,045 supported entities and 1,092 text labels.
@@ -15,9 +15,11 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, and zoom-to-cursor ar
 - Resolves clicked line/polyline/circle/arc segments to exact DXF entity metadata in the properties panel.
 - Supports mouse-wheel zoom toward cursor through `OrbitControls.zoomToCursor`.
 - Keeps layer toggle, fit-scene, fit-main, fit-selected, text modes, and readable labels working.
-- Passes `pnpm test -- --minWorkers=1 --maxWorkers=1` with 206/206 tests; `pnpm typecheck` and `pnpm build` are clean. The viewer build still reports the expected chunk-size warning.
+- Extracts labels, classifies station/device/nest/dunnage-style labels with confidence and reasons, links labels to nearby block/geometry groups, and exposes linked/ambiguous/unlinked states.
+- Provides session-only correction controls and JSON/Markdown semantic summary export.
+- Passes `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` with 245/245 tests; `pnpm.cmd typecheck` and `pnpm.cmd build` are clean. The viewer build still reports the expected chunk-size warning.
 
-POC readiness: ~84%.
+POC readiness: ~89%.
 
 ---
 
@@ -36,23 +38,31 @@ POC readiness: ~84%.
 
 ## Recommended Priority Order
 
-### 1 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
+### 1 - ISSUE-019: Scott DXF semantic association QA pass (P1, NEXT)
+
+Manually inspect high-value labels and linked geometry in the primary Scott DXF staged scene. Record false positives, ambiguous associations, and unlinked labels. Tune only proven thresholds, layer hints, or block-name hints.
+
+### 2 - ISSUE-018: Persist reviewed semantic devices and overrides (P1, NEXT)
+
+Add a small project-level semantic model for confirmed class overrides, geometry association overrides, unlinked labels, and warnings. Reload it with the staged scene so user corrections survive refresh/export.
+
+### 3 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
 
 Maximize canvas space. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers should become the main side panel. Diagnostics should be collapsed by default. Tree panel should be optional or hidden by default.
 
-### 2 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
+### 4 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
 
 Manual CAD/browser QA is still needed for dense label areas. Fix only specific, proven placement/readability issues; otherwise record screenshots and keep importer/schema changes parked.
 
-### 3 - ISSUE-015: Coordinate precision audit (P2, NEXT)
+### 5 - ISSUE-015: Coordinate precision audit (P2, NEXT)
 
 Audit world-space coordinate precision for the Scott DXF. Facility coordinates are at roughly 116k mm; with single-precision float in Three.js this may cause high-zoom jitter.
 
-### 4 - ISSUE-016: Cloudflare deploy check (P1, NEXT)
+### 6 - ISSUE-016: Cloudflare deploy check (P1, NEXT)
 
 Confirm Pages settings, local dist contents, `_redirects`, and staged scene payload. Use the CLI `stage-viewer-scene` command; there is no viewer `stage` script.
 
-### 5 - ISSUE-017: CAD Exchanger GLB primitive probe (P2, NEXT - research only)
+### 7 - ISSUE-017: CAD Exchanger GLB primitive probe (P2, NEXT - research only)
 
 Research only. Do not implement an exporter. First prove CAD Exchanger behavior with a small GLB probe covering LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback, material/layer preservation, and coordinate precision.
 
@@ -72,11 +82,13 @@ Research only. Do not implement an exporter. First prove CAD Exchanger behavior 
 
 ---
 
-## What Done Looks Like After Priority 1-5
+## What Done Looks Like After Priority 1-7
 
+- Scott DXF semantic associations have a documented manual QA pass.
+- Reviewed semantic corrections can be saved and reloaded.
 - Canvas-dominant viewer layout with collapsible panels.
 - Text visual QA notes are captured; any remaining alignment issues are labeled "needs manual QA."
 - Coordinate precision has a written pass/fail recommendation.
 - Cloudflare staging/deploy steps reference real commands.
 - CAD Exchanger probe results identify which GLB primitives and metadata survive import.
-- POC readiness estimate: ~88%.
+- POC readiness estimate: ~92%.
