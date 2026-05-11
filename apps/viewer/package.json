@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@kairo/core": "workspace:*",
+    "@kairo/importer-dxf": "workspace:*",
     "@kairo/schema": "workspace:*",
     "@kairo/validator": "workspace:*",
     "@vitejs/plugin-react": "^4.3.4",

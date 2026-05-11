@@ -1,4 +1,5 @@
 import { scenePackageSchema, type GeometryDocument, type SceneDocument, type ScenePackage } from "@kairo/schema";
+import type { DxfImportResult } from "@kairo/importer-dxf/browser";
 import manifest from "../../../examples/example-scene/manifest.json";
 import scene from "../../../examples/example-scene/scene.json";
 import meshGeometry from "../../../examples/example-scene/geometry/bracket.mesh.json";
@@ -22,6 +23,8 @@ type FetchLike = (input: string) => Promise<{
   status: number;
   json: () => Promise<unknown>;
 }>;
+
+const dxfFilePattern = /\.dxf$/i;
 
 export const sampleScenePackage = scenePackageSchema.parse({
   manifest,
@@ -87,4 +90,15 @@ export async function loadPublicScenePackage(basePath: string, fetcher: FetchLik
     materials: materialsDocument,
     sourceMap: sourceMapDocument
   });
+}
+
+export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResult> {
+  const fileName = file.name.trim() || "uploaded.dxf";
+  if (!dxfFilePattern.test(fileName)) {
+    throw new Error("Only .dxf files can be opened.");
+  }
+
+  const text = await file.text();
+  const { importDxfTextToKairo } = await import("@kairo/importer-dxf/browser");
+  return importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
 }

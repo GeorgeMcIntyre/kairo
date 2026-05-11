@@ -1,5 +1,7 @@
 # Cloudflare Pages Deployment Notes
 
+Canonical deployment checklist: `specs/KAIRO_CLOUDFLARE_DEPLOYMENT.md`.
+
 ## Build output directory
 
 The Cloudflare Pages build output directory must be set relative to the **repository root**, not relative to the app subfolder:

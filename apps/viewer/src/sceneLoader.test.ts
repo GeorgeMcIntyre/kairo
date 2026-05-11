@@ -1,5 +1,67 @@
 import { describe, expect, it } from "vitest";
-import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+import { loadDxfFileScenePackage, loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+
+const oneLineDxf = `0
+SECTION
+2
+HEADER
+9
+$INSUNITS
+70
+4
+0
+ENDSEC
+0
+SECTION
+2
+TABLES
+0
+TABLE
+2
+LAYER
+70
+1
+0
+LAYER
+2
+CUT
+70
+0
+62
+1
+6
+CONTINUOUS
+0
+ENDTAB
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+5
+20
+8
+CUT
+10
+0
+20
+0
+30
+0
+11
+25
+21
+10
+31
+0
+0
+ENDSEC
+0
+EOF
+`;
 
 describe("viewer scene loader", () => {
   it("uses the bundled sample when no scene query is present", () => {
@@ -42,5 +104,17 @@ describe("viewer scene loader", () => {
     expect(loaded.geometry.map((document) => document.geometries[0].id)).toEqual(["geom-bracket-body", "geom-reference-outline"]);
     expect(requestedUrls).toContain("/scenes/sample/geometry/geom-bracket-body.json");
     expect(requestedUrls).toContain("/scenes/sample/geometry/geom-reference-outline.json");
+  });
+
+  it("loads a local DXF file through the browser importer", async () => {
+    const loaded = await loadDxfFileScenePackage(new File([oneLineDxf], "uploaded.dxf"));
+
+    expect(loaded.scenePackage.scene.nodes[0].displayName).toBe("uploaded.dxf");
+    expect(loaded.scenePackage.manifest.source.path).toBe("uploaded.dxf");
+    expect(loaded.summary.supportedEntityCount).toBe(1);
+  });
+
+  it("rejects non-DXF local files", async () => {
+    await expect(loadDxfFileScenePackage(new File(["{}"], "scene.json"))).rejects.toThrow("Only .dxf files");
   });
 });

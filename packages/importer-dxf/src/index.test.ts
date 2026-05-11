@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Parser } from "@dxfjs/parser";
 import { validateScenePackage } from "@kairo/validator";
 import { importDxfToKairo, writeScenePackage } from ".";
+import { importDxfTextToKairo } from "./browser";
 
 const fixturesDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "test-fixtures");
 
@@ -168,6 +169,18 @@ describe("importDxfToKairo", () => {
         }
       ]
     });
+  });
+
+  it("imports DXF text through the browser-safe entrypoint", async () => {
+    const content = await readFile(path.join(fixturesDir, "one-line.dxf"), "utf8");
+    const result = await importDxfTextToKairo("uploaded.dxf", content);
+
+    expect(validateScenePackage(result.scenePackage).valid).toBe(true);
+    expect(result.scenePackage.scene.nodes[0]).toMatchObject({
+      displayName: "uploaded.dxf"
+    });
+    expect(result.scenePackage.manifest.source.path).toBe("uploaded.dxf");
+    expect(result.summary.supportedEntityCount).toBe(1);
   });
 
   it("maps multiple DXF layers and LWPOLYLINE geometry", async () => {
