@@ -10,12 +10,12 @@ import {
 } from "@kairo/core";
 import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import viewerPackage from "../package.json";
 import { createCurveBatchData, pickEntryForIntersectionIndex, type CurveSegmentPickEntry, type PickableCurveEntity } from "./curveBatch";
-import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+import { loadDxfFileScenePackage, loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics } from "./semantic/layoutSemantics";
@@ -779,6 +779,8 @@ function LayerPanel({
 }
 
 export function App() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const sceneLoadSerialRef = useRef(0);
   const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
@@ -800,6 +802,7 @@ export function App() {
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
+  const [dxfDragActive, setDxfDragActive] = useState(false);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
   const sceneStats = useMemo(() => computeSceneStats(scenePackage), [scenePackage]);
@@ -911,25 +914,52 @@ export function App() {
     });
   };
 
+  // TODO: Add React state transition coverage for overlapping scene loads.
+  const startSceneLoad = useCallback(() => {
+    sceneLoadSerialRef.current += 1;
+    return sceneLoadSerialRef.current;
+  }, []);
+
+  const isCurrentSceneLoad = useCallback((serial: number) => sceneLoadSerialRef.current === serial, []);
+
+  const activateScenePackage = useCallback(
+    (
+      loadedScenePackage: ScenePackage,
+      options: { activeName: string; status: string; semanticOverlayEnabled?: boolean }
+    ) => {
+      setScenePackage(loadedScenePackage);
+      setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
+      setSelectedEntity(undefined);
+      setSelectedSemantic(undefined);
+      setSemanticDeviceOverrides({});
+      setSemanticFilters({ ...DEFAULT_SEMANTIC_VALIDATION_FILTERS });
+      setHiddenLayerIds(new Set());
+      setShowOutliers(false);
+      setViewMode(loadedScenePackage.manifest.axisSystem.up === "Z" ? "top2d" : "perspective");
+      setFitRequest((current) => ({ target: "main", serial: current.serial + 1 }));
+      setSceneStatus(options.status);
+      setSceneLoadError(undefined);
+      setActiveSceneName(options.activeName);
+      if (options.semanticOverlayEnabled !== undefined) {
+        setSemanticOverlayEnabled(options.semanticOverlayEnabled);
+      }
+    },
+    []
+  );
+
   const loadPublicScene = useCallback(async (sceneName: string, options?: { updateUrl?: boolean }) => {
+    const loadSerial = startSceneLoad();
     setSceneStatus(`Loading ${sceneName}`);
     setSceneLoadError(undefined);
     setActiveSceneName(sceneName);
 
     try {
       const loadedScenePackage = await loadPublicScenePackage(`/scenes/${sceneName}`);
-      setScenePackage(loadedScenePackage);
-      setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
-      setSelectedEntity(undefined);
-      setSelectedSemantic(undefined);
-      setSemanticDeviceOverrides({});
-      setHiddenLayerIds(new Set());
-      setShowOutliers(false);
-      setViewMode(loadedScenePackage.manifest.axisSystem.up === "Z" ? "top2d" : "perspective");
-      setFitRequest((current) => ({ target: "main", serial: current.serial + 1 }));
-      setSceneStatus(`Loaded ${sceneName}`);
-      setSceneLoadError(undefined);
-      setActiveSceneName(sceneName);
+      if (!isCurrentSceneLoad(loadSerial)) return;
+      activateScenePackage(loadedScenePackage, {
+        activeName: sceneName,
+        status: `Loaded ${sceneName}`
+      });
 
       if (options?.updateUrl) {
         const nextUrl = new URL(window.location.href);
@@ -937,6 +967,7 @@ export function App() {
         window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
       }
     } catch (error) {
+      if (!isCurrentSceneLoad(loadSerial)) return;
       setActiveSceneName(undefined);
       setSceneStatus("Demo layout failed to load");
       setSceneLoadError(
@@ -945,7 +976,80 @@ export function App() {
           : `Could not load ${sceneName}. ${String(error)}`
       );
     }
-  }, []);
+  }, [activateScenePackage, isCurrentSceneLoad, startSceneLoad]);
+
+  const loadLocalDxfFile = useCallback(
+    async (file: File) => {
+      const loadSerial = startSceneLoad();
+      const fileName = file.name || "uploaded.dxf";
+      setSceneStatus(`Loading ${fileName}`);
+      setSceneLoadError(undefined);
+      setActiveSceneName(fileName);
+
+      try {
+        const result = await loadDxfFileScenePackage(file);
+        if (!isCurrentSceneLoad(loadSerial)) return;
+        const warningSuffix = result.summary.warningCount === 0 ? "" : ` (${result.summary.warningCount} warnings)`;
+        activateScenePackage(result.scenePackage, {
+          activeName: fileName,
+          status: `Imported ${fileName}${warningSuffix}`,
+          semanticOverlayEnabled: true
+        });
+
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("scene");
+        window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+      } catch (error) {
+        if (!isCurrentSceneLoad(loadSerial)) return;
+        setActiveSceneName(undefined);
+        setSceneStatus("DXF import failed");
+        setSceneLoadError(
+          error instanceof Error
+            ? `Could not import ${fileName}. ${error.message}`
+            : `Could not import ${fileName}. ${String(error)}`
+        );
+      }
+    },
+    [activateScenePackage, isCurrentSceneLoad, startSceneLoad]
+  );
+
+  const openDxfFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleDxfFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) {
+      void loadLocalDxfFile(file);
+    }
+  };
+
+  const handleDxfDragOver = (event: DragEvent<HTMLElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+    setDxfDragActive(true);
+  };
+
+  const handleDxfDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (event.currentTarget === event.target) {
+      setDxfDragActive(false);
+    }
+  };
+
+  const handleDxfDrop = (event: DragEvent<HTMLElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+    event.preventDefault();
+    setDxfDragActive(false);
+    const file = Array.from(event.dataTransfer.files).find((entry) => entry.name.toLowerCase().endsWith(".dxf"));
+    if (file) {
+      void loadLocalDxfFile(file);
+      return;
+    }
+    startSceneLoad();
+    setSceneStatus("DXF import failed");
+    setSceneLoadError("Drop a .dxf file to import it.");
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1007,7 +1111,12 @@ export function App() {
   };
 
   return (
-    <main className={`app-shell${landingMode ? " landing-mode" : ""}${sceneIsLoading ? " loading-mode" : ""}`}>
+    <main
+      className={`app-shell${landingMode ? " landing-mode" : ""}${sceneIsLoading ? " loading-mode" : ""}${dxfDragActive ? " dxf-drag-active" : ""}`}
+      onDragLeave={handleDxfDragLeave}
+      onDragOver={handleDxfDragOver}
+      onDrop={handleDxfDrop}
+    >
       <section className="viewport-panel">
         <div className="viewport-toolbar">
           <div className="scene-summary" aria-label="Loaded scene summary">
@@ -1018,6 +1127,16 @@ export function App() {
             </span>
           </div>
           <div className="toolbar-actions">
+            <input
+              ref={fileInputRef}
+              accept=".dxf"
+              className="file-input"
+              onChange={handleDxfFileInputChange}
+              type="file"
+            />
+            <button onClick={openDxfFilePicker} type="button">
+              Open DXF
+            </button>
             <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
               Load Demo Layout
             </button>
@@ -1138,6 +1257,12 @@ export function App() {
           onViewportDiagnostics={setViewportDiagnostics}
         />
       </section>
+
+      {dxfDragActive ? (
+        <section className="dxf-drop-overlay" aria-label="DXF drop target">
+          <strong>Drop DXF to import</strong>
+        </section>
+      ) : null}
 
       {landingMode ? (
         <section className="demo-landing" aria-labelledby="demo-landing-title">

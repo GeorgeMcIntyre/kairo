@@ -257,6 +257,14 @@ button:hover {
   color: #ffd37a;
 }
 
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .toolbar-divider {
   display: inline-block;
   width: 1px;
@@ -276,6 +284,28 @@ button:hover {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.dxf-drop-overlay {
+  position: absolute;
+  z-index: 20;
+  inset: 58px 12px 12px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed #6ab4e8;
+  border-radius: 6px;
+  background: rgba(9, 17, 29, 0.72);
+  color: #d7ecff;
+  pointer-events: none;
+}
+
+.dxf-drop-overlay strong {
+  border: 1px solid #375f7d;
+  border-radius: 4px;
+  background: rgba(22, 30, 46, 0.96);
+  padding: 12px 18px;
+  font-size: 13px;
+  text-transform: uppercase;
 }
 
 .demo-landing {

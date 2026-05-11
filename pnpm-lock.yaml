@@ -39,6 +39,9 @@ importers:
       '@kairo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@kairo/importer-dxf':
+        specifier: workspace:*
+        version: link:../../packages/importer-dxf
       '@kairo/schema':
         specifier: workspace:*
         version: link:../../packages/schema
