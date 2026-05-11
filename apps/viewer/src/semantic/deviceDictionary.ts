@@ -1,3 +1,5 @@
+import { extractStrongDeviceTag, isLikelyAnnotationText } from "../textSafety";
+
 export type DeviceKind =
   | "robot_controller"
   | "pdp_panel"
@@ -98,6 +100,26 @@ export function parseDeviceText(text: string): DeviceDictionaryMatch | undefined
       tagSuffix: stationDeviceTag.suffix
     };
   }
+
+  const embeddedDeviceTag = extractStrongDeviceTag(normalized);
+  if (embeddedDeviceTag) {
+    const embeddedStationDeviceTag = parseStationDeviceTag(embeddedDeviceTag);
+    if (embeddedStationDeviceTag) {
+      return {
+        kind: embeddedStationDeviceTag.kind,
+        confidence: embeddedStationDeviceTag.kind === "station_device_tag" ? 0.66 : 0.82,
+        evidence: [
+          `embedded parent station ${embeddedStationDeviceTag.parentStationId}`,
+          `embedded suffix ${embeddedStationDeviceTag.suffix}`,
+          "strong station-device tag extracted from longer note"
+        ],
+        parentStationId: embeddedStationDeviceTag.parentStationId,
+        tagSuffix: embeddedStationDeviceTag.suffix
+      };
+    }
+  }
+
+  if (isLikelyAnnotationText(normalized)) return undefined;
 
   if (/\bROBOT\s+CONTROLLER\b/.test(normalized)) {
     return match("robot_controller", 0.94, ["ROBOT CONTROLLER"]);

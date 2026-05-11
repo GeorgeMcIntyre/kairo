@@ -524,7 +524,11 @@ button:hover {
   top: 0;
   left: 0;
   transform-origin: 0 100%;
-  white-space: pre;
+  max-width: min(360px, 38vw);
+  max-height: 2.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   line-height: 1.1;
   color: #d0e4f5;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -847,6 +851,44 @@ button:hover {
   line-height: 1;
 }
 
+.semantic-overlay-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #29344a;
+  color: #8aa2b6;
+  font-size: 11px;
+}
+
+.semantic-overlay-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.legend-line,
+.legend-marker {
+  display: inline-block;
+  width: 28px;
+  height: 0;
+  border-top: 2px solid #76b9ff;
+}
+
+.legend-line.ambiguous {
+  border-top-style: dashed;
+  border-color: #ffc857;
+}
+
+.legend-marker.unlinked {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 2px;
+  background: #e6695c;
+}
+
 .semantic-filter-grid label {
   display: grid;
   gap: 5px;
@@ -908,6 +950,13 @@ button:hover {
   color: #ffd37a;
 }
 
+.semantic-copy-status {
+  align-self: center;
+  color: #9ff2d4;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .semantic-validation-lists {
   display: grid;
   gap: 12px;
@@ -918,11 +967,28 @@ button:hover {
   min-width: 0;
 }
 
+.semantic-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
 .semantic-validation-lists h3 {
-  margin: 0 0 8px;
+  margin: 0;
   color: #c9d4df;
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.semantic-list-heading span {
+  min-width: 0;
+  overflow: hidden;
+  color: #6a8499;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .semantic-validation-lists p {
@@ -970,9 +1036,47 @@ button:hover {
   white-space: nowrap;
 }
 
+.semantic-row-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
 .semantic-validation-lists li button strong {
   color: #f4f8fc;
   font-size: 12px;
+}
+
+.semantic-status {
+  justify-self: end;
+  padding: 2px 5px;
+  border: 1px solid #34445c;
+  border-radius: 3px;
+  color: #dce8f2;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.semantic-status.linked {
+  border-color: #287d65;
+  color: #9ff2d4;
+}
+
+.semantic-status.ambiguous {
+  border-color: #8c6a22;
+  color: #ffd37a;
+}
+
+.semantic-status.unlinked {
+  border-color: #8d3830;
+  color: #ffb7ad;
+}
+
+.semantic-status.overridden {
+  border-color: #8060aa;
+  color: #d6c6ff;
 }
 
 .semantic-validation-lists li button span,
@@ -980,6 +1084,28 @@ button:hover {
   color: #8aa2b6;
   font-size: 11px;
   font-style: normal;
+}
+
+.semantic-validation-lists li button .semantic-status {
+  color: #dce8f2;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.semantic-validation-lists li button .semantic-status.linked {
+  color: #9ff2d4;
+}
+
+.semantic-validation-lists li button .semantic-status.ambiguous {
+  color: #ffd37a;
+}
+
+.semantic-validation-lists li button .semantic-status.unlinked {
+  color: #ffb7ad;
+}
+
+.semantic-validation-lists li button .semantic-status.overridden {
+  color: #d6c6ff;
 }
 
 .semantic-outlier-grid {
@@ -1008,6 +1134,17 @@ button:hover {
 .semantic-override-controls {
   display: grid;
   gap: 8px;
+}
+
+.semantic-full-text {
+  max-height: 9em;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.semantic-override-state {
+  color: #8aa2b6;
+  font-size: 12px;
 }
 
 .semantic-override-controls label {

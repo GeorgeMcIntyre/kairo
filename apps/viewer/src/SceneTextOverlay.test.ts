@@ -87,6 +87,7 @@ describe("collectTextItems", () => {
     expect(items[0]).toMatchObject({
       entityId: "text-1",
       text: "STATION A",
+      displayText: "STATION A",
       origin: "TEXT",
       height: 2.5,
       layerId: "layer-cut"
@@ -110,6 +111,22 @@ describe("collectTextItems", () => {
     const items = collectTextItems(pkg);
     expect(items).toHaveLength(1);
     expect(items[0].layerId).toBe("layer-cut");
+  });
+
+  it("preserves raw long text and exposes a truncated display label", () => {
+    const pkg = makeScenePackage();
+    const geom = pkg.geometry[0].geometries[0];
+    if (geom.kind === "curve-set") {
+      const text = geom.entities.find((e) => e.id === "text-1");
+      if (text && text.type === "text") {
+        text.text = "Cable tray support note with enough words to be visually capped in the browser overlay";
+      }
+    }
+
+    const [item] = collectTextItems(pkg);
+    expect(item.text).toContain("visually capped");
+    expect(item.displayText).toMatch(/\.\.\.$/);
+    expect(item.displayText.length).toBeLessThan(item.text.length);
   });
 });
 

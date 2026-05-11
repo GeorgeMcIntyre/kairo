@@ -1,4 +1,5 @@
 import type { Bounds3, EntityBounds, RobustSceneBounds, Vec3 } from "@kairo/core";
+import { MAX_SEMANTIC_OVERLAY_CHARS, safeDisplayText, type SemanticNoteKind } from "../textSafety";
 import type { DeviceKind } from "./deviceDictionary";
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity, StationSemantic } from "./layoutSemantics";
 import type { DeviceGeometryAssociationCandidate, DeviceGeometryAssociationStatus } from "./semanticDevices";
@@ -37,6 +38,11 @@ export type SemanticSelectionDetails = {
   geometryAssociationStatus?: DeviceGeometryAssociationStatus;
   associationCandidates: DeviceGeometryAssociationCandidate[];
   evidence: string[];
+  rawText?: string;
+  displayText?: string;
+  associationText?: string;
+  noteKind?: SemanticNoteKind;
+  isLongText?: boolean;
 };
 
 export type SemanticOverlayStation = {
@@ -190,8 +196,8 @@ export function resolveSemanticSelection(
     if (!device) return undefined;
     return {
       selection,
-      title: device.kind,
-      subtitle: `Detected candidate: ${device.labelText}`,
+      title: device.displayText ?? safeDisplayText(device.labelText),
+      subtitle: `${device.kind} / ${device.associationStatus}`,
       confidence: device.confidence,
       bounds: device.bounds,
       sourceTextEntityIds: device.sourceTextEntityIds,
@@ -202,7 +208,12 @@ export function resolveSemanticSelection(
       associationMethod: device.stationAssociationMethod,
       geometryAssociationStatus: device.associationStatus,
       associationCandidates: device.associationCandidates,
-      evidence: device.evidence
+      evidence: device.evidence,
+      rawText: device.rawText ?? device.labelText,
+      displayText: device.displayText ?? safeDisplayText(device.labelText),
+      associationText: device.associationText,
+      noteKind: device.noteKind,
+      isLongText: device.isLongText
     };
   }
 
@@ -210,14 +221,19 @@ export function resolveSemanticSelection(
   if (!unknown) return undefined;
   return {
     selection,
-    title: unknown.normalizedText,
-    subtitle: "Unknown text label",
+    title: unknown.displayText ?? safeDisplayText(unknown.normalizedText),
+    subtitle: unknown.noteKind ? `${unknown.noteKind} / Unknown text label` : "Unknown text label",
     bounds: unknown.bounds,
     sourceTextEntityIds: [unknown.entityId],
     nearbyEntityIds: [],
     linkedEntityIds: [],
     associationCandidates: [],
-    evidence: [unknown.sourceKind]
+    evidence: unknown.noteKind ? [unknown.noteKind, unknown.sourceKind] : [unknown.sourceKind],
+    rawText: unknown.rawText ?? unknown.text,
+    displayText: unknown.displayText ?? safeDisplayText(unknown.normalizedText),
+    associationText: unknown.associationText,
+    noteKind: unknown.noteKind,
+    isLongText: unknown.isLongText
   };
 }
 
@@ -260,7 +276,7 @@ function sourceMarkersForSelection(semantics: LayoutSemantics, details: Semantic
     .map((text) => ({
       id: text.entityId,
       position: text.position,
-      label: text.normalizedText
+      label: safeDisplayText(text.displayText ?? text.normalizedText, MAX_SEMANTIC_OVERLAY_CHARS)
     }));
 }
 
@@ -288,7 +304,7 @@ export function buildSemanticOverlayModel(
     })),
     deviceCandidates: devices.map((device) => ({
       id: device.id,
-      label: device.labelText,
+      label: safeDisplayText(device.displayText ?? device.labelText, MAX_SEMANTIC_OVERLAY_CHARS),
       kind: device.kind,
       position: device.position,
       centroid: device.centroid,
@@ -300,7 +316,7 @@ export function buildSemanticOverlayModel(
     })),
     unknownLabels: filtered.unknownTextEntities.map((text) => ({
       id: text.entityId,
-      label: text.normalizedText,
+      label: safeDisplayText(text.displayText ?? text.normalizedText, MAX_SEMANTIC_OVERLAY_CHARS),
       position: text.position,
       bounds: text.bounds,
       selected: selectedKeyValue === `unknown-text:${text.entityId}`

@@ -4,7 +4,7 @@ import { parseDeviceText } from "./deviceDictionary";
 import type { SemanticTextLabel } from "./layoutSemantics";
 import { associateLabelToGeometry, buildSemanticGeometryGroups } from "./semanticDevices";
 
-function label(text: string, x: number, y: number): SemanticTextLabel {
+function label(text: string, x: number, y: number, patch: Partial<SemanticTextLabel> = {}): SemanticTextLabel {
   return {
     text,
     normalizedText: text,
@@ -12,7 +12,8 @@ function label(text: string, x: number, y: number): SemanticTextLabel {
     rotationDeg: 0,
     height: 100,
     bounds: { min: [x - 50, y - 50, 0], max: [x + 50, y + 50, 0] },
-    sourceTextEntityIds: [`text-${text}`]
+    sourceTextEntityIds: [`text-${text}`],
+    ...patch
   };
 }
 
@@ -119,5 +120,23 @@ describe("label-to-geometry association", () => {
     expect(near.status).toBe("linked");
     expect(farther.status).toBe("linked");
     expect(farther.confidence).toBeLessThan(near.confidence);
+  });
+
+  it("honors capped association radius for long text labels", () => {
+    const groups = buildSemanticGeometryGroups(scene([line("robot-line", 0, 0, "src-dxf-insert-A1-block-robot-child-L1")]));
+    const parsed = parseDeviceText("7B-020R-03");
+    const association = associateLabelToGeometry(
+      label("7B-020R-03 long note", 2200, 0, {
+        associationText: "7B-020R-03",
+        isLongText: true,
+        height: 500,
+        associationRadius: 900
+      }),
+      groups,
+      parsed
+    );
+
+    expect(association.status).toBe("unlinked");
+    expect(association.reason.join(" ")).toContain("no nearby geometry group");
   });
 });

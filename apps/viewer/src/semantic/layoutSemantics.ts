@@ -1,5 +1,6 @@
 import { computeEntityBounds, computeEntityCentroid, type Bounds3, type RobustSceneBounds, type Vec3 } from "@kairo/core";
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
+import { normalizeDxfText, safeDisplayText, textSafetyProfile, type SemanticNoteKind } from "../textSafety";
 import { parseDeviceText, type DeviceDictionaryMatch, type DeviceKind } from "./deviceDictionary";
 import {
   associateLabelToGeometry,
@@ -15,7 +16,13 @@ export type SemanticTextSourceKind = "TEXT" | "MTEXT" | "ATTDEF";
 export type SemanticTextEntity = {
   entityId: string;
   text: string;
+  rawText?: string;
+  displayText?: string;
   normalizedText: string;
+  associationText?: string;
+  noteKind?: SemanticNoteKind;
+  isLongText?: boolean;
+  associationRadius?: number;
   position: Vec3;
   rotationDeg: number;
   height: number;
@@ -51,7 +58,12 @@ export type DeviceSemantic = {
   id: string;
   kind: DeviceKind;
   labelText: string;
+  rawText?: string;
+  displayText?: string;
   normalizedText: string;
+  associationText?: string;
+  noteKind?: SemanticNoteKind;
+  isLongText?: boolean;
   position: Vec3;
   rotationDeg: number;
   height: number;
@@ -118,7 +130,13 @@ export type LayoutSemanticOptions = {
 
 export type SemanticTextLabel = {
   text: string;
+  rawText?: string;
+  displayText?: string;
   normalizedText: string;
+  associationText?: string;
+  noteKind?: SemanticNoteKind;
+  isLongText?: boolean;
+  associationRadius?: number;
   position: Vec3;
   rotationDeg: number;
   height: number;
@@ -152,7 +170,7 @@ const STATION_ID_PATTERN = /^([A-Z0-9]+)-(\d{3})([LR])$/i;
 const STATION_REF_PATTERN = /\b([A-Z0-9]+-\d{3}[LR])(?:-.+)?\b/i;
 
 export function normalizeLabelText(text: string): string {
-  return text.replace(/\\P/gi, " ").replace(/\s+/g, " ").trim();
+  return normalizeDxfText(text);
 }
 
 function distance2d(a: Vec3, b: Vec3): number {
@@ -244,12 +262,18 @@ export function extractSemanticTextEntities(scenePackage: ScenePackage): Semanti
       if (geometry.kind !== "curve-set") continue;
       for (const entity of geometry.entities) {
         if (entity.type !== "text") continue;
-        const normalizedText = normalizeLabelText(entity.text);
-        if (!normalizedText) continue;
+        const profile = textSafetyProfile(entity.text, entity.height);
+        if (!profile.normalizedText) continue;
         items.push({
           entityId: entity.id,
           text: entity.text,
-          normalizedText,
+          rawText: profile.rawText,
+          displayText: profile.displayText,
+          normalizedText: profile.normalizedText,
+          associationText: profile.associationText,
+          noteKind: profile.noteKind,
+          isLongText: profile.isLongText,
+          associationRadius: profile.associationRadius,
           position: [entity.position[0], entity.position[1], entity.position[2]],
           rotationDeg: entity.rotationDeg,
           height: entity.height,
@@ -411,7 +435,13 @@ export function groupNearbyEntities(
 function textLabelFromEntity(entity: SemanticTextEntity): SemanticTextLabel {
   return {
     text: entity.text,
+    rawText: entity.rawText ?? entity.text,
+    displayText: entity.displayText ?? safeDisplayText(entity.text),
     normalizedText: entity.normalizedText,
+    associationText: entity.associationText ?? entity.normalizedText,
+    noteKind: entity.noteKind,
+    isLongText: entity.isLongText,
+    associationRadius: entity.associationRadius,
     position: entity.position,
     rotationDeg: entity.rotationDeg,
     height: entity.height,
@@ -432,10 +462,16 @@ function readingOrderCompare(a: SemanticTextEntity, b: SemanticTextEntity): numb
 function mergedTextLabel(items: readonly SemanticTextEntity[]): SemanticTextLabel {
   const sorted = [...items].sort(readingOrderCompare);
   const text = sorted.map((item) => item.text).join(" ");
-  const normalizedText = normalizeLabelText(sorted.map((item) => item.normalizedText).join(" "));
+  const profile = textSafetyProfile(text, Math.max(...sorted.map((item) => item.height)));
   return {
     text,
-    normalizedText,
+    rawText: text,
+    displayText: profile.displayText,
+    normalizedText: profile.normalizedText,
+    associationText: profile.associationText,
+    noteKind: profile.noteKind,
+    isLongText: profile.isLongText || sorted.some((item) => item.isLongText),
+    associationRadius: profile.associationRadius,
     position: sorted[0].position,
     rotationDeg: sorted[0].rotationDeg,
     height: Math.max(...sorted.map((item) => item.height)),
@@ -447,7 +483,7 @@ function mergedTextLabel(items: readonly SemanticTextEntity[]): SemanticTextLabe
 }
 
 function mergeCandidateScore(a: SemanticTextEntity, b: SemanticTextEntity, merged: SemanticTextLabel): number {
-  const parsed = parseDeviceText(merged.normalizedText);
+  const parsed = parseDeviceText(merged.associationText ?? merged.normalizedText);
   const confidence = parsed?.confidence ?? 0;
   return distance2d(a.position, b.position) - confidence * 1000;
 }
@@ -482,10 +518,13 @@ export function mergeDeviceTextLabels(
     for (let j = i + 1; j < available.length; j += 1) {
       const left = available[i];
       const right = available[j];
-      if (parseDeviceText(left.normalizedText)?.parentStationId || parseDeviceText(right.normalizedText)?.parentStationId) continue;
+      if (
+        parseDeviceText(left.associationText ?? left.normalizedText)?.parentStationId ||
+        parseDeviceText(right.associationText ?? right.normalizedText)?.parentStationId
+      ) continue;
       if (!textCanMerge(left, right, options)) continue;
       const merged = mergedTextLabel([left, right]);
-      if (!parseDeviceText(merged.normalizedText)) continue;
+      if (!parseDeviceText(merged.associationText ?? merged.normalizedText)) continue;
       mergeCandidates.push({
         label: merged,
         ids: [left.entityId, right.entityId],
@@ -571,7 +610,7 @@ export function buildDeviceSemantics(
 ): DeviceSemantic[] {
   const devices: DeviceSemantic[] = [];
   for (const label of labels) {
-    const parsed = parseDeviceText(label.normalizedText);
+    const parsed = parseDeviceText(label.associationText ?? label.normalizedText);
     if (!parsed) continue;
     const geometryAssociation = associateLabelToGeometry(label, geometryGroups, parsed, options);
     const linkedGroup = geometryAssociation.status === "linked" ? geometryAssociation.group : undefined;
@@ -584,18 +623,30 @@ export function buildDeviceSemantics(
         : geometryAssociation.status === "ambiguous"
         ? -0.05
         : -0.1;
+    const longTextAdjustment = label.isLongText ? -0.04 : 0;
     const confidence = Math.max(
       0.1,
-      Math.min(0.98, parsed.confidence + association.confidenceBoost + nearbyBoost + geometryBoost)
+      Math.min(0.98, parsed.confidence + association.confidenceBoost + nearbyBoost + geometryBoost + longTextAdjustment)
     );
     const deviceNumber = devices.length + 1;
     const linkedEntityIds = linkedGroup?.entityIds ?? [];
     const nearbyEntityIds = linkedEntityIds;
+    const rawText = label.rawText ?? label.text;
+    const primaryLabelText = label.isLongText && label.associationText ? label.associationText : label.text;
+    const textEvidence = [
+      ...parsed.evidence,
+      ...(label.isLongText ? [`long ${label.noteKind ?? "annotation"} text retained as secondary evidence`] : [])
+    ];
     devices.push({
       id: semanticDeviceId(label, parsed.kind, deviceNumber),
       kind: parsed.kind,
-      labelText: label.text,
+      labelText: primaryLabelText,
+      rawText,
+      displayText: label.displayText ?? safeDisplayText(primaryLabelText),
       normalizedText: label.normalizedText,
+      associationText: label.associationText ?? label.normalizedText,
+      noteKind: label.noteKind,
+      isLongText: label.isLongText,
       position: label.position,
       rotationDeg: label.rotationDeg,
       height: label.height,
@@ -612,7 +663,7 @@ export function buildDeviceSemantics(
       stationAssociationMethod: association.method,
       tagSuffix: parsed.tagSuffix,
       confidence,
-      evidence: [...parsed.evidence, ...geometryAssociation.reason],
+      evidence: [...textEvidence, ...geometryAssociation.reason],
       associationStatus: geometryAssociation.status,
       associationConfidence: geometryAssociation.confidence,
       associationReason: geometryAssociation.reason,

@@ -290,6 +290,19 @@ describe("parseDeviceText", () => {
       kind: "nest"
     });
   });
+
+  it("does not promote long cable or fence notes to high-confidence devices", () => {
+    expect(parseDeviceText("Cable tray support note with routing, clearance, and install dimensions by others")).toBeUndefined();
+    expect(parseDeviceText("Fence Panel 1424mm x 2388mm galvanized mesh infill supplied by others")).toBeUndefined();
+  });
+
+  it("extracts a strong station-device tag from longer annotation text", () => {
+    expect(parseDeviceText("Install service clearance near 7B-020R-03 with panel access note")).toMatchObject({
+      kind: "device_number",
+      parentStationId: "7B-020R",
+      tagSuffix: "03"
+    });
+  });
 });
 
 describe("buildStationAnchors", () => {
@@ -407,5 +420,41 @@ describe("computeLayoutSemantics", () => {
 
     expect(targetIdWithoutEarlier).toBe("semantic-device-device_number-target-label");
     expect(targetIdWithEarlier).toBe(targetIdWithoutEarlier);
+  });
+
+  it("classifies long notes as unknown annotations while preserving raw and display text", () => {
+    const rawNote = "Fence Panel 1424mm x 2388mm galvanized mesh infill supplied by others with field trim note";
+    const semantics = computeLayoutSemantics(
+      scenePackageWithEntities([textDrawingEntity("long-fence-note", rawNote, 0, 0), lineDrawingEntity("near-line", 120, 0)])
+    );
+
+    expect(semantics.devices).toHaveLength(0);
+    expect(semantics.unknownTextEntities[0]).toMatchObject({
+      entityId: "long-fence-note",
+      rawText: rawNote,
+      noteKind: "fenceNote"
+    });
+    expect(semantics.unknownTextEntities[0].displayText).toMatch(/\.\.\.$/);
+  });
+
+  it("uses the strong tag as the primary device label while retaining long raw text", () => {
+    const rawNote =
+      "Install service clearance and panel access note near 7B-020R-03 with detailed routing instructions and field verification";
+    const semantics = computeLayoutSemantics(
+      scenePackageWithEntities([
+        textDrawingEntity("long-device-note", rawNote, 0, 0),
+        lineDrawingEntity("device-line", 120, 0, "src-dxf-insert-A1-block-robot-child-L1")
+      ])
+    );
+    const device = semantics.devices.find((entry) => entry.sourceTextEntityIds.includes("long-device-note"));
+
+    expect(device).toMatchObject({
+      kind: "device_number",
+      labelText: "7B-020R-03",
+      rawText: rawNote,
+      associationText: "7B-020R-03",
+      tagSuffix: "03"
+    });
+    expect(device?.displayText).toContain("7B-020R-03");
   });
 });
