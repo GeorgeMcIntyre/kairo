@@ -201,6 +201,7 @@ export function SceneTextOverlay({
   camera,
   host,
   hiddenLayerIds,
+  hiddenEntityIds,
   rafTick,
   densityMode,
   readableOrientation,
@@ -210,6 +211,7 @@ export function SceneTextOverlay({
   camera: TextOverlayCamera | null;
   host: HTMLElement | null;
   hiddenLayerIds: Set<string>;
+  hiddenEntityIds?: ReadonlySet<string>;
   rafTick: number;
   densityMode: LabelDensityMode;
   readableOrientation: boolean;
@@ -262,7 +264,8 @@ export function SceneTextOverlay({
       const el = labelRefs.current.get(textOverlayDomKey(item, index));
       if (!el) continue;
 
-      const layerHidden = item.layerId !== undefined && hiddenLayerIds.has(item.layerId);
+      const layerHidden =
+        (item.layerId !== undefined && hiddenLayerIds.has(item.layerId)) || hiddenEntityIds?.has(item.entityId) === true;
       const projected = projectLabel(item.position, camera, width, height, projectVec);
       const worldFontPx = item.height * pxPerUnit;
       const decision = decideDisplay(
@@ -316,7 +319,18 @@ export function SceneTextOverlay({
         `[SceneTextOverlay] items=${items.length} dom=${labelRefs.current.size} visible=${visibleCount} clampedUp=${clampedUpCount} frustumCulled=${frustumCulledCount} layerHidden=${layerHiddenCount} densityHidden=${densityHiddenCount} pxPerUnit=${pxPerUnit.toFixed(4)} mode=${densityMode} readable=${readableOrientation} cameraReady=${cameraReady} hostReady=${hostReady}`
       );
     }
-  }, [items, camera, host, hiddenLayerIds, rafTick, projectVec, densityMode, readableOrientation, densityContext]);
+  }, [
+    items,
+    camera,
+    host,
+    hiddenLayerIds,
+    hiddenEntityIds,
+    rafTick,
+    projectVec,
+    densityMode,
+    readableOrientation,
+    densityContext
+  ]);
 
   return (
     <div ref={overlayRef} className="text-overlay">

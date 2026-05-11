@@ -85,6 +85,30 @@ describe("createCurveBatchData", () => {
     expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "circle-1")).toHaveLength(32);
     expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "arc-1")).toHaveLength(24);
   });
+
+  it("can omit hidden entities while preserving segment metadata for visible entities", () => {
+    const batch = createCurveBatchData(
+      curveSet([
+        {
+          id: "visible-line",
+          type: "line",
+          start: [0, 0, 0],
+          end: [10, 0, 0]
+        },
+        {
+          id: "hidden-line",
+          type: "line",
+          start: [1000, 0, 0],
+          end: [1010, 0, 0]
+        }
+      ]),
+      undefined,
+      { hiddenEntityIds: new Set(["hidden-line"]) }
+    );
+
+    expect(batch.positions).toHaveLength(6);
+    expect(batch.pickEntriesBySegment.map((entry) => entry.entityId)).toEqual(["visible-line"]);
+  });
 });
 
 describe("pickEntryForIntersectionIndex", () => {
