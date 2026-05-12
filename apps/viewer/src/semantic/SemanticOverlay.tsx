@@ -18,6 +18,14 @@ type ProjectedRect = {
 };
 
 const scratch = new THREE.Vector3();
+const COMPACT_DEVICE_LABEL_CHARS = 22;
+const SELECTED_DEVICE_LABEL_CHARS = 36;
+
+function compactLabel(label: string, maxChars: number): string {
+  if (label.length <= maxChars) return label;
+  if (maxChars <= 3) return label.slice(0, maxChars);
+  return `${label.slice(0, maxChars - 3).trimEnd()}...`;
+}
 
 function projectPoint(point: Vec3, camera: TextOverlayCamera, width: number, height: number): ProjectedPoint {
   scratch.set(point[0], point[1], point[2]);
@@ -181,6 +189,10 @@ export function SemanticOverlay({
         {model.deviceCandidates.map((device) => {
           const point = projectPoint(device.position, camera, width, height);
           if (!point.inFrustum) return null;
+          const displayLabel = compactLabel(
+            device.label,
+            device.selected ? SELECTED_DEVICE_LABEL_CHARS : COMPACT_DEVICE_LABEL_CHARS
+          );
           return (
             <g
               className={`${device.selected ? "selected" : ""} ${device.associationStatus}`}
@@ -190,7 +202,7 @@ export function SemanticOverlay({
             >
               <rect height={10} rx={2} width={10} x={-5} y={-5} />
               <text x={8} y={4}>
-                {device.label}
+                {displayLabel}
               </text>
               <title>{`${device.kind}: ${device.label} (${device.associationStatus})`}</title>
             </g>

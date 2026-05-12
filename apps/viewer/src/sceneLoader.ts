@@ -1,5 +1,6 @@
 import { scenePackageSchema, type GeometryDocument, type SceneDocument, type ScenePackage } from "@kairo/schema";
-import type { DxfImportResult } from "@kairo/importer-dxf/browser";
+import { readKairoPackage } from "@kairo/core";
+import type { DxfImportResult, DxfImportTimingStage } from "@kairo/importer-dxf/browser";
 import manifest from "../../../examples/example-scene/manifest.json";
 import scene from "../../../examples/example-scene/scene.json";
 import meshGeometry from "../../../examples/example-scene/geometry/bracket.mesh.json";
@@ -9,7 +10,7 @@ import materials from "../../../examples/example-scene/materials.json";
 import sourceMap from "../../../examples/example-scene/source-map.json";
 
 export const PUBLIC_SCENE_ASSETS_UNAVAILABLE_MESSAGE =
-  "Demo scene assets are not included in this slim Cloudflare preview. Use Open DXF to load a local DXF.";
+  "Demo scene assets are not included in this slim Cloudflare preview. Use Open DXF / Kairo to load a local drawing file.";
 
 export class PublicSceneAssetLoadError extends Error {
   readonly code = "PUBLIC_SCENE_ASSETS_UNAVAILABLE";
@@ -49,6 +50,7 @@ type FetchLike = (input: string) => Promise<{
 }>;
 
 const dxfFilePattern = /\.dxf$/i;
+const kairoFilePattern = /\.kairo$/i;
 
 export const sampleScenePackage = scenePackageSchema.parse({
   manifest,
@@ -123,12 +125,84 @@ export async function loadPublicScenePackage(basePath: string, fetcher: FetchLik
 }
 
 export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResult> {
+  const totalStartedAt = performance.now();
+  const timing: DxfImportTimingStage[] = [];
+  const recordStage = (stage: string, startedAt: number) => {
+    timing.push({ stage, ms: Math.max(0, performance.now() - startedAt) });
+  };
+
   const fileName = file.name.trim() || "uploaded.dxf";
   if (!dxfFilePattern.test(fileName)) {
     throw new Error("Only .dxf files can be opened.");
   }
 
+  const fileReadStartedAt = performance.now();
   const text = await file.text();
+  recordStage("file-read", fileReadStartedAt);
+
+  const moduleLoadStartedAt = performance.now();
   const { importDxfTextToKairo } = await import("@kairo/importer-dxf/browser");
-  return importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
+  recordStage("importer-module-load", moduleLoadStartedAt);
+
+  const importStartedAt = performance.now();
+  const result = await importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
+  recordStage("dxf-import", importStartedAt);
+
+  return {
+    ...result,
+    timing: [
+      ...timing,
+      ...(result.timing ?? []),
+      { stage: "browser-dxf-load-total", ms: Math.max(0, performance.now() - totalStartedAt) }
+    ]
+  };
+}
+
+export async function loadKairoPackageFileScenePackage(file: File): Promise<ScenePackage> {
+  const fileName = file.name.trim() || "uploaded.kairo";
+  if (!kairoFilePattern.test(fileName)) {
+    throw new Error("Only .kairo files can be opened as Kairo packages.");
+  }
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return readKairoPackage(bytes).scenePackage;
+}
+
+export type LocalSceneFileLoadResult =
+  | {
+      kind: "dxf";
+      scenePackage: ScenePackage;
+      warningCount: number;
+      timing?: DxfImportTimingStage[];
+    }
+  | {
+      kind: "kairo-package";
+      scenePackage: ScenePackage;
+      warningCount: 0;
+      timing?: DxfImportTimingStage[];
+    };
+
+export async function loadLocalSceneFilePackage(file: File): Promise<LocalSceneFileLoadResult> {
+  const fileName = file.name.trim();
+  if (dxfFilePattern.test(fileName)) {
+    const result = await loadDxfFileScenePackage(file);
+    return {
+      kind: "dxf",
+      scenePackage: result.scenePackage,
+      warningCount: result.summary.warningCount,
+      timing: result.timing
+    };
+  }
+
+  if (kairoFilePattern.test(fileName)) {
+    const startedAt = performance.now();
+    return {
+      kind: "kairo-package",
+      scenePackage: await loadKairoPackageFileScenePackage(file),
+      warningCount: 0,
+      timing: [{ stage: "kairo-package-read", ms: Math.max(0, performance.now() - startedAt) }]
+    };
+  }
+
+  throw new Error("Only .dxf and .kairo files can be opened.");
 }

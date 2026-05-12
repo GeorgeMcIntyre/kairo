@@ -38,11 +38,17 @@ export type DxfImportSummary = {
   warningCount: number;
 };
 
+export type DxfImportTimingStage = {
+  stage: string;
+  ms: number;
+};
+
 export type DxfImportResult = {
   scenePackage: ScenePackage;
   warnings: DxfImportWarning[];
   summary: DxfImportSummary;
   preCleanReport: DxfPreCleanReport;
+  timing?: DxfImportTimingStage[];
 };
 
 type LegacyPolylineVertex = {
@@ -1164,17 +1170,38 @@ function buildScenePackage(
 }
 
 export async function importDxfTextToKairo(inputPath: string, content: string, options: DxfImportOptions = {}): Promise<DxfImportResult> {
+  const totalStartedAt = performance.now();
+  const timing: DxfImportTimingStage[] = [];
+
+  const recordStage = (stage: string, startedAt: number) => {
+    timing.push({ stage, ms: Math.max(0, performance.now() - startedAt) });
+  };
+
+  const preCleanStartedAt = performance.now();
   const preCleaned = preCleanDxfText(content);
+  recordStage("pre-clean", preCleanStartedAt);
+
   const parser = new Parser();
+  const parseStartedAt = performance.now();
   const parsed = await parser.parse(preCleaned.text);
+  recordStage("dxf-parse", parseStartedAt);
+
   // @dxfjs/parser does not surface MTEXT entities, so we scan the cleaned DXF
   // text for direct-section MTEXT records ourselves. Without this, large
   // title-block headers (e.g. "7B-070L RACK LOAD" at 457.2 mm) are silently
   // dropped from the imported scene.
+  const mtextStartedAt = performance.now();
   const rawMtext = extractDirectMtextEntities(preCleaned.text);
+  recordStage("mtext-scan", mtextStartedAt);
+
   const warnings: DxfImportWarning[] = [];
+  const buildStartedAt = performance.now();
   const scenePackage = buildScenePackage(inputPath, parsed, options, warnings, rawMtext);
+  recordStage("scene-package-build", buildStartedAt);
+
+  const validationStartedAt = performance.now();
   const report = validateScenePackage(scenePackage);
+  recordStage("validation", validationStartedAt);
 
   if (!report.valid) {
     throw Object.assign(new Error("Imported DXF scene package failed Kairo validation."), {
@@ -1199,6 +1226,7 @@ export async function importDxfTextToKairo(inputPath: string, content: string, o
       layerCount: scenePackage.layers.layers.length,
       warningCount: warnings.length
     },
-    preCleanReport: preCleaned.report
+    preCleanReport: preCleaned.report,
+    timing: [...timing, { stage: "total-import", ms: Math.max(0, performance.now() - totalStartedAt) }]
   };
 }

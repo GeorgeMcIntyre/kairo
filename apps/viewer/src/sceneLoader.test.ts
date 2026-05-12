@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   isPublicSceneAssetLoadError,
   loadDxfFileScenePackage,
+  loadKairoPackageFileScenePackage,
+  loadLocalSceneFilePackage,
   loadPublicScenePackage,
   resolveViewerSceneRequest,
   sampleScenePackage
 } from "./sceneLoader";
+import { createKairoPackage } from "@kairo/core";
 
 const oneLineDxf = `0
 SECTION
@@ -68,6 +71,12 @@ ENDSEC
 0
 EOF
 `;
+
+function filePart(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 
 describe("viewer scene loader", () => {
   it("uses the bundled sample when no scene query is present", () => {
@@ -140,9 +149,48 @@ describe("viewer scene loader", () => {
     expect(loaded.scenePackage.scene.nodes[0].displayName).toBe("uploaded.dxf");
     expect(loaded.scenePackage.manifest.source.path).toBe("uploaded.dxf");
     expect(loaded.summary.supportedEntityCount).toBe(1);
+    expect(loaded.timing?.map((entry) => entry.stage)).toEqual([
+      "file-read",
+      "importer-module-load",
+      "dxf-import",
+      "pre-clean",
+      "dxf-parse",
+      "mtext-scan",
+      "scene-package-build",
+      "validation",
+      "total-import",
+      "browser-dxf-load-total"
+    ]);
+    expect(loaded.timing?.every((entry) => Number.isFinite(entry.ms) && entry.ms >= 0)).toBe(true);
   });
 
   it("rejects non-DXF local files", async () => {
     await expect(loadDxfFileScenePackage(new File(["{}"], "scene.json"))).rejects.toThrow("Only .dxf files");
+  });
+
+  it("loads a local .kairo scene package", async () => {
+    const archive = createKairoPackage(sampleScenePackage, { createdBy: "viewer-test" });
+    const loaded = await loadKairoPackageFileScenePackage(new File([filePart(archive)], "sample.kairo"));
+
+    expect(loaded.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
+    expect(loaded.geometry.map((document) => document.geometries[0].id)).toEqual(["geom-bracket-body", "geom-reference-outline"]);
+  });
+
+  it("loads local .dxf and .kairo files through the shared local-file loader", async () => {
+    const dxfLoaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "uploaded.dxf"));
+    const kairoLoaded = await loadLocalSceneFilePackage(
+      new File([filePart(createKairoPackage(sampleScenePackage))], "sample.kairo")
+    );
+
+    expect(dxfLoaded.kind).toBe("dxf");
+    expect(dxfLoaded.scenePackage.manifest.source.path).toBe("uploaded.dxf");
+    expect(dxfLoaded.timing?.some((entry) => entry.stage === "browser-dxf-load-total")).toBe(true);
+    expect(kairoLoaded.kind).toBe("kairo-package");
+    expect(kairoLoaded.scenePackage.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
+    expect(kairoLoaded.timing?.map((entry) => entry.stage)).toEqual(["kairo-package-read"]);
+  });
+
+  it("rejects unsupported local package extensions", async () => {
+    await expect(loadLocalSceneFilePackage(new File(["{}"], "scene.json"))).rejects.toThrow("Only .dxf and .kairo");
   });
 });

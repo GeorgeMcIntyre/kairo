@@ -1,9 +1,9 @@
-import { flattenGeometry } from "@kairo/core";
+import { createKairoPackage, flattenGeometry, readKairoPackage } from "@kairo/core";
 import { analyzeDxfBlocks, importDxfToKairo, writeDxfBlockInventoryReports, writeScenePackage } from "@kairo/importer-dxf";
 import type { GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
 import { scenePackageSchema } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
-import { cp, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeOutlierBlockSummary, findOutliers, flattenCurveEntities } from "./sceneOutliers";
@@ -58,6 +58,13 @@ async function loadGeometryDocuments(sceneDirectory: string): Promise<GeometryDo
 }
 
 export async function loadScenePackageFromPath(inputPath: string): Promise<unknown> {
+  const absolutePath = path.resolve(inputPath);
+  const inputStat = await stat(absolutePath);
+
+  if (inputStat.isFile() && path.extname(absolutePath).toLowerCase() === ".kairo") {
+    return readKairoPackage(await readFile(absolutePath)).scenePackage;
+  }
+
   const sceneDirectory = await resolveSceneDirectory(inputPath);
   const [manifest, scene, geometry, layers, materials, sourceMap] = await Promise.all([
     readJsonFile<unknown>(path.join(sceneDirectory, "manifest.json")),
@@ -257,6 +264,50 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
   } catch (error) {
     const normalized = normalizeError(error);
     io.stderr(`Kairo DXF import failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
+async function packSceneCommand(args: string[], io: CliIo): Promise<number> {
+  const [scenePath, outputPath] = args;
+
+  if (!scenePath || !outputPath) {
+    io.stderr("Kairo scene package failed\n- ERROR MISSING_PACK_ARGS: Usage: kairo pack-scene <scene-path> <output.kairo>\n");
+    return 1;
+  }
+
+  if (path.extname(outputPath).toLowerCase() !== ".kairo") {
+    io.stderr("Kairo scene package failed\n- ERROR INVALID_PACKAGE_PATH: Output file must use the .kairo extension.\n");
+    return 1;
+  }
+
+  try {
+    const sceneData = await loadScenePackageFromPath(scenePath);
+    const report = validateScenePackage(sceneData);
+    if (!report.valid) {
+      io.stderr(`${formatInvalidOutput(report)}\n`);
+      return 1;
+    }
+
+    const scenePackage = scenePackageSchema.parse(sceneData);
+    const archive = createKairoPackage(scenePackage, { createdBy: "kairo cli" });
+    const absoluteOutputPath = path.resolve(outputPath);
+    await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
+    await writeFile(absoluteOutputPath, archive);
+
+    io.stdout(
+      [
+        "Kairo scene package passed",
+        `Scene: ${scenePackage.scene.nodes.find((node) => node.id === scenePackage.scene.rootNodeId)?.displayName ?? scenePackage.scene.rootNodeId}`,
+        `Input: ${path.resolve(scenePath)}`,
+        `Output: ${absoluteOutputPath}`,
+        `Package bytes: ${archive.byteLength}`
+      ].join("\n") + "\n"
+    );
+    return 0;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo scene package failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
     return 1;
   }
 }
@@ -496,6 +547,10 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return importDxfCommand(args, io);
   }
 
+  if (command === "pack-scene") {
+    return packSceneCommand(args, io);
+  }
+
   if (command === "inspect-dxf") {
     return inspectDxfCommand(args, io);
   }
@@ -509,7 +564,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   }
 
   const message =
-    "Usage: kairo validate <scene-path> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
+    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

@@ -10,15 +10,15 @@ import {
 } from "@kairo/core";
 import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
+import type { DxfImportTimingStage } from "@kairo/importer-dxf/browser";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import viewerPackage from "../package.json";
 import { createCurveBatchData, pickEntryForIntersectionIndex, type CurveSegmentPickEntry, type PickableCurveEntity } from "./curveBatch";
 import {
-  PUBLIC_SCENE_ASSETS_UNAVAILABLE_MESSAGE,
   isPublicSceneAssetLoadError,
-  loadDxfFileScenePackage,
+  loadLocalSceneFilePackage,
   loadPublicScenePackage,
   resolveViewerSceneRequest,
   sampleScenePackage
@@ -31,7 +31,7 @@ import {
   exportAdvancedLayoutMarkdown
 } from "./advancedEngineering/advancedLayout";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
-import { computeLayoutSemantics } from "./semantic/layoutSemantics";
+import { computeLayoutSemantics, type LayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
 import {
   DEFAULT_SEMANTIC_VALIDATION_FILTERS,
@@ -70,6 +70,15 @@ const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const DEMO_SCENE_NAME = "scott-dxf2013-import";
 const APP_VERSION = viewerPackage.version;
 
+const EMPTY_LAYOUT_SEMANTICS: LayoutSemantics = {
+  textEntities: [],
+  mergedTextLabels: [],
+  geometryGroups: [],
+  stations: [],
+  devices: [],
+  unknownTextEntities: []
+};
+
 type RenderRecord = {
   object: THREE.Object3D;
   nodeId: string;
@@ -103,6 +112,21 @@ type ViewportDiagnostics = {
   fitBoundsWidth: number;
   fitBoundsHeight: number;
   browserZoomWarning: boolean;
+  timing?: DxfImportTimingStage[];
+};
+
+const SEMANTIC_OVERLAY_LIMITS = {
+  stationLimit: 40,
+  deviceLimit: 80,
+  unknownLabelLimit: 80
+};
+
+const EMPTY_SEMANTIC_OVERLAY_MODEL: SemanticOverlayModel = {
+  stations: [],
+  deviceCandidates: [],
+  unknownLabels: [],
+  associationLines: [],
+  selectedSourceMarkers: []
 };
 
 const selectedColor = new THREE.Color("#ffb020");
@@ -305,6 +329,10 @@ function formatConfidence(value: number | undefined) {
   return value.toFixed(2);
 }
 
+function formatTimingMs(value: number) {
+  return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
+}
+
 function deviceKindLabel(value: string) {
   return value.replace(/_/g, " ");
 }
@@ -377,6 +405,7 @@ function Viewport({
   const sceneBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
   const mainBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
   const lastFitBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
+  const viewportTimingRef = useRef<DxfImportTimingStage[]>([]);
   const hoveredNodeIdRef = useRef("");
   const [overlayCamera, setOverlayCamera] = useState<TextOverlayCamera | null>(null);
   const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
@@ -415,7 +444,8 @@ function Viewport({
       cameraZoom: camera instanceof THREE.OrthographicCamera ? camera.zoom : 1,
       fitBoundsWidth: fitSize.x,
       fitBoundsHeight: fitSize.y,
-      browserZoomWarning: Math.abs(viewport.devicePixelRatio - 1) > 0.05
+      browserZoomWarning: Math.abs(viewport.devicePixelRatio - 1) > 0.05,
+      timing: viewportTimingRef.current
     });
   };
 
@@ -426,6 +456,8 @@ function Viewport({
       return;
     }
 
+    const setupStartedAt = performance.now();
+    let geometryBatchMs = 0;
     hoveredNodeIdRef.current = "";
 
     const scene = new THREE.Scene();
@@ -492,10 +524,14 @@ function Viewport({
         }
 
         const effectiveLayerId = node.layerId ?? geometry.layerId;
+        const objectStartedAt = performance.now();
         const object =
           geometry.kind === "mesh"
             ? makeMesh(scenePackage, geometry)
             : makeCurveSet(scenePackage, geometry, effectiveLayerId, hiddenOutlierEntityIdsRef.current);
+        if (geometry.kind === "curve-set") {
+          geometryBatchMs += Math.max(0, performance.now() - objectStartedAt);
+        }
         object.name = node.displayName;
         object.userData.nodeId = node.id;
         object.userData.layerId = effectiveLayerId;
@@ -556,6 +592,11 @@ function Viewport({
         }))
       });
     }
+
+    viewportTimingRef.current = [
+      { stage: "geometry-batch-build", ms: geometryBatchMs },
+      { stage: "scene-render-setup", ms: Math.max(0, performance.now() - setupStartedAt) }
+    ];
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -631,10 +672,19 @@ function Viewport({
     renderer.domElement.addEventListener("pointermove", onPointerMove);
 
     let frame = 0;
+    let firstRenderPublished = false;
     const animate = () => {
       frame = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+      if (!firstRenderPublished) {
+        firstRenderPublished = true;
+        viewportTimingRef.current = [
+          ...viewportTimingRef.current.filter((entry) => entry.stage !== "first-render-ready"),
+          { stage: "first-render-ready", ms: Math.max(0, performance.now() - setupStartedAt) }
+        ];
+        publishViewportDiagnostics(mainBoundsRef.current);
+      }
     };
     animate();
 
@@ -773,21 +823,28 @@ function LayerPanel({
   selectedLayerId,
   hiddenLayerIds,
   onToggleLayer,
-  onShowAllLayers
+  onShowAllLayers,
+  onClose
 }: {
   layers: LayerEntityCount[];
   selectedLayerId?: string;
   hiddenLayerIds: Set<string>;
   onToggleLayer: (layerId: string) => void;
   onShowAllLayers: () => void;
+  onClose: () => void;
 }) {
   return (
     <div className="layer-panel">
       <div className="section-heading">
         <h2>Layers</h2>
-        <button type="button" onClick={onShowAllLayers}>
-          Show all
-        </button>
+        <div className="panel-heading-actions">
+          <button type="button" onClick={onShowAllLayers}>
+            Show all
+          </button>
+          <button className="panel-hide-button" type="button" onClick={onClose}>
+            Hide
+          </button>
+        </div>
       </div>
       <div className="layer-list">
         {layers.map((layer) => (
@@ -822,6 +879,9 @@ export function App() {
   const [labelDensity, setLabelDensity] = useState<LabelDensityMode>("auto");
   const [readableOrientation, setReadableOrientation] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(true);
+  const [semanticPanelOpen, setSemanticPanelOpen] = useState(false);
+  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(true);
   const [showOutliers, setShowOutliers] = useState(false);
   const [semanticOverlayEnabled, setSemanticOverlayEnabled] = useState(false);
   const [selectedSemantic, setSelectedSemantic] = useState<SemanticSelection | undefined>();
@@ -831,6 +891,8 @@ export function App() {
   });
   const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
+  const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
+  const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
   const [dxfDragActive, setDxfDragActive] = useState(false);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
@@ -839,7 +901,44 @@ export function App() {
     () => computeRobustSceneBounds(flattenCurveEntities(scenePackage.geometry)),
     [scenePackage]
   );
-  const detectedLayoutSemantics = useMemo(() => computeLayoutSemantics(scenePackage, robustBounds), [scenePackage, robustBounds]);
+  const [detectedLayoutSemantics, setDetectedLayoutSemantics] =
+    useState<LayoutSemantics>(EMPTY_LAYOUT_SEMANTICS);
+  const [semanticAnalysisStatus, setSemanticAnalysisStatus] = useState<"pending" | "ready">("pending");
+
+  useEffect(() => {
+    let cancelled = false;
+    setSemanticAnalysisStatus("pending");
+    setSemanticAnalysisTiming(undefined);
+    setDetectedLayoutSemantics(EMPTY_LAYOUT_SEMANTICS);
+
+    const runAnalysis = () => {
+      const startedAt = performance.now();
+      const nextSemantics = computeLayoutSemantics(scenePackage, robustBounds);
+      if (cancelled) return;
+      const elapsedMs = Math.max(0, performance.now() - startedAt);
+      setDetectedLayoutSemantics(nextSemantics);
+      setSemanticAnalysisStatus("ready");
+      setSemanticAnalysisTiming({ stage: "semantic-analysis", ms: elapsedMs });
+
+      if (DEV_MODE) {
+        // eslint-disable-next-line no-console
+        console.info("[Kairo] semantic analysis", {
+          ms: Math.round(elapsedMs),
+          stations: nextSemantics.stations.length,
+          devices: nextSemantics.devices.length,
+          unknownTextEntities: nextSemantics.unknownTextEntities.length
+        });
+      }
+    };
+
+    const handle = globalThis.setTimeout(runAnalysis, 50);
+
+    return () => {
+      cancelled = true;
+      globalThis.clearTimeout(handle);
+    };
+  }, [scenePackage, robustBounds]);
+
   const layoutSemantics = useMemo(
     () => applySemanticDeviceOverrides(detectedLayoutSemantics, semanticDeviceOverrides),
     [detectedLayoutSemantics, semanticDeviceOverrides]
@@ -865,8 +964,11 @@ export function App() {
     [layoutSemantics, semanticFilters]
   );
   const semanticOverlayModel = useMemo(
-    () => buildSemanticOverlayModel(layoutSemantics, semanticFilters, selectedSemantic),
-    [layoutSemantics, semanticFilters, selectedSemantic]
+    () =>
+      semanticOverlayEnabled
+        ? buildSemanticOverlayModel(layoutSemantics, semanticFilters, selectedSemantic, SEMANTIC_OVERLAY_LIMITS)
+        : EMPTY_SEMANTIC_OVERLAY_MODEL,
+    [layoutSemantics, semanticFilters, selectedSemantic, semanticOverlayEnabled]
   );
   const selectedSemanticDetails = useMemo(
     () => resolveSemanticSelection(layoutSemantics, selectedSemantic),
@@ -964,7 +1066,13 @@ export function App() {
   const activateScenePackage = useCallback(
     (
       loadedScenePackage: ScenePackage,
-      options: { activeName: string; status: string; semanticOverlayEnabled?: boolean }
+      options: {
+        activeName: string;
+        status: string;
+        semanticOverlayEnabled?: boolean;
+        semanticPanelOpen?: boolean;
+        timing?: DxfImportTimingStage[];
+      }
     ) => {
       setScenePackage(loadedScenePackage);
       setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
@@ -979,8 +1087,12 @@ export function App() {
       setSceneStatus(options.status);
       setSceneLoadError(undefined);
       setActiveSceneName(options.activeName);
+      setSceneLoadTiming(options.timing ?? []);
       if (options.semanticOverlayEnabled !== undefined) {
         setSemanticOverlayEnabled(options.semanticOverlayEnabled);
+      }
+      if (options.semanticPanelOpen !== undefined) {
+        setSemanticPanelOpen(options.semanticPanelOpen);
       }
     },
     []
@@ -990,6 +1102,7 @@ export function App() {
     const loadSerial = startSceneLoad();
     setSceneStatus(`Loading ${sceneName}`);
     setSceneLoadError(undefined);
+    setSceneLoadTiming([]);
     setActiveSceneName(sceneName);
 
     try {
@@ -1008,33 +1121,41 @@ export function App() {
     } catch (error) {
       if (!isCurrentSceneLoad(loadSerial)) return;
       setActiveSceneName(undefined);
+      setSceneLoadTiming([]);
+      if (isPublicSceneAssetLoadError(error)) {
+        setSceneStatus("Open a local DXF / Kairo file");
+        setSceneLoadError(undefined);
+        return;
+      }
       setSceneStatus("Demo layout failed to load");
       setSceneLoadError(
-        isPublicSceneAssetLoadError(error)
-          ? PUBLIC_SCENE_ASSETS_UNAVAILABLE_MESSAGE
-          : error instanceof Error
+        error instanceof Error
           ? `Could not load ${sceneName}. ${error.message}`
           : `Could not load ${sceneName}. ${String(error)}`
       );
     }
   }, [activateScenePackage, isCurrentSceneLoad, startSceneLoad]);
 
-  const loadLocalDxfFile = useCallback(
+  const loadLocalSceneFile = useCallback(
     async (file: File) => {
       const loadSerial = startSceneLoad();
-      const fileName = file.name || "uploaded.dxf";
+      const fileName = file.name || "uploaded.kairo";
       setSceneStatus(`Loading ${fileName}`);
       setSceneLoadError(undefined);
+      setSceneLoadTiming([]);
       setActiveSceneName(fileName);
 
       try {
-        const result = await loadDxfFileScenePackage(file);
+        const result = await loadLocalSceneFilePackage(file);
         if (!isCurrentSceneLoad(loadSerial)) return;
-        const warningSuffix = result.summary.warningCount === 0 ? "" : ` (${result.summary.warningCount} warnings)`;
+        const warningSuffix = result.warningCount === 0 ? "" : ` (${result.warningCount} warnings)`;
+        const loadedVerb = result.kind === "dxf" ? "Imported" : "Opened";
         activateScenePackage(result.scenePackage, {
           activeName: fileName,
-          status: `Imported ${fileName}${warningSuffix}`,
-          semanticOverlayEnabled: true
+          status: `${loadedVerb} ${fileName}${warningSuffix}`,
+          semanticOverlayEnabled: true,
+          semanticPanelOpen: false,
+          timing: result.timing
         });
 
         const nextUrl = new URL(window.location.href);
@@ -1043,26 +1164,27 @@ export function App() {
       } catch (error) {
         if (!isCurrentSceneLoad(loadSerial)) return;
         setActiveSceneName(undefined);
-        setSceneStatus("DXF import failed");
+        setSceneStatus("File open failed");
+        setSceneLoadTiming([]);
         setSceneLoadError(
           error instanceof Error
-            ? `Could not import ${fileName}. ${error.message}`
-            : `Could not import ${fileName}. ${String(error)}`
+            ? `Could not open ${fileName}. ${error.message}`
+            : `Could not open ${fileName}. ${String(error)}`
         );
       }
     },
     [activateScenePackage, isCurrentSceneLoad, startSceneLoad]
   );
 
-  const openDxfFilePicker = () => {
+  const openLocalFilePicker = () => {
     fileInputRef.current?.click();
   };
 
-  const handleDxfFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleLocalFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (file) {
-      void loadLocalDxfFile(file);
+      void loadLocalSceneFile(file);
     }
   };
 
@@ -1082,14 +1204,15 @@ export function App() {
     if (!Array.from(event.dataTransfer.types).includes("Files")) return;
     event.preventDefault();
     setDxfDragActive(false);
-    const file = Array.from(event.dataTransfer.files).find((entry) => entry.name.toLowerCase().endsWith(".dxf"));
+    const file = Array.from(event.dataTransfer.files).find((entry) => /\.(dxf|kairo)$/i.test(entry.name));
     if (file) {
-      void loadLocalDxfFile(file);
+      void loadLocalSceneFile(file);
       return;
     }
     startSceneLoad();
-    setSceneStatus("DXF import failed");
-    setSceneLoadError("Drop a .dxf file to import it.");
+    setSceneStatus("File open failed");
+    setSceneLoadError("Drop a .dxf or .kairo file to open it.");
+    setSceneLoadTiming([]);
   };
 
   useEffect(() => {
@@ -1200,13 +1323,13 @@ export function App() {
           <div className="toolbar-actions">
             <input
               ref={fileInputRef}
-              accept=".dxf"
+              accept=".dxf,.kairo"
               className="file-input"
-              onChange={handleDxfFileInputChange}
+              onChange={handleLocalFileInputChange}
               type="file"
             />
-            <button onClick={openDxfFilePicker} type="button">
-              Open DXF
+            <button onClick={openLocalFilePicker} type="button">
+              Open DXF / Kairo
             </button>
             <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
               Load Demo Layout
@@ -1293,11 +1416,50 @@ export function App() {
             <button
               aria-pressed={semanticOverlayEnabled}
               className={semanticOverlayEnabled ? "active" : ""}
-              onClick={() => setSemanticOverlayEnabled((current) => !current)}
+              onClick={() => {
+                const nextEnabled = !semanticOverlayEnabled;
+                setSemanticOverlayEnabled(nextEnabled);
+                if (nextEnabled) setSemanticPanelOpen(true);
+              }}
               title="Show station markers, device candidate bounds, and association lines"
               type="button"
             >
               Semantic overlay
+            </button>
+            <span className="toolbar-divider" aria-hidden="true" />
+            <button
+              aria-pressed={layersPanelOpen}
+              className={layersPanelOpen ? "active" : ""}
+              onClick={() => setLayersPanelOpen((current) => !current)}
+              title="Show or hide the layer list without changing layer visibility"
+              type="button"
+            >
+              Layers
+            </button>
+            <button
+              aria-pressed={semanticOverlayEnabled && semanticPanelOpen}
+              className={semanticOverlayEnabled && semanticPanelOpen ? "active" : ""}
+              onClick={() => {
+                if (!semanticOverlayEnabled) {
+                  setSemanticOverlayEnabled(true);
+                  setSemanticPanelOpen(true);
+                } else {
+                  setSemanticPanelOpen((current) => !current);
+                }
+              }}
+              title="Show or hide the semantic validation panel"
+              type="button"
+            >
+              Semantics
+            </button>
+            <button
+              aria-pressed={inspectorPanelOpen}
+              className={inspectorPanelOpen ? "active" : ""}
+              onClick={() => setInspectorPanelOpen((current) => !current)}
+              title="Show or hide selected entity properties"
+              type="button"
+            >
+              Inspector
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <button
@@ -1330,8 +1492,8 @@ export function App() {
       </section>
 
       {dxfDragActive ? (
-        <section className="dxf-drop-overlay" aria-label="DXF drop target">
-          <strong>Drop DXF to import</strong>
+        <section className="dxf-drop-overlay" aria-label="Drawing file drop target">
+          <strong>Drop DXF or Kairo package to open</strong>
         </section>
       ) : null}
 
@@ -1344,8 +1506,8 @@ export function App() {
               A browser-native review surface for the staged Scott automotive layout: dense layers, exact entity picking,
               readable labels, and outlier-safe fit bounds.
             </p>
-            <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
-              Load Demo Layout
+            <button onClick={openLocalFilePicker} type="button">
+              Open DXF / Kairo
             </button>
           </div>
           <div className="demo-metrics" aria-label="Demo scene highlights">
@@ -1376,31 +1538,39 @@ export function App() {
         <section className="scene-error" role="alert">
           <strong>Scene could not be loaded</strong>
           <span>{sceneLoadError}</span>
-          <button onClick={openDxfFilePicker} type="button">
-            Open DXF
+          <button onClick={openLocalFilePicker} type="button">
+            Open DXF / Kairo
           </button>
         </section>
       ) : null}
 
-      {!landingMode && !sceneIsLoading ? (
+      {layersPanelOpen && !landingMode && !sceneIsLoading ? (
         <aside className="layers-shell">
           <LayerPanel
             hiddenLayerIds={hiddenLayerIds}
             layers={layerStats}
             selectedLayerId={selectedLayerId}
+            onClose={() => setLayersPanelOpen(false)}
             onShowAllLayers={() => setHiddenLayerIds(new Set())}
             onToggleLayer={toggleLayer}
           />
         </aside>
       ) : null}
 
-      {semanticOverlayEnabled && !landingMode && !sceneIsLoading ? (
+      {semanticOverlayEnabled && semanticPanelOpen && !landingMode && !sceneIsLoading ? (
         <section className="semantic-validation-panel" aria-label="Semantic validation panel">
           <div className="panel-heading">
             <span>Semantic validation</span>
-            <strong>
-              {semanticValidation.stations.length}/{semanticValidation.devices.length}
-            </strong>
+            <div className="panel-heading-actions">
+              <strong>
+                {semanticAnalysisStatus === "pending"
+                  ? "Analyzing..."
+                  : `${semanticValidation.stations.length}/${semanticValidation.devices.length}`}
+              </strong>
+              <button className="panel-hide-button" type="button" onClick={() => setSemanticPanelOpen(false)}>
+                Hide
+              </button>
+            </div>
           </div>
           <div className="semantic-summary-grid" aria-label="Semantic summary">
             <span>
@@ -1683,13 +1853,18 @@ export function App() {
         </section>
       ) : null}
 
-      {!landingMode && !sceneIsLoading ? (
+      {inspectorPanelOpen && !landingMode && !sceneIsLoading ? (
       <aside className="properties-panel">
         <div className="panel-heading">
           <span>{selectedSemanticDetails ? "Semantic selection" : selectedEntity ? "Selected entity" : "Selected node"}</span>
-          <strong>
-            {selectedSemanticDetails ? "candidate" : selectedEntity ? selectedEntity.type : selectedNode.type}
-          </strong>
+          <div className="panel-heading-actions">
+            <strong>
+              {selectedSemanticDetails ? "candidate" : selectedEntity ? selectedEntity.type : selectedNode.type}
+            </strong>
+            <button className="panel-hide-button" type="button" onClick={() => setInspectorPanelOpen(false)}>
+              Hide
+            </button>
+          </div>
         </div>
         <div className="selection-summary">
           <strong>{selectedSemanticDetails?.title ?? selectedEntity?.entityId ?? selectedNode.displayName}</strong>
@@ -1946,7 +2121,14 @@ export function App() {
             <span>
               Semantics: {layoutSemantics.stations.length} stations / {layoutSemantics.devices.length} device candidates from{" "}
               {layoutSemantics.textEntities.length} text labels
+              {semanticAnalysisTiming ? ` / ${formatTimingMs(semanticAnalysisTiming.ms)}` : ""}
             </span>
+            {sceneLoadTiming.length > 0 ? (
+              <span>
+                Load timing:{" "}
+                {sceneLoadTiming.map((entry) => `${entry.stage}=${formatTimingMs(entry.ms)}`).join(" / ")}
+              </span>
+            ) : null}
             {viewportDiagnostics ? (
               <>
                 <span>
@@ -1963,6 +2145,12 @@ export function App() {
                   {viewportDiagnostics.fitBoundsHeight.toFixed(2)}
                   {viewportDiagnostics.browserZoomWarning ? " / browser zoom or high-DPR display detected" : ""}
                 </span>
+                {viewportDiagnostics.timing?.length ? (
+                  <span>
+                    View timing:{" "}
+                    {viewportDiagnostics.timing.map((entry) => `${entry.stage}=${formatTimingMs(entry.ms)}`).join(" / ")}
+                  </span>
+                ) : null}
               </>
             ) : null}
             <span>

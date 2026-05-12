@@ -1,21 +1,21 @@
 # Kairo Status
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 
 ## Git
 
 - Branch: `codex/kairo-viewer-semantics`
-- HEAD: `5751b35 feat: stabilize viewer semantics validation`
-- Working tree is dirty with the semantic device MVP implementation.
+- HEAD: `b34d5ad feat: add advanced layout exports`
+- Working tree is dirty with the `.kairo` package implementation and viewer performance/UI follow-up fixes.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 245/245 passed |
-| `pnpm.cmd typecheck` | Clean |
-| `pnpm.cmd build` | Clean (viewer bundle ~831 kB, chunk size warning only) |
+| `pnpm test` | 275/275 passed |
+| `pnpm typecheck` | Clean |
+| `pnpm build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -37,7 +37,8 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 ## What Works
 
 - Full monorepo build: schema, validator, core, importer-dxf, CLI, viewer.
-- CLI commands: `validate`, `import-dxf`, `inspect-dxf`, `stage-viewer-scene`, `scene-outliers`.
+- CLI commands: `validate`, `import-dxf`, `pack-scene`, `inspect-dxf`, `stage-viewer-scene`, `scene-outliers`.
+- `.kairo` package format: standard deflated ZIP container with custom extension. `pack-scene` writes packages, `validate` reads packages, and the viewer opens `.kairo` files through the same local file picker/drop path as raw DXF.
 - DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains, TEXT, ATTDEF (default value or tag fallback), MTEXT (via direct ENTITIES-section scanner).
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
 - INSERT expansion: up to two levels deep (parent + one nested child), curve-only blocks, uniform scale (positive or negative mirror), Z-axis rotation, z-offset flattening.
@@ -57,6 +58,10 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Semantic classification MVP: extracted text labels are classified as station, robot/device, nest, dunnage, known support equipment, or unknown with confidence and evidence. Numeric station-suffix tags such as `7B-020L-04` are treated as device tags, not stations. `DN1`/`DN2` classify as dunnage and `1N` classifies as nest.
 - Semantic device association MVP: labels are linked to nearby geometry groups using block-insert provenance first and fallback geometry clusters second. Each semantic device records linked entity IDs, label entity IDs, bounds, centroid, association status (`linked`, `ambiguous`, `unlinked`), association confidence, candidates, and reason strings.
 - Viewer semantic workflow: semantic overlays show station/device outlines, label markers, and label-to-geometry link lines. Selecting a label/device shows class, confidence, evidence, association candidates, linked entity IDs, and bounds. Selecting linked geometry shows the assigned semantic device.
+- Viewer performance diagnostics follow-up: DXF browser loads now carry lightweight stage timings for file read, importer module load, parse/import stages, semantic analysis, viewport batch build, render setup, and first render. Timings are shown only in the collapsed Diagnostics panel.
+- Viewer semantic performance follow-up: semantic analysis is deferred after scene activation so geometry can become visible before the semantic pass completes. Semantic overlay rendering is capped for broad station/device/unknown lists while preserving the selected item.
+- Drawing-first panel controls: Layers, Semantics, and Inspector panels can be hidden independently from the toolbar and from each panel header without changing layer visibility, selection, or semantic overlay state. Local DXF opens with Layers/Inspector visible and Semantics collapsed by default.
+- Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
 - Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
@@ -69,7 +74,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 
 Known visual issues still requiring work:
 - Text anchor position is now correct per-entity but visual overlap/density may still need tuning in dense label areas
-- Viewer UI is development-oriented; for drawing-first review, panels take too much screen space
+- Viewer UI is development-oriented; panels are now hideable, but the next step is a cleaner drawing-first layout mode
 - Browser console still reports duplicate React keys in the text overlay for some expanded labels; this needs follow-up QA/fix and is separate from the picking/zoom work.
 
 ## What Is Broken / Missing
@@ -79,22 +84,22 @@ Known visual issues still requiring work:
 - MTEXT inside block definitions: not expanded during INSERT expansion (only direct ENTITIES-section MTEXT is imported via scanner).
 - Mirror-aware text rotation: text rotation does NOT reflect under mirrored INSERT (AutoCAD MIRRTEXT=0 default semantics). Position is mirror-correct. Acceptable v1 limitation.
 - Text overlay does not collision-detect or z-order against curves.
-- Direct raw DXF browser upload is not implemented; the current viewer loads staged scene packages produced by the CLI/importer path.
+- Direct raw DXF browser upload and `.kairo` package upload are implemented; staged public scenes are still useful for fixed demos.
 - Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
 - Manual semantic overrides are session-only and are not persisted to a project file yet.
 - Hatches, dimensions, splines are not imported.
-- DXF export, GLB export, JT export: not implemented.
+- DXF export, GLB export, JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable; CAD Exchanger is the temporary JT bridge direction only.
 - No CI pipeline; tests run locally only.
 - No automated visual regression.
 
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. Semantic association QA on the Scott DXF and persistence format for reviewed overrides
-2. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
-3. Text visual QA / alignment polish
-4. Coordinate precision audit
-5. Cloudflare deploy check
+1. `.kairo` package QA with the primary Scott DXF and internal sharing workflow
+2. Semantic association QA on the Scott DXF and persistence format for reviewed overrides
+3. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
+4. Text visual QA / alignment polish
+5. Coordinate precision audit
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 
