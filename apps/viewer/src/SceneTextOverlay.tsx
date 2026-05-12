@@ -1,7 +1,7 @@
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { MAX_TEXT_OVERLAY_CHARS, normalizeDxfText, safeDisplayText } from "./textSafety";
+import { MAX_TEXT_OVERLAY_CHARS, safeDisplayText } from "./textSafety";
 
 export type TextOverlayItem = {
   entityId: string;
@@ -348,7 +348,7 @@ export function SceneTextOverlay({
           }}
           className={`text-overlay-label${item.origin === "ATTDEF" ? " attdef" : ""}`}
           style={{ display: "none" }}
-          title={item.text !== item.displayText ? normalizeDxfText(item.text) : undefined}
+          aria-label={item.displayText}
         >
           {item.displayText}
         </div>

@@ -1,17 +1,41 @@
 # Kairo Tasks
 
-Last updated: 2026-05-11
+Last updated: 2026-05-12
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
 
 ## NOW
 
-*(No active task - see NEXT for ready items.)*
+### CAD Exchanger JT bridge probe (P1)
+
+**Goal:** Use CAD Exchanger as the temporary JT path after viewer performance is stable. Probe one simple named colored part and verify in JT2Go / Process Simulate before any product export claim.
+
+**Not allowed:** Treat raw JT 8.1 as solved, add production JT export, or introduce CAD Exchanger into the Cloudflare/browser runtime.
+
+---
+
+## DONE
+
+### ISSUE-021: Large DXF performance diagnostics and semantic deferral QA (P1)
+
+**Goal:** Validate the new deferred semantic-analysis load path on the primary Scott DXF and record file read, DXF parse, geometry batch, semantic analysis, first render, and first interactive timings.
+
+**Not allowed:** Remove batched `THREE.LineSegments`, return to one object per DXF entity, or make semantic classification authoritative without review.
+
+**Completed:** Browser DXF imports now expose stage timings, semantic analysis timing is visible in Diagnostics, viewport batch/render timings are captured, semantic overlay lists are capped with selected item preservation, and local DXF opens with the semantic panel collapsed by default.
 
 ---
 
 ## NEXT
+
+### ISSUE-020: `.kairo` package QA and sharing workflow (P1)
+
+**Goal:** Use `pack-scene` to create a `.kairo` package from the primary Scott import, open it through the viewer, and confirm it is practical for internal sharing without restaging public scene assets.
+
+**Not allowed:** Replace raw DXF import, add 7z/WASM tooling, or change the neutral scene schema unless package QA proves a missing field.
+
+---
 
 ### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
 
@@ -31,7 +55,7 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ### ISSUE-004: Viewer UI drawing-first review mode (P1)
 
-**Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers as main side panel. Diagnostics collapsed.
+**Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers/Semantics/Inspector are now hideable; next pass should make the layout more intentional without a full redesign.
 
 **Not allowed:** Touch importer/schema/GLB/JT/export. Remove sample scene support.
 
@@ -117,9 +141,20 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 **Blocked by:** No Playwright/Puppeteer setup. Viewer requires real browser context for Three.js. No plan to unblock in current phase.
 
----
+### `.kairo` package file support - DONE
 
-## DONE
+**Completed:** 2026-05-12
+
+- Added shared `.kairo` package read/write helpers in `@kairo/core`.
+- `.kairo` is a standard deflated ZIP archive with a custom extension and `kairo-package.json` index.
+- Added CLI `pack-scene <scene-path> <output.kairo>`.
+- `kairo validate` can read exploded scene folders, `manifest.json`, and `.kairo` files.
+- Viewer local open/drop accepts `.dxf` and `.kairo`.
+- Tests: 275/275 pass. `pnpm typecheck` and `pnpm build` pass; viewer chunk warning remains expected.
+
+**Docs:** See `specs/KAIRO_PACKAGE_FORMAT.md`.
+
+---
 
 ### Semantic label-to-geometry device MVP - DONE
 

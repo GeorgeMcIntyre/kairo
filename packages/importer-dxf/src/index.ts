@@ -18,8 +18,14 @@ const stableJson = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 
 export async function importDxfToKairo(inputPath: string, options: DxfImportOptions = {}): Promise<DxfImportResult> {
   const absolutePath = path.resolve(inputPath);
+  const startedAt = performance.now();
   const content = await readFile(absolutePath, "utf8");
-  return importDxfTextToKairo(absolutePath, content, options);
+  const fileReadMs = Math.max(0, performance.now() - startedAt);
+  const result = await importDxfTextToKairo(absolutePath, content, options);
+  return {
+    ...result,
+    timing: [{ stage: "file-read", ms: fileReadMs }, ...(result.timing ?? [])]
+  };
 }
 
 export async function writeScenePackage(outputDir: string, scenePackage: ScenePackage): Promise<void> {

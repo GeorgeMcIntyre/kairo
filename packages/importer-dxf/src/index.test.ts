@@ -181,6 +181,15 @@ describe("importDxfToKairo", () => {
     });
     expect(result.scenePackage.manifest.source.path).toBe("uploaded.dxf");
     expect(result.summary.supportedEntityCount).toBe(1);
+    expect(result.timing?.map((entry) => entry.stage)).toEqual([
+      "pre-clean",
+      "dxf-parse",
+      "mtext-scan",
+      "scene-package-build",
+      "validation",
+      "total-import"
+    ]);
+    expect(result.timing?.every((entry) => Number.isFinite(entry.ms) && entry.ms >= 0)).toBe(true);
   });
 
   it("maps multiple DXF layers and LWPOLYLINE geometry", async () => {

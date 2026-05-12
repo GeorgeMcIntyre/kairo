@@ -48,6 +48,7 @@ button:hover {
 
 .layers-shell,
 .properties-panel,
+.semantic-validation-panel,
 .viewport-panel,
 .diagnostics {
   min-width: 0;
@@ -69,21 +70,21 @@ button:hover {
 
 .layers-shell {
   left: 12px;
-  width: min(320px, calc(50vw - 24px));
+  width: min(300px, calc(34vw - 18px));
 }
 
 .properties-panel {
   right: 12px;
-  width: min(380px, calc(50vw - 24px));
+  width: min(360px, calc(36vw - 18px));
 }
 
 .semantic-validation-panel {
   position: absolute;
   z-index: 5;
   top: 58px;
-  left: min(344px, calc(50vw + 4px));
-  width: min(460px, max(320px, calc(100vw - 748px)));
-  max-height: calc(100vh - 74px);
+  left: 324px;
+  width: clamp(320px, 28vw, 420px);
+  max-height: min(640px, calc(100vh - 90px));
   overflow: auto;
   border: 1px solid #29344a;
   border-radius: 6px;
@@ -111,6 +112,22 @@ button:hover {
   color: #c9d4df;
   font-size: 12px;
   text-transform: none;
+}
+
+.panel-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel-hide-button {
+  min-height: 24px;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .tree-row {
@@ -524,15 +541,15 @@ button:hover {
   top: 0;
   left: 0;
   transform-origin: 0 100%;
-  max-width: min(360px, 38vw);
-  max-height: 2.4em;
+  max-width: min(260px, 28vw);
+  max-height: 1.3em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 1.1;
-  color: #d0e4f5;
+  color: #f7da73;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.95);
+  text-shadow: 0 0 2px #02060b, 0 0 4px #02060b, 0 0 6px #02060b;
   user-select: none;
   pointer-events: none;
   will-change: transform;
@@ -553,9 +570,9 @@ button:hover {
 .semantic-overlay text {
   fill: #f5d26c;
   paint-order: stroke;
-  stroke: rgba(5, 10, 18, 0.9);
-  stroke-width: 3px;
-  font-size: 11px;
+  stroke: rgba(2, 6, 11, 0.96);
+  stroke-width: 4px;
+  font-size: 10px;
   font-weight: 800;
   pointer-events: none;
 }

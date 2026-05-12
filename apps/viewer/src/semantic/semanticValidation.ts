@@ -100,6 +100,12 @@ export type SemanticOverlayModel = {
   selectedSourceMarkers: SemanticOverlaySourceMarker[];
 };
 
+export type SemanticOverlayModelOptions = {
+  stationLimit?: number;
+  deviceLimit?: number;
+  unknownLabelLimit?: number;
+};
+
 export type OutlierLayerSummary = {
   layerId: string;
   count: number;
@@ -242,6 +248,24 @@ function selectedId(selection: SemanticSelection | undefined, kind: SemanticSele
   return selection.id;
 }
 
+function limitWithSelected<T>(
+  values: T[],
+  limit: number | undefined,
+  selectedValue: T | undefined,
+  getId: (value: T) => string
+): T[] {
+  if (!selectedValue) {
+    if (limit === undefined || limit <= 0 || values.length <= limit) return values;
+    return values.slice(0, limit);
+  }
+  const selectedValueId = getId(selectedValue);
+  const valuesWithSelected = values.some((value) => getId(value) === selectedValueId) ? values : [selectedValue, ...values];
+  if (limit === undefined || limit <= 0 || valuesWithSelected.length <= limit) return valuesWithSelected;
+  const capped = valuesWithSelected.slice(0, limit);
+  if (capped.some((value) => getId(value) === selectedValueId)) return capped;
+  return [selectedValue, ...capped.slice(0, Math.max(0, limit - 1))];
+}
+
 function addSelectedStation(
   stations: StationSemantic[],
   semantics: LayoutSemantics,
@@ -283,11 +307,33 @@ function sourceMarkersForSelection(semantics: LayoutSemantics, details: Semantic
 export function buildSemanticOverlayModel(
   semantics: LayoutSemantics,
   filters: SemanticValidationFilters,
-  selection?: SemanticSelection
+  selection?: SemanticSelection,
+  options: SemanticOverlayModelOptions = {}
 ): SemanticOverlayModel {
   const filtered = filterSemanticValidation(semantics, filters);
-  const stations = addSelectedStation(filtered.stations, semantics, selection);
-  const devices = addSelectedDevice(filtered.devices, semantics, selection);
+  const selectedStation = semantics.stations.find((station) => station.stationId === selectedId(selection, "station"));
+  const selectedDevice = semantics.devices.find((device) => device.id === selectedId(selection, "device"));
+  const selectedUnknownLabel = semantics.unknownTextEntities.find(
+    (text) => text.entityId === selectedId(selection, "unknown-text")
+  );
+  const stations = limitWithSelected(
+    addSelectedStation(filtered.stations, semantics, selection),
+    options.stationLimit,
+    selectedStation,
+    (station) => station.stationId
+  );
+  const devices = limitWithSelected(
+    addSelectedDevice(filtered.devices, semantics, selection),
+    options.deviceLimit,
+    selectedDevice,
+    (device) => device.id
+  );
+  const unknownTextEntities = limitWithSelected(
+    filtered.unknownTextEntities,
+    options.unknownLabelLimit,
+    selectedUnknownLabel,
+    (text) => text.entityId
+  );
   const stationById = new Map(semantics.stations.map((station) => [station.stationId, station]));
   const selectedKeyValue = selectionKey(selection);
   const details = resolveSemanticSelection(semantics, selection);
@@ -314,7 +360,7 @@ export function buildSemanticOverlayModel(
       stationId: device.stationId,
       selected: selectedKeyValue === `device:${device.id}` || selectedKeyValue === `station:${device.stationId ?? ""}`
     })),
-    unknownLabels: filtered.unknownTextEntities.map((text) => ({
+    unknownLabels: unknownTextEntities.map((text) => ({
       id: text.entityId,
       label: safeDisplayText(text.displayText ?? text.normalizedText, MAX_SEMANTIC_OVERLAY_CHARS),
       position: text.position,

@@ -8,6 +8,8 @@ import type {
   SourceMapDocument
 } from "@kairo/schema";
 
+export * from "./kairoPackage";
+
 export type { DrawingEntity, Geometry, GeometryDocument, Layer, SceneNode, ScenePackage, SourceMapDocument };
 
 export type SourceMapEntry = SourceMapDocument["sources"][number];

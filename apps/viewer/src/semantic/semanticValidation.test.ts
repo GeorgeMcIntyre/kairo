@@ -217,6 +217,19 @@ describe("buildSemanticOverlayModel", () => {
     expect(model.associationLines.map((line) => line.deviceId)).toContain("device-controller");
     expect(model.selectedSourceMarkers.map((marker) => marker.id)).toEqual(["text-device"]);
   });
+
+  it("caps overlay lists while preserving the selected candidate", () => {
+    const semantics = semanticsFixture();
+    const model = buildSemanticOverlayModel(
+      semantics,
+      DEFAULT_SEMANTIC_VALIDATION_FILTERS,
+      { kind: "device", id: "device-lift" },
+      { stationLimit: 1, deviceLimit: 1, unknownLabelLimit: 1 }
+    );
+
+    expect(model.stations).toHaveLength(1);
+    expect(model.deviceCandidates.map((device) => device.id)).toEqual(["device-lift"]);
+  });
 });
 
 describe("computeOutlierSummary", () => {

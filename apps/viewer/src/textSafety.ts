@@ -6,9 +6,9 @@ export type SemanticNoteKind =
   | "annotation"
   | "unknownNote";
 
-export const MAX_TEXT_OVERLAY_CHARS = 64;
+export const MAX_TEXT_OVERLAY_CHARS = 40;
 export const MAX_LIST_LABEL_CHARS = 84;
-export const MAX_SEMANTIC_OVERLAY_CHARS = 42;
+export const MAX_SEMANTIC_OVERLAY_CHARS = 26;
 export const LONG_TEXT_CHAR_THRESHOLD = 96;
 export const LONG_TEXT_WORD_THRESHOLD = 12;
 export const LONG_TEXT_ASSOCIATION_RADIUS = 1600;

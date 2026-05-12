@@ -110,6 +110,9 @@ importers:
       '@kairo/validator':
         specifier: workspace:*
         version: link:../validator
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.2
 
   packages/exporter-dxf: {}
 
