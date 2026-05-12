@@ -950,6 +950,11 @@ button:hover {
   color: #ffd37a;
 }
 
+.semantic-action-divider {
+  flex-basis: 100%;
+  height: 0;
+}
+
 .semantic-copy-status {
   align-self: center;
   color: #9ff2d4;
