@@ -24,6 +24,12 @@ import {
   sampleScenePackage
 } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
+import {
+  buildAdvancedLayoutModel,
+  exportAdvancedLayoutCsv,
+  exportAdvancedLayoutJson,
+  exportAdvancedLayoutMarkdown
+} from "./advancedEngineering/advancedLayout";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
@@ -79,6 +85,7 @@ type ViewerSelection = {
 
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "main" | "selected" | "raw";
+type AdvancedLayoutExportFormat = "json" | "csv" | "markdown";
 
 type FitRequest = {
   target: FitTarget;
@@ -869,6 +876,10 @@ export function App() {
     () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path),
     [layoutSemantics, scenePackage.manifest.source.path]
   );
+  const advancedLayoutModel = useMemo(
+    () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
+    [scenePackage, layoutSemantics]
+  );
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
     () => (showOutliers ? new Set<string>() : new Set(robustBounds.outlierEntityIds)),
@@ -1145,6 +1156,29 @@ export function App() {
     const extension = format === "json" ? "json" : "md";
     const mime = format === "json" ? "application/json" : "text/markdown";
     downloadTextFile(`kairo-semantic-summary.${extension}`, content, mime);
+  };
+
+  const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
+    if (format === "json") return exportAdvancedLayoutJson(advancedLayoutModel);
+    if (format === "csv") return exportAdvancedLayoutCsv(advancedLayoutModel);
+    return exportAdvancedLayoutMarkdown(advancedLayoutModel);
+  };
+
+  const copyAdvancedLayoutExport = (format: AdvancedLayoutExportFormat) => {
+    const writeText = navigator.clipboard?.writeText;
+    if (!writeText) {
+      setSemanticCopyStatus("Copy failed");
+      return;
+    }
+    void writeText.call(navigator.clipboard, advancedLayoutExportContent(format))
+      .then(() => setSemanticCopyStatus(format === "json" ? "Copied AE JSON" : format === "csv" ? "Copied AE CSV" : "Copied AE Markdown"))
+      .catch(() => setSemanticCopyStatus("Copy failed"));
+  };
+
+  const downloadAdvancedLayoutExport = (format: AdvancedLayoutExportFormat) => {
+    const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
+    const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
+    downloadTextFile(`kairo-advanced-layout.${extension}`, advancedLayoutExportContent(format), mime);
   };
 
   return (
@@ -1496,6 +1530,25 @@ export function App() {
             </button>
             <button onClick={() => downloadSemanticExport("markdown")} type="button">
               Download MD
+            </button>
+            <span className="semantic-action-divider" aria-hidden="true" />
+            <button onClick={() => copyAdvancedLayoutExport("json")} type="button">
+              Copy AE JSON
+            </button>
+            <button onClick={() => copyAdvancedLayoutExport("csv")} type="button">
+              Copy AE CSV
+            </button>
+            <button onClick={() => copyAdvancedLayoutExport("markdown")} type="button">
+              Copy AE MD
+            </button>
+            <button onClick={() => downloadAdvancedLayoutExport("json")} type="button">
+              Download AE JSON
+            </button>
+            <button onClick={() => downloadAdvancedLayoutExport("csv")} type="button">
+              Download AE CSV
+            </button>
+            <button onClick={() => downloadAdvancedLayoutExport("markdown")} type="button">
+              Download AE MD
             </button>
             {semanticCopyStatus ? (
               <span className="semantic-copy-status" role="status">
