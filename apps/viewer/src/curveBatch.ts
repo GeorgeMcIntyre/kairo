@@ -18,6 +18,10 @@ export type CurveBatchData = {
   pickEntriesBySegment: CurveSegmentPickEntry[];
 };
 
+export type CurveBatchOptions = {
+  hiddenEntityIds?: ReadonlySet<string>;
+};
+
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
 
@@ -74,11 +78,19 @@ export function pointsForEntity(entity: DrawingEntity): THREE.Vector3[] {
   return [];
 }
 
-export function createCurveBatchData(geometry: Extract<Geometry, { kind: "curve-set" }>, fallbackLayerId?: string): CurveBatchData {
+export function createCurveBatchData(
+  geometry: Extract<Geometry, { kind: "curve-set" }>,
+  fallbackLayerId?: string,
+  options: CurveBatchOptions = {}
+): CurveBatchData {
   const positions: number[] = [];
   const pickEntriesBySegment: CurveSegmentPickEntry[] = [];
 
   for (const entity of geometry.entities) {
+    if (options.hiddenEntityIds?.has(entity.id)) {
+      continue;
+    }
+
     const points = pointsForEntity(entity);
     const pickable: PickableCurveEntity = {
       entityId: entity.id,

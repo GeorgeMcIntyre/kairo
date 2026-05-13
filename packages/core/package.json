@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@kairo/schema": "workspace:*",
-    "@kairo/validator": "workspace:*"
+    "@kairo/validator": "workspace:*",
+    "fflate": "^0.8.2"
   }
 }

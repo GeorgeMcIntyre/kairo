@@ -222,6 +222,35 @@ describe("kairo validate", () => {
     });
   });
 
+  it("packs an exploded scene into a .kairo package that validate can read", async () => {
+    const outputPath = path.join(tempRoot, "sample.kairo");
+    const packResult = await captureCli(["pack-scene", sampleScenePath, outputPath]);
+
+    expect(packResult.code).toBe(0);
+    expect(packResult.stderr).toBe("");
+    expect(packResult.stdout).toContain("Kairo scene package passed\n");
+    expect(packResult.stdout).toContain("Output: ");
+
+    const packageBytes = await readFile(outputPath);
+    expect(packageBytes.byteLength).toBeGreaterThan(100);
+
+    const validateResult = await captureCli(["validate", outputPath]);
+    expect(validateResult.code).toBe(0);
+    expect(validateResult.stderr).toBe("");
+    expect(validateResult.stdout).toContain("Kairo validation passed\n");
+    expect(validateResult.stdout).toContain("Scene: Bracket Exchange Sample\n");
+  });
+
+  it("requires the .kairo extension when packing a scene", async () => {
+    const result = await captureCli(["pack-scene", sampleScenePath, path.join(tempRoot, "sample.zip")]);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "Kairo scene package failed\n- ERROR INVALID_PACKAGE_PATH: Output file must use the .kairo extension.\n"
+    );
+  });
+
   it("rejects unsafe viewer scene names", async () => {
     const result = await captureCli(["stage-viewer-scene", sampleScenePath, "../escape"]);
 

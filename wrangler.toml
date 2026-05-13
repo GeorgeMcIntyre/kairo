@@ -1,0 +1,12 @@
+name = "kairo-viewer"
+pages_build_output_dir = "apps/viewer/dist"
+
+# Cloudflare Pages environments are configured in the dashboard for now.
+# Required build environment variables:
+# - NODE_VERSION = "20"
+# - PNPM_VERSION = "10.17.0"
+#
+# Future placeholders only:
+# - D1 bindings are not configured yet.
+# - R2 bindings are not configured yet.
+# - Auth/secrets are not configured yet.

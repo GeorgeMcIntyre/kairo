@@ -1,5 +1,82 @@
 import { describe, expect, it } from "vitest";
-import { loadPublicScenePackage, resolveViewerSceneRequest, sampleScenePackage } from "./sceneLoader";
+import {
+  isPublicSceneAssetLoadError,
+  loadDxfFileScenePackage,
+  loadKairoPackageFileScenePackage,
+  loadLocalSceneFilePackage,
+  loadPublicScenePackage,
+  resolveViewerSceneRequest,
+  sampleScenePackage
+} from "./sceneLoader";
+import { createKairoPackage } from "@kairo/core";
+
+const oneLineDxf = `0
+SECTION
+2
+HEADER
+9
+$INSUNITS
+70
+4
+0
+ENDSEC
+0
+SECTION
+2
+TABLES
+0
+TABLE
+2
+LAYER
+70
+1
+0
+LAYER
+2
+CUT
+70
+0
+62
+1
+6
+CONTINUOUS
+0
+ENDTAB
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+0
+LINE
+5
+20
+8
+CUT
+10
+0
+20
+0
+30
+0
+11
+25
+21
+10
+31
+0
+0
+ENDSEC
+0
+EOF
+`;
+
+function filePart(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
 
 describe("viewer scene loader", () => {
   it("uses the bundled sample when no scene query is present", () => {
@@ -42,5 +119,78 @@ describe("viewer scene loader", () => {
     expect(loaded.geometry.map((document) => document.geometries[0].id)).toEqual(["geom-bracket-body", "geom-reference-outline"]);
     expect(requestedUrls).toContain("/scenes/sample/geometry/geom-bracket-body.json");
     expect(requestedUrls).toContain("/scenes/sample/geometry/geom-reference-outline.json");
+  });
+
+  it("classifies missing public scene assets as slim-preview scene asset errors", async () => {
+    await expect(
+      loadPublicScenePackage("/scenes/missing", async () => ({
+        ok: false,
+        status: 404,
+        json: async () => ({})
+      }))
+    ).rejects.toSatisfy(isPublicSceneAssetLoadError);
+  });
+
+  it("classifies HTML fallback responses as slim-preview scene asset errors", async () => {
+    await expect(
+      loadPublicScenePackage("/scenes/missing", async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<', \"<!doctype\" is not valid JSON");
+        }
+      }))
+    ).rejects.toSatisfy(isPublicSceneAssetLoadError);
+  });
+
+  it("loads a local DXF file through the browser importer", async () => {
+    const loaded = await loadDxfFileScenePackage(new File([oneLineDxf], "uploaded.dxf"));
+
+    expect(loaded.scenePackage.scene.nodes[0].displayName).toBe("uploaded.dxf");
+    expect(loaded.scenePackage.manifest.source.path).toBe("uploaded.dxf");
+    expect(loaded.summary.supportedEntityCount).toBe(1);
+    expect(loaded.timing?.map((entry) => entry.stage)).toEqual([
+      "file-read",
+      "importer-module-load",
+      "dxf-import",
+      "pre-clean",
+      "dxf-parse",
+      "mtext-scan",
+      "scene-package-build",
+      "validation",
+      "total-import",
+      "browser-dxf-load-total"
+    ]);
+    expect(loaded.timing?.every((entry) => Number.isFinite(entry.ms) && entry.ms >= 0)).toBe(true);
+  });
+
+  it("rejects non-DXF local files", async () => {
+    await expect(loadDxfFileScenePackage(new File(["{}"], "scene.json"))).rejects.toThrow("Only .dxf files");
+  });
+
+  it("loads a local .kairo scene package", async () => {
+    const archive = createKairoPackage(sampleScenePackage, { createdBy: "viewer-test" });
+    const loaded = await loadKairoPackageFileScenePackage(new File([filePart(archive)], "sample.kairo"));
+
+    expect(loaded.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
+    expect(loaded.geometry.map((document) => document.geometries[0].id)).toEqual(["geom-bracket-body", "geom-reference-outline"]);
+  });
+
+  it("loads local .dxf and .kairo files through the shared local-file loader", async () => {
+    const dxfLoaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "uploaded.dxf"));
+    const kairoLoaded = await loadLocalSceneFilePackage(
+      new File([filePart(createKairoPackage(sampleScenePackage))], "sample.kairo")
+    );
+
+    expect(dxfLoaded.kind).toBe("dxf");
+    expect(dxfLoaded.scenePackage.manifest.source.path).toBe("uploaded.dxf");
+    expect(dxfLoaded.timing?.some((entry) => entry.stage === "browser-dxf-load-total")).toBe(true);
+    expect(kairoLoaded.kind).toBe("kairo-package");
+    expect(kairoLoaded.scenePackage.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
+    expect(kairoLoaded.timing?.map((entry) => entry.stage)).toEqual(["kairo-package-read"]);
+  });
+
+  it("rejects unsupported local package extensions", async () => {
+    await expect(loadLocalSceneFilePackage(new File(["{}"], "scene.json"))).rejects.toThrow("Only .dxf and .kairo");
   });
 });

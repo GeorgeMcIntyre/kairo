@@ -1,10 +1,12 @@
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { MAX_TEXT_OVERLAY_CHARS, safeDisplayText } from "./textSafety";
 
 export type TextOverlayItem = {
   entityId: string;
   text: string;
+  displayText: string;
   position: [number, number, number];
   rotationDeg: number;
   height: number;
@@ -22,6 +24,10 @@ export type LabelDensityMode = "auto" | "all" | "off";
 export const MIN_DISPLAY_PX = 2;
 export const MAX_DISPLAY_PX = 48;
 export const AUTO_HIDE_BELOW_PX = 5;
+
+function textOverlayDomKey(item: TextOverlayItem, index: number): string {
+  return `${item.entityId}:${index}`;
+}
 
 export type TextOverlayMetrics = {
   itemCount: number;
@@ -48,6 +54,8 @@ export function collectTextItems(scenePackage: ScenePackage): TextOverlayItem[] 
         items.push({
           entityId: entity.id,
           text: entity.text,
+          // TODO: DXF text width factor/rotation/aspect fidelity needs a dedicated pass.
+          displayText: safeDisplayText(entity.text, MAX_TEXT_OVERLAY_CHARS),
           position: [entity.position[0], entity.position[1], entity.position[2]],
           rotationDeg: entity.rotationDeg,
           height: entity.height,
@@ -197,6 +205,7 @@ export function SceneTextOverlay({
   camera,
   host,
   hiddenLayerIds,
+  hiddenEntityIds,
   rafTick,
   densityMode,
   readableOrientation,
@@ -206,6 +215,7 @@ export function SceneTextOverlay({
   camera: TextOverlayCamera | null;
   host: HTMLElement | null;
   hiddenLayerIds: Set<string>;
+  hiddenEntityIds?: ReadonlySet<string>;
   rafTick: number;
   densityMode: LabelDensityMode;
   readableOrientation: boolean;
@@ -253,11 +263,13 @@ export function SceneTextOverlay({
     let frustumCulledCount = 0;
     let layerHiddenCount = 0;
     let densityHiddenCount = 0;
-    for (const item of items) {
-      const el = labelRefs.current.get(item.entityId);
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      const el = labelRefs.current.get(textOverlayDomKey(item, index));
       if (!el) continue;
 
-      const layerHidden = item.layerId !== undefined && hiddenLayerIds.has(item.layerId);
+      const layerHidden =
+        (item.layerId !== undefined && hiddenLayerIds.has(item.layerId)) || hiddenEntityIds?.has(item.entityId) === true;
       const projected = projectLabel(item.position, camera, width, height, projectVec);
       const worldFontPx = item.height * pxPerUnit;
       const decision = decideDisplay(
@@ -311,21 +323,34 @@ export function SceneTextOverlay({
         `[SceneTextOverlay] items=${items.length} dom=${labelRefs.current.size} visible=${visibleCount} clampedUp=${clampedUpCount} frustumCulled=${frustumCulledCount} layerHidden=${layerHiddenCount} densityHidden=${densityHiddenCount} pxPerUnit=${pxPerUnit.toFixed(4)} mode=${densityMode} readable=${readableOrientation} cameraReady=${cameraReady} hostReady=${hostReady}`
       );
     }
-  }, [items, camera, host, hiddenLayerIds, rafTick, projectVec, densityMode, readableOrientation, densityContext]);
+  }, [
+    items,
+    camera,
+    host,
+    hiddenLayerIds,
+    hiddenEntityIds,
+    rafTick,
+    projectVec,
+    densityMode,
+    readableOrientation,
+    densityContext
+  ]);
 
   return (
     <div ref={overlayRef} className="text-overlay">
-      {items.map((item) => (
+      {items.map((item, index) => (
         <div
-          key={item.entityId}
+          key={textOverlayDomKey(item, index)}
           ref={(node) => {
-            if (node) labelRefs.current.set(item.entityId, node);
-            else labelRefs.current.delete(item.entityId);
+            const domKey = textOverlayDomKey(item, index);
+            if (node) labelRefs.current.set(domKey, node);
+            else labelRefs.current.delete(domKey);
           }}
           className={`text-overlay-label${item.origin === "ATTDEF" ? " attdef" : ""}`}
           style={{ display: "none" }}
+          aria-label={item.displayText}
         >
-          {item.text}
+          {item.displayText}
         </div>
       ))}
     </div>
