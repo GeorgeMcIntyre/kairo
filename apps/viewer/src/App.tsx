@@ -51,6 +51,7 @@ import {
   type SemanticDeviceOverride,
   type SemanticOverrideMap
 } from "./semantic/semanticSummary";
+import { buildScottSemanticQaReport, exportScottSemanticQaMarkdown } from "./semantic/semanticQaReport";
 import {
   collectTextItems,
   SceneTextOverlay,
@@ -978,6 +979,10 @@ export function App() {
     () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path),
     [layoutSemantics, scenePackage.manifest.source.path]
   );
+  const semanticQaReport = useMemo(
+    () => buildScottSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path),
+    [layoutSemantics, scenePackage.manifest.source.path]
+  );
   const advancedLayoutModel = useMemo(
     () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
     [scenePackage, layoutSemantics]
@@ -1279,6 +1284,10 @@ export function App() {
     const extension = format === "json" ? "json" : "md";
     const mime = format === "json" ? "application/json" : "text/markdown";
     downloadTextFile(`kairo-semantic-summary.${extension}`, content, mime);
+  };
+
+  const downloadSemanticQaReport = () => {
+    downloadTextFile("scott-semantic-qa-report.md", exportScottSemanticQaMarkdown(semanticQaReport), "text/markdown");
   };
 
   const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
@@ -1700,6 +1709,9 @@ export function App() {
             </button>
             <button onClick={() => downloadSemanticExport("markdown")} type="button">
               Download MD
+            </button>
+            <button onClick={downloadSemanticQaReport} type="button">
+              Download QA MD
             </button>
             <span className="semantic-action-divider" aria-hidden="true" />
             <button onClick={() => copyAdvancedLayoutExport("json")} type="button">

@@ -1,29 +1,21 @@
 # Kairo Tasks
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
 
 ## NOW
 
-### CAD Exchanger JT bridge probe (P1)
+### ISSUE-019: Scott DXF semantic association QA pass (P1)
 
-**Goal:** Use CAD Exchanger as the temporary JT path after viewer performance is stable. Probe one simple named colored part and verify in JT2Go / Process Simulate before any product export claim.
+**Status:** QA support ready / manual review pending.
 
-**Not allowed:** Treat raw JT 8.1 as solved, add production JT export, or introduce CAD Exchanger into the Cloudflare/browser runtime.
+**Goal:** Manually inspect the primary Scott DXF staged scene and record whether high-value labels such as `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N` link to the expected nearby geometry. Tune only proven association thresholds or layer/block hints.
 
----
+**Current checkpoint:** Export-first QA support exists through `scott-semantic-qa-report.md`, plus the manual runbook, checklist, findings template, and demo note in `specs/investigations/`. ISSUE-019 is not DONE until George fills the manual findings/checklist and confirms whether associations are useful.
 
-## DONE
-
-### ISSUE-021: Large DXF performance diagnostics and semantic deferral QA (P1)
-
-**Goal:** Validate the new deferred semantic-analysis load path on the primary Scott DXF and record file read, DXF parse, geometry batch, semantic analysis, first render, and first interactive timings.
-
-**Not allowed:** Remove batched `THREE.LineSegments`, return to one object per DXF entity, or make semantic classification authoritative without review.
-
-**Completed:** Browser DXF imports now expose stage timings, semantic analysis timing is visible in Diagnostics, viewport batch/render timings are captured, semantic overlay lists are capped with selected item preservation, and local DXF opens with the semantic panel collapsed by default.
+**Not allowed:** Rewrite viewer batching, create per-entity Three.js objects, hardcode the Scott DXF path into production code, or begin persistence.
 
 ---
 
@@ -34,22 +26,6 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 **Goal:** Use `pack-scene` to create a `.kairo` package from the primary Scott import, open it through the viewer, and confirm it is practical for internal sharing without restaging public scene assets.
 
 **Not allowed:** Replace raw DXF import, add 7z/WASM tooling, or change the neutral scene schema unless package QA proves a missing field.
-
----
-
-### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
-
-**Goal:** Save user-confirmed semantic device records, class overrides, geometry association overrides, and unlinked warnings to a project-level JSON model that can be reloaded with the staged scene.
-
-**Not allowed:** Replace the current staged scene format, make raw DXF upload a blocker, or treat automatic classification as final truth.
-
----
-
-### ISSUE-019: Scott DXF semantic association QA pass (P1)
-
-**Goal:** Manually inspect the primary Scott DXF staged scene and record whether high-value labels such as `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N` link to the expected nearby geometry. Tune only proven association thresholds or layer/block hints.
-
-**Not allowed:** Rewrite viewer batching, create per-entity Three.js objects, or hardcode the Scott DXF path into production code.
 
 ---
 
@@ -137,9 +113,33 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## BLOCKED
 
+### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
+
+**Blocked by:** ISSUE-019 manual visual QA. Do not start until the result is PASS, or a PARTIAL result lists the exact semantic fixes required before persistence.
+
+**Goal:** Save user-confirmed semantic device records, class overrides, geometry association overrides, and unlinked warnings to a project-level JSON model that can be reloaded with the staged scene.
+
+**Not allowed:** Replace the current staged scene format, make raw DXF upload a blocker, add persistence design as accepted before the QA gate, or treat automatic classification as final truth.
+
+---
+
 ### TASK-005: Fast automated viewer QA
 
 **Blocked by:** No Playwright/Puppeteer setup. Viewer requires real browser context for Three.js. No plan to unblock in current phase.
+
+---
+
+## DONE
+
+### ISSUE-021: Large DXF performance diagnostics and semantic deferral QA (P1)
+
+**Goal:** Validate the new deferred semantic-analysis load path on the primary Scott DXF and record file read, DXF parse, geometry batch, semantic analysis, first render, and first interactive timings.
+
+**Not allowed:** Remove batched `THREE.LineSegments`, return to one object per DXF entity, or make semantic classification authoritative without review.
+
+**Completed:** Browser DXF imports now expose stage timings, semantic analysis timing is visible in Diagnostics, viewport batch/render timings are captured, semantic overlay lists are capped with selected item preservation, and local DXF opens with the semantic panel collapsed by default.
+
+---
 
 ### `.kairo` package file support - DONE
 
@@ -162,11 +162,11 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 Kairo now builds semantic device records from DXF text labels and nearby geometry groups. Block-insert provenance is used when available; otherwise nearby geometry clusters are used. Each detected device includes class/type, confidence, evidence, linked entity IDs, label entity IDs, bounds, centroid, association status, association confidence, and candidate groups.
 
-Protected BIW rules are covered by tests: `7B-020L-04` is a robot/device tag, not a station; `7B-070L-DN1` and `7B-070L-DN2` classify as dunnage; `7B-060L-1N` classifies as nest. Association tests cover close link, ambiguous middle label, far unlinked label, and distance-based confidence drop.
+Protected BIW rules are covered by tests: `7B-020L-04` is a robot/device number, not a station; `7B-070L-DN1` and `7B-070L-DN2` classify as dunnage stations; `7B-060L-1N` classifies as a nest. Association tests cover close link, ambiguous middle label, far unlinked label, and distance-based confidence drop.
 
-The viewer semantic panel now shows summary counts, device association details, linked geometry IDs, candidate groups, session-only class/geometry/unlink overrides, and JSON/Markdown summary copy/download actions.
+The viewer semantic panel now shows summary counts, device association details, linked geometry IDs, candidate groups, session-only class/geometry/unlink overrides, and JSON/Markdown summary copy/download actions. This DONE item means the code path, tests, diagnostics, and export support exist; it does not complete ISSUE-019 without George's manual visual checklist.
 
-Verification: 245/245 tests pass with `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1`; `pnpm.cmd typecheck` and `pnpm.cmd build` pass; `validate apps/viewer/public/scenes/scott-dxf2013-import` passes with 0 errors / 0 warnings.
+Verification at latest semantic QA checkpoint: 273/273 tests pass with `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1`; `pnpm.cmd typecheck` and `pnpm.cmd build` pass; `validate apps/viewer/public/scenes/scott-dxf2013-import` passes with 0 errors / 0 warnings.
 
 ---
 

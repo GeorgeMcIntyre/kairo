@@ -1,6 +1,6 @@
 # Kairo Issue Backlog
 
-Last updated: 2026-05-10
+Last updated: 2026-05-13
 
 GitHub issue creation from ChatGPT is blocked (403). This file is the authoritative source of truth for all tracked issues until the connector is fixed. Keep in sync with KAIRO_TASKS.md.
 
@@ -635,6 +635,78 @@ Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB pro
 
 ---
 
+## ISSUE-018 — Persist reviewed semantic devices and overrides
+
+- **Status:** BLOCKED (GATED)
+- **Priority:** P1
+
+**Goal:**
+Save user-confirmed semantic device records, class overrides, geometry association overrides, and unlinked warnings to a project-level JSON model that can be reloaded with the staged scene.
+
+**Why it matters:**
+Session overrides are useful for review, but they disappear on refresh. Persistence is only worthwhile after the current semantic associations prove useful on the Scott layout.
+
+**Gate:**
+Do not start until ISSUE-019 manual QA is PASS, or a PARTIAL result explicitly lists semantic fixes to make before persistence.
+
+**Not allowed:**
+- Do not replace the staged scene format
+- Do not make raw DXF upload a blocker
+- Do not treat automatic classification as final truth
+- Do not add persistence design as accepted before the QA gate
+
+**Suggested commit:** `feat: persist reviewed semantic devices`
+
+---
+
+## ISSUE-019 — Scott DXF semantic association QA pass
+
+- **Status:** NOW — QA support ready / manual review pending
+- **Priority:** P1
+
+**Goal:**
+Manually inspect the primary Scott DXF staged scene and record whether high-value labels such as `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N` classify correctly and link to expected nearby geometry.
+
+**Why it matters:**
+Before Kairo persists reviewed semantic devices or polishes the semantic UI around them, we need evidence that the current label-to-geometry association is useful for concept quote/layout review.
+
+**Current checkpoint:**
+Export-first QA diagnostics are available through `scott-semantic-qa-report.md`, plus reviewer docs:
+
+- `specs/investigations/ISSUE_019_SCOTT_SEMANTIC_QA_PLAN.md`
+- `specs/investigations/SCOTT_SEMANTIC_QA_RUNBOOK.md`
+- `specs/investigations/SCOTT_SEMANTIC_QA_CHECKLIST.md`
+- `specs/investigations/SCOTT_SEMANTIC_QA_FINDINGS_TEMPLATE.md`
+- `specs/investigations/ISSUE_019_DEMO_READINESS_NOTE.md`
+
+**Required labels:**
+- `7B-020L-04` — robot/device number, not station
+- `7B-070L-DN1` — dunnage station
+- `7B-070L-DN2` — dunnage station
+- `7B-060L-1N` — nest
+
+**Allowed scope:**
+- Semantic QA report/export
+- Reviewer checklist docs
+- Deterministic tests for protected classification and report risk markers
+- Small wording/readability improvements in semantic summaries
+
+**Not allowed:**
+- Do not implement persistence
+- Do not redesign the viewer
+- Do not rewrite importer/schema
+- Do not touch GLB/JT/CAD Exchanger/Cloudflare
+
+**Acceptance criteria:**
+- QA report includes required label presence, expected/actual kind, confidence, association status, linked entity count, candidate groups, risk markers, and reviewer columns
+- Checklist lets George record pass/partial/fail without reading code
+- Docs clearly state ISSUE-019 is not DONE until manual visual QA is captured
+- `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1`, `pnpm.cmd typecheck`, and `pnpm.cmd build` pass
+
+**Suggested commit:** `test: harden Scott semantic QA review`
+
+---
+
 ## Summary table
 
 | ID | Title | Status | Priority |
@@ -649,6 +721,8 @@ Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB pro
 | ISSUE-015 | Coordinate precision audit | NEXT | P2 |
 | ISSUE-016 | Cloudflare deploy check | NEXT | P1 |
 | ISSUE-017 | CAD Exchanger GLB primitive probe | NEXT | P2 |
+| ISSUE-018 | Persist reviewed semantic devices and overrides | BLOCKED (GATED) | P1 |
+| ISSUE-019 | Scott DXF semantic association QA pass | NOW — QA support ready / manual review pending | P1 |
 | ISSUE-006 | Layer controls and isolate workflow | LATER | P1 |
 | ISSUE-010 | Fast viewer QA workflow documentation | LATER | P1 |
 | ISSUE-012 | Claude skills for Kairo | LATER | P2 |

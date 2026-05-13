@@ -1,12 +1,12 @@
 # Next Phase Recommendation
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 ---
 
 ## Current Position
 
-ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, semantic validation, the semantic label-to-geometry device MVP, advanced layout exports, and `.kairo` package file support are complete on `codex/kairo-viewer-semantics` (`b34d5ad` plus current uncommitted package implementation). The Scott DXF2013 staged scene:
+ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, semantic validation, the semantic label-to-geometry device MVP, advanced layout exports, `.kairo` package file support, viewer diagnostics, and ISSUE-019 QA diagnostics are complete on the current integration branch. The Scott DXF2013 staged scene:
 
 - Opens framing the facility with P95 robust bounds.
 - Has 246,045 supported entities and 1,092 text labels.
@@ -20,9 +20,10 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Supports local `.dxf` import and `.kairo` package open/drop. `.kairo` packages are ZIP-backed neutral scene packages created with `pack-scene`.
 - Includes lightweight performance diagnostics for browser DXF load stages, importer parse/build stages, semantic analysis, viewport batch build, render setup, and first render in the existing Diagnostics panel.
 - Caps broad semantic overlay lists while preserving selected items, and keeps local DXF opens drawing-first by collapsing the Semantics panel by default.
-- Passes `pnpm test` with 275/275 tests; `pnpm typecheck` and `pnpm build` are clean. The viewer build still reports the expected chunk-size warning.
+- Provides advanced layout JSON/CSV/Markdown export and a Scott semantic QA Markdown report.
+- Verification must be rerun after integration. The viewer build is expected to report the chunk-size warning only.
 
-POC readiness: ~89%.
+POC readiness: ~89%. Do not raise this to ~92% until ISSUE-019 manual visual QA is captured.
 
 ---
 
@@ -41,17 +42,17 @@ POC readiness: ~89%.
 
 ## Recommended Priority Order
 
-### 1 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
+### 1 - ISSUE-019: Scott DXF semantic association QA pass (P1, NOW)
+
+QA support is ready through `scott-semantic-qa-report.md`, `specs/investigations/SCOTT_SEMANTIC_QA_RUNBOOK.md`, and `specs/investigations/SCOTT_SEMANTIC_QA_FINDINGS_TEMPLATE.md`. George still needs to manually inspect high-value labels and linked geometry in the primary Scott DXF staged scene, then record false positives, ambiguous associations, and unlinked labels. Required labels: `7B-020L-04` is a robot/device number, not a station; `7B-070L-DN1` and `7B-070L-DN2` are dunnage stations; `7B-060L-1N` is a nest.
+
+### 2 - ISSUE-018: Persist reviewed semantic devices and overrides (P1, BLOCKED/GATED)
+
+Add a small project-level semantic model for confirmed class overrides, geometry association overrides, unlinked labels, and warnings. Reload it with the staged scene so user corrections survive refresh/export. This remains gated until ISSUE-019 manual QA is PASS, or a PARTIAL result explicitly lists semantic fixes to make first.
+
+### 3 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
 
 Create a `.kairo` package from the primary Scott import, open it through the viewer on the shared test port, and confirm other domain users can load the package without staged public scene assets.
-
-### 2 - ISSUE-019: Scott DXF semantic association QA pass (P1, NEXT)
-
-Manually inspect high-value labels and linked geometry in the primary Scott DXF staged scene. Record false positives, ambiguous associations, and unlinked labels. Tune only proven thresholds, layer hints, or block-name hints.
-
-### 3 - ISSUE-018: Persist reviewed semantic devices and overrides (P1, NEXT)
-
-Add a small project-level semantic model for confirmed class overrides, geometry association overrides, unlinked labels, and warnings. Reload it with the staged scene so user corrections survive refresh/export.
 
 ### 4 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
 
@@ -93,10 +94,10 @@ Research only. Do not implement an exporter. First prove CAD Exchanger behavior 
 
 - `.kairo` package sharing works for the primary Scott layout.
 - Scott DXF semantic associations have a documented manual QA pass.
-- Reviewed semantic corrections can be saved and reloaded.
+- Reviewed semantic corrections can be saved and reloaded only after ISSUE-019 passes or has an explicit PARTIAL gate decision.
 - Canvas-dominant viewer layout with collapsible panels.
 - Text visual QA notes are captured; any remaining alignment issues are labeled "needs manual QA."
 - Coordinate precision has a written pass/fail recommendation.
 - Cloudflare staging/deploy steps reference real commands.
 - CAD Exchanger probe results identify which GLB primitives and metadata survive import.
-- POC readiness estimate: ~92%.
+- POC readiness remains ~89% until the manual semantic QA and persistence gate are resolved; diagnostics/export support alone is not enough to claim ~92%.

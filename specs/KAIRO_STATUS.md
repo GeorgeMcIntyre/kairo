@@ -1,21 +1,21 @@
 # Kairo Status
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 
 ## Git
 
 - Branch: `codex/kairo-viewer-semantics`
-- HEAD: `b34d5ad feat: add advanced layout exports`
-- Working tree is dirty with the `.kairo` package implementation and viewer performance/UI follow-up fixes.
+- HEAD before package/ISSUE-019 integration: `b34d5ad feat: add advanced layout exports`
+- Current checkpoint includes `.kairo` package support, viewer diagnostics, and ISSUE-019 semantic QA diagnostics.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 275/275 passed |
-| `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
+| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | Integration verification required after cherry-pick |
+| `pnpm.cmd typecheck` | Clean |
+| `pnpm.cmd build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -55,8 +55,8 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Spline-fit POLYLINE expansion (Phase 10N-B): spline-fit and curve-fit POLYLINEs expanded using pre-sampled fitting vertices from the DXF file. Emits DXF_POLYLINE_SPLINE_APPROXIMATED.
 - Viewer performance (Phase 10P): scene loads in ~5 s; layer toggle, fit, and selection are non-rebuilding (~28 draw calls, one LineSegments per geometry document).
 - Viewer inspection: top-2D and perspective modes, fit-to-scene, fit-main, fit-to-selection, orbit controls, mouse-wheel zoom toward cursor, tree selection, exact entity picking inside batched LineSegments, source-map display, layer list, diagnostics panel, text density controls.
-- Semantic classification MVP: extracted text labels are classified as station, robot/device, nest, dunnage, known support equipment, or unknown with confidence and evidence. Numeric station-suffix tags such as `7B-020L-04` are treated as device tags, not stations. `DN1`/`DN2` classify as dunnage and `1N` classifies as nest.
-- Semantic device association MVP: labels are linked to nearby geometry groups using block-insert provenance first and fallback geometry clusters second. Each semantic device records linked entity IDs, label entity IDs, bounds, centroid, association status (`linked`, `ambiguous`, `unlinked`), association confidence, candidates, and reason strings.
+- Semantic classification MVP: extracted text labels are classified as station, robot/device, nest, dunnage, known support equipment, or unknown with confidence and evidence. Code/tests protect these Scott label rules: `7B-020L-04` is a robot/device number, not a station; `7B-070L-DN1` and `7B-070L-DN2` are dunnage stations; `7B-060L-1N` is a nest.
+- Semantic device association MVP: labels are linked to nearby geometry groups using block-insert provenance first and fallback geometry clusters second. Each semantic device records linked entity IDs, label entity IDs, bounds, centroid, association status (`linked`, `ambiguous`, `unlinked`), association confidence, candidates, and reason strings. These links are automated candidate evidence; visual usefulness still requires ISSUE-019 manual review.
 - Viewer semantic workflow: semantic overlays show station/device outlines, label markers, and label-to-geometry link lines. Selecting a label/device shows class, confidence, evidence, association candidates, linked entity IDs, and bounds. Selecting linked geometry shows the assigned semantic device.
 - Viewer performance diagnostics follow-up: DXF browser loads now carry lightweight stage timings for file read, importer module load, parse/import stages, semantic analysis, viewport batch build, render setup, and first render. Timings are shown only in the collapsed Diagnostics panel.
 - Viewer semantic performance follow-up: semantic analysis is deferred after scene activation so geometry can become visible before the semantic pass completes. Semantic overlay rendering is capped for broad station/device/unknown lists while preserving the selected item.
@@ -64,6 +64,8 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
 - Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
+- Advanced layout exports: viewer can export a concept-quote oriented model as JSON, CSV, or Markdown with lines, stations, devices, annotations, warnings, review items, and summary counts.
+- ISSUE-019 semantic QA support: viewer can download `scott-semantic-qa-report.md`, a deterministic Markdown review report covering required Scott labels, association status/confidence, candidate groups, risk markers, reviewer columns, and known limits. Manual runbook/findings docs exist under `specs/investigations/`. Manual visual QA is still pending.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
@@ -86,6 +88,7 @@ Known visual issues still requiring work:
 - Text overlay does not collision-detect or z-order against curves.
 - Direct raw DXF browser upload and `.kairo` package upload are implemented; staged public scenes are still useful for fixed demos.
 - Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
+- ISSUE-019 manual visual QA has not been captured yet, so semantic associations are QA-ready but not accepted as persistence input.
 - Manual semantic overrides are session-only and are not persisted to a project file yet.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable; CAD Exchanger is the temporary JT bridge direction only.
@@ -95,11 +98,12 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. `.kairo` package QA with the primary Scott DXF and internal sharing workflow
-2. Semantic association QA on the Scott DXF and persistence format for reviewed overrides
+1. Complete ISSUE-019 manual semantic association QA on the Scott DXF using `specs/investigations/SCOTT_SEMANTIC_QA_RUNBOOK.md` and `specs/investigations/SCOTT_SEMANTIC_QA_FINDINGS_TEMPLATE.md`.
+2. Start ISSUE-018 persistence only after ISSUE-019 manual QA is PASS, or after a PARTIAL result lists required semantic fixes.
 3. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
 4. Text visual QA / alignment polish
 5. Coordinate precision audit
+6. Cloudflare deploy check
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 
