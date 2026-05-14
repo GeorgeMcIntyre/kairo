@@ -169,7 +169,7 @@ Machine QA found and correctly classified `7B-020L-04`, `7B-070L-DN1`, `7B-070L-
 
 **Not allowed:** Remove batched `THREE.LineSegments`, return to one object per DXF entity, or make semantic classification authoritative without review.
 
-**Completed:** Browser DXF imports now expose stage timings, semantic analysis timing is visible in Diagnostics, viewport batch/render timings are captured, semantic overlay lists are capped with selected item preservation, and local DXF opens with the semantic panel collapsed by default. The 2026-05-14 follow-up added clean loading state/progress, moved browser DXF import and semantic analysis into module Web Workers, removed stale canvas content during DXF loading, and lazy-computes heavy semantic export artifacts. Findings and remaining timing risks are recorded in `specs/investigations/SCOTT_VIEWER_PERFORMANCE_REVIEW.md`.
+**Completed:** Browser DXF imports now expose stage timings, semantic analysis timing is visible in Diagnostics, viewport batch/render timings are captured, semantic overlay lists are capped with selected item preservation, and local DXF opens with the semantic panel collapsed by default. The 2026-05-14 follow-up added clean loading state/progress, moved browser DXF import and semantic analysis into module Web Workers, removed stale canvas content during DXF loading, fixed quadratic importer layer grouping, and lazy-computes heavy semantic export artifacts. Findings and remaining timing risks are recorded in `specs/investigations/SCOTT_VIEWER_PERFORMANCE_REVIEW.md`.
 
 ---
 
