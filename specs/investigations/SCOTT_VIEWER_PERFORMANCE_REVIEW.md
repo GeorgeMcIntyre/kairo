@@ -39,6 +39,7 @@ The Scott staged semantic machine QA test loads the staged scene and runs robust
 - Local file loading emits progress phases for file read, importer module load, DXF import, and Kairo package read.
 - Browser DXF import now runs in a module Web Worker when `Worker` is available, with the direct importer kept as the Node/test fallback.
 - Semantic analysis now runs in a module Web Worker when `Worker` is available, with the direct analyzer kept as the Node/test fallback.
+- Importer layer grouping was changed from repeated array cloning to in-place layer bucket appends. On the primary Scott DXF, the Node importer baseline before output writing dropped from roughly 72.9 seconds to roughly 4.5 seconds on this machine.
 - Public scene loading emits progress phases for manifest and geometry reads.
 - Heavy semantic export artifacts are computed only when requested:
   - semantic summary export
@@ -52,6 +53,7 @@ The Scott staged semantic machine QA test loads the staged scene and runs robust
 - Large semantic validation and overlay work is still proportional to detected semantic item count when the Semantics panel or overlay is active.
 - The browser must still build Three.js curve batches for all staged geometry documents before first render.
 - Transferring the imported scene package and semantic result between workers and the UI thread may still take noticeable time on very large DXFs.
+- Full browser timing still needs to be captured after the importer grouping fix because Chrome/Vite/browser structured clone timing can differ from the Node importer baseline.
 
 ## Next Recommendation
 

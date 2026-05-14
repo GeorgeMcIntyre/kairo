@@ -1060,7 +1060,12 @@ function groupEntitiesByLayer(entities: DrawingEntity[]) {
   const byLayer = new Map<string, DrawingEntity[]>();
   for (const entity of entities) {
     const layerId = entity.layerId ?? layerIdForName(defaultLayerName);
-    byLayer.set(layerId, [...(byLayer.get(layerId) ?? []), entity]);
+    const layerEntities = byLayer.get(layerId);
+    if (layerEntities) {
+      layerEntities.push(entity);
+    } else {
+      byLayer.set(layerId, [entity]);
+    }
   }
   return [...byLayer.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
