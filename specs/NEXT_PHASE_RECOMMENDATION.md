@@ -17,7 +17,7 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Keeps layer toggle, fit-scene, fit-main, fit-selected, text modes, and readable labels working.
 - Extracts labels, classifies station/device/nest/dunnage-style labels with confidence and reasons, links labels to nearby block/geometry groups, and exposes linked/ambiguous/unlinked states.
 - Provides session-only correction controls and JSON/Markdown semantic summary export.
-- Supports local `.dxf` import and `.kairo` package open/drop. `.kairo` packages are ZIP-backed neutral scene packages created with `pack-scene`.
+- Supports local `.dxf` import and `.kairo` package open/drop. `.kairo` packages are ZIP-backed neutral scene packages created with `pack-scene`; `package-qa` can generate a redacted share package and compare package round-trip counts.
 - Includes lightweight performance diagnostics for browser DXF load stages, importer parse/build stages, semantic analysis, viewport batch build, render setup, and first render in the existing Diagnostics panel.
 - Caps broad semantic overlay lists while preserving selected items, and keeps local DXF opens drawing-first by collapsing the Semantics panel by default.
 - Provides advanced layout JSON/CSV/Markdown export and a Scott semantic QA Markdown report.
@@ -25,6 +25,7 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Has targeted manual semantic QA PASS recorded by George for the required labels, including visual confirmation that DN1/DN2 correspond to the intended dunnage/rack geometry.
 - Provides file-based semantic review JSON import/export for reviewed device snapshots, overrides, reviewer confirmations, required-label rows, and scene mismatch warnings.
 - Provides a Scott layout content coverage pack at `specs/investigations/scott-layout-content-coverage/` with imported layer/entity counts, raw DXF block/text audit counts, label inventory, semantic item inventory, coverage risks, and reviewer columns for Scott feedback.
+- Has Scott `.kairo` package machine QA recorded in `specs/investigations/SCOTT_KAIRO_PACKAGE_QA.md`: redacted package validates, counts match the staged scene, and local source paths are removed. Manual browser open/drop confirmation is still pending.
 - Verification must be rerun after integration. The viewer build is expected to report the chunk-size warning only.
 
 POC readiness: ~92% after targeted ISSUE-019 manual PASS and ISSUE-018 file-based review JSON persistence. Keep it below production readiness until review JSON workflow QA, `.kairo` package sharing QA, drawing-first UI polish, and deployment checks are complete.
@@ -54,9 +55,9 @@ Send or review the coverage pack with Scott. Capture which expected layout items
 
 Open the Scott staged scene, confirm the four required labels, set review status/notes, download `kairo-semantic-review.json`, refresh/reopen the scene, import the review JSON, and confirm overrides/reviewer fields restore without local paths or stale device warnings.
 
-### 3 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
+### 3 - ISSUE-020: `.kairo` package browser QA and sharing workflow (P1, NEXT)
 
-Create a `.kairo` package from the primary Scott import, open it through the viewer on the shared test port, and confirm other domain users can load the package without staged public scene assets.
+Open `C:\tmp\kairo-scott-package-qa\scott-dxf2013-import-redacted.kairo` through the viewer on the shared test port and confirm it loads without staged public scene assets. Machine package QA has already passed.
 
 ### 4 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
 
@@ -97,7 +98,7 @@ Research only. Do not implement an exporter. First prove CAD Exchanger behavior 
 ## What Done Looks Like After Priority 1-8
 
 - Review JSON workflow is manually QA'd on the primary Scott layout.
-- `.kairo` package sharing works for the primary Scott layout.
+- `.kairo` package machine QA has passed for the primary Scott layout; browser open/drop confirmation remains pending.
 - Scott DXF semantic associations have a documented targeted manual QA pass.
 - Reviewed semantic corrections can be saved and reloaded through review JSON.
 - Canvas-dominant viewer layout with collapsible panels.

@@ -1,6 +1,6 @@
 # Kairo Package Format
 
-Last updated: 2026-05-12
+Last updated: 2026-05-14
 
 ## Purpose
 
@@ -54,10 +54,22 @@ Create a package from an exploded scene:
 node packages\cli\dist\index.js pack-scene .\tmp\scott-dxf2013-import .\tmp\scott-dxf2013-import.kairo
 ```
 
+Create a share-oriented package with source paths redacted to file names:
+
+```powershell
+node packages\cli\dist\index.js pack-scene .\tmp\scott-dxf2013-import .\tmp\scott-dxf2013-import.kairo --redact-source-paths
+```
+
 Validate a package:
 
 ```powershell
 node packages\cli\dist\index.js validate .\tmp\scott-dxf2013-import.kairo
+```
+
+Run package QA and write a machine-verifiable report:
+
+```powershell
+node packages\cli\dist\index.js package-qa .\tmp\scott-dxf2013-import .\tmp\scott-dxf2013-import.kairo --redact-source-paths --report .\specs\investigations\SCOTT_KAIRO_PACKAGE_QA.md
 ```
 
 Open in the viewer:
@@ -69,3 +81,5 @@ Open in the viewer:
 ## Scope
 
 Current `.kairo` packages contain the neutral scene package only. Persisted semantic review overrides and source DXF embedding are future extensions.
+
+For sharing, prefer `--redact-source-paths`. This keeps source file names for traceability but removes local directory paths from the packaged manifest and source map.
