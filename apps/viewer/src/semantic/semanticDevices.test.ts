@@ -98,6 +98,77 @@ describe("label-to-geometry association", () => {
     expect(association.reason.join(" ")).toContain("multiple nearby geometry groups");
   });
 
+  it("links M/H base plate labels to the nearest robot block when nearby groups are similar", () => {
+    const groups = buildSemanticGeometryGroups(
+      scene([
+        line("robot-line", -120, 0, "src-dxf-insert-R1-block-U36-child-L1"),
+        line("nearby-tooling-line", 120, 0, "src-dxf-insert-T1-block-U15-child-L1")
+      ])
+    );
+    const association = associateLabelToGeometry(
+      label("7B-040L-03 (M/H) BASE PLATE", 0, 0),
+      groups,
+      parseDeviceText("7B-040L-03 (M/H) BASE PLATE")
+    );
+
+    expect(association.status).toBe("linked");
+    expect(association.group?.id).toBe("insert-r1-u36");
+    expect(association.group?.entityIds).toEqual(["robot-line"]);
+    expect(association.reason.join(" ")).toContain("robot block ambiguity resolved");
+  });
+
+  it("does not resolve robot base plate labels to nearby controller blocks", () => {
+    const groups = buildSemanticGeometryGroups(
+      scene([
+        line("controller-line", -80, 0, "src-dxf-insert-C1-block-FANUC-HENROB-CONTROLLER-child-L1"),
+        line("robot-line", 120, 0, "src-dxf-insert-R1-block-U36-child-L1")
+      ])
+    );
+    const association = associateLabelToGeometry(
+      label("7B-040L-03 (M/H) BASE PLATE", 0, 0),
+      groups,
+      parseDeviceText("7B-040L-03 (M/H) BASE PLATE")
+    );
+
+    expect(association.status).toBe("linked");
+    expect(association.group?.id).toBe("insert-r1-u36");
+    expect(association.group?.entityIds).toEqual(["robot-line"]);
+    expect(association.reason.join(" ")).toContain("robot body block hint");
+  });
+
+  it("links robot model labels to their nearest robot block", () => {
+    const groups = buildSemanticGeometryGroups(
+      scene([
+        line("robot-line", -120, 0, "src-dxf-insert-R1-block-U36-child-L1"),
+        line("nearby-tooling-line", 120, 0, "src-dxf-insert-T1-block-U15-child-L1")
+      ])
+    );
+    const association = associateLabelToGeometry(
+      label("R2000iC-210F", 0, 0),
+      groups,
+      parseDeviceText("R2000iC-210F")
+    );
+
+    expect(association.status).toBe("linked");
+    expect(association.group?.id).toBe("insert-r1-u36");
+    expect(association.group?.entityIds).toEqual(["robot-line"]);
+  });
+
+  it("prefers controller blocks for robot controller station-device tags", () => {
+    const groups = buildSemanticGeometryGroups(
+      scene([
+        line("robot-line", -120, 0, "src-dxf-insert-R1-block-U36-child-L1"),
+        line("controller-line", 120, 0, "src-dxf-insert-C1-block-FANUC-HENROB-CONTROLLER-child-L1")
+      ])
+    );
+    const association = associateLabelToGeometry(label("7B-040L-01", 0, 0), groups, parseDeviceText("7B-040L-01"));
+
+    expect(association.status).toBe("linked");
+    expect(association.group?.id).toBe("insert-c1-fanuc-henrob-controller");
+    expect(association.group?.entityIds).toEqual(["controller-line"]);
+    expect(association.reason.join(" ")).toContain("robot controller block hint");
+  });
+
   it("keeps a far label unlinked", () => {
     const groups = buildSemanticGeometryGroups(scene([line("robot-line", 0, 0, "src-dxf-insert-A1-block-robot-child-L1")]));
     const association = associateLabelToGeometry(

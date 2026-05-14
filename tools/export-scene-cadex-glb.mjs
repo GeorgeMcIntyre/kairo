@@ -7,6 +7,11 @@ const DEFAULT_RIBBON_WIDTH_MM = 18;
 const MAX_TEXT_CHARS = 24;
 const LONG_TEXT_WORD_LIMIT = 8;
 const LONG_TEXT_CHAR_LIMIT = 72;
+const TEXT_MIN_CAP_HEIGHT_SOURCE = 12;
+const TEXT_MAX_CAP_HEIGHT_SOURCE = 150;
+const TEXT_Z_LIFT_SOURCE = 3;
+const TEXT_MIN_STROKE_WIDTH_SOURCE = 0.6;
+const TEXT_MAX_STROKE_WIDTH_SOURCE = 3.2;
 
 const STROKE_FONT = {
   "0": { w: 1, s: [[0.15, 0, 0.85, 0], [0.85, 0, 0.85, 1], [0.85, 1, 0.15, 1], [0.15, 1, 0.15, 0], [0.25, 0.15, 0.75, 0.85]] },
@@ -197,6 +202,10 @@ function scaleEntityForExport(entity, scale) {
   };
 }
 
+function sourceBaseName(sourcePath) {
+  return sourcePath ? path.basename(String(sourcePath)) : undefined;
+}
+
 function normalizeText(text) {
   return String(text ?? "").replace(/\\P/gi, " ").replace(/\s+/g, " ").trim();
 }
@@ -343,18 +352,24 @@ function addGlyphStrokeRuns(lineGroup, meshGroup, glyph, origin, cos, sin, offse
   return strokeCount;
 }
 
-function addTextStrokes(lineGroup, meshGroup, entity) {
+function addTextStrokes(lineGroup, meshGroup, entity, options) {
   const text = exportTextLabel(entity.text);
-  if (!text) return 0;
-  const capHeight = Math.max(12, Math.min(entity.height * 0.42, 150));
+  if (!text) {
+    return { strokeCount: 0 };
+  }
+
+  const scale = options.coordinateScale;
+  const minCapHeight = TEXT_MIN_CAP_HEIGHT_SOURCE * scale;
+  const maxCapHeight = TEXT_MAX_CAP_HEIGHT_SOURCE * scale;
+  const capHeight = Math.max(minCapHeight, Math.min(entity.height * 0.42, maxCapHeight));
   const widthFactor = 0.62;
   const spacing = capHeight * 0.22;
   const rotation = ((entity.rotationDeg ?? 0) * Math.PI) / 180;
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
   const origin = entity.position;
-  const z = (origin[2] ?? 0) + 3;
-  const width = Math.max(0.6, Math.min(capHeight * 0.035, 3.2));
+  const z = (origin[2] ?? 0) + TEXT_Z_LIFT_SOURCE * scale;
+  const width = Math.max(TEXT_MIN_STROKE_WIDTH_SOURCE * scale, Math.min(capHeight * 0.035, TEXT_MAX_STROKE_WIDTH_SOURCE * scale));
   let count = 0;
   let cursor = 0;
 
@@ -379,7 +394,17 @@ function addTextStrokes(lineGroup, meshGroup, entity) {
     cursor += glyph.w * capHeight * widthFactor + spacing;
   }
 
-  return count;
+  return {
+    strokeCount: count,
+    label: text,
+    sourceHeight: options.sourceHeight,
+    exportedTextHeight: entity.height,
+    capHeight,
+    zLift: TEXT_Z_LIFT_SOURCE * scale,
+    z,
+    sourceRef: entity.sourceRef,
+    layerId: entity.layerId
+  };
 }
 
 function padBuffer(buffer, padByte) {
@@ -407,16 +432,55 @@ function boundsOf(positions) {
   return { min, max };
 }
 
+function emptyBounds() {
+  return {
+    min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY],
+    max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
+  };
+}
+
+function includePoint(bounds, point) {
+  for (let axis = 0; axis < 3; axis += 1) {
+    const value = point[axis] ?? 0;
+    if (value < bounds.min[axis]) bounds.min[axis] = value;
+    if (value > bounds.max[axis]) bounds.max[axis] = value;
+  }
+}
+
+function finiteBounds(bounds) {
+  if (!Number.isFinite(bounds.min[0])) {
+    return undefined;
+  }
+  return {
+    min: bounds.min.map((value) => Number(value.toFixed(6))),
+    max: bounds.max.map((value) => Number(value.toFixed(6)))
+  };
+}
+
+function increment(map, key, amount = 1) {
+  map.set(key, (map.get(key) ?? 0) + amount);
+}
+
+function sortedObjectFromMap(map) {
+  return Object.fromEntries([...map.entries()].sort(([a], [b]) => String(a).localeCompare(String(b))));
+}
+
 async function loadScene(sceneDir) {
-  const [manifest, layers] = await Promise.all([
+  const [manifest, layers, sourceMap, importReport] = await Promise.all([
     readFile(path.join(sceneDir, "manifest.json"), "utf8").then(JSON.parse),
-    readFile(path.join(sceneDir, "layers.json"), "utf8").then(JSON.parse)
+    readFile(path.join(sceneDir, "layers.json"), "utf8").then(JSON.parse),
+    readFile(path.join(sceneDir, "source-map.json"), "utf8")
+      .then(JSON.parse)
+      .catch(() => ({ sources: [] })),
+    readFile(path.join(sceneDir, "import-report.json"), "utf8")
+      .then(JSON.parse)
+      .catch(() => ({ warnings: [] }))
   ]);
   const geometryDir = path.join(sceneDir, "geometry");
   const geometryFiles = (await readdir(geometryDir))
     .filter((entry) => entry.endsWith(".json"))
     .sort((a, b) => a.localeCompare(b));
-  return { manifest, layers, geometryDir, geometryFiles };
+  return { manifest, layers, sourceMap, importReport, geometryDir, geometryFiles };
 }
 
 function makeMaterials(materials) {
@@ -525,6 +589,141 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
   await writeFile(outputPath, Buffer.concat([header, jsonHeader, jsonChunk, binHeader, binChunk]));
 }
 
+function sourceEntityCounts(sourceMap) {
+  const counts = new Map();
+  for (const source of sourceMap.sources ?? []) {
+    if (source.entityType && source.entityType !== "FILE") {
+      increment(counts, source.entityType);
+    }
+  }
+  return sortedObjectFromMap(counts);
+}
+
+function importWarningCounts(importReport) {
+  const counts = new Map();
+  for (const warning of importReport.warnings ?? []) {
+    increment(counts, warning.code ?? "UNKNOWN");
+  }
+  return sortedObjectFromMap(counts);
+}
+
+function reportMarkdown(report) {
+  const cell = (value) => String(value).replace(/\|/g, "\\|");
+  const lines = [
+    "# CAD Exchanger GLB Conversion Report",
+    "",
+    `Source: ${report.sourceFile ?? "unknown"}`,
+    `Units: ${report.sourceUnits} -> ${report.outputUnits}`,
+    `Coordinate scale: ${report.coordinateScale}`,
+    "",
+    "## Entity Counts",
+    "",
+    `- Source-map entities: ${JSON.stringify(report.entityCounts.sourceMap)}`,
+    `- Scene entities: ${JSON.stringify(report.entityCounts.scene)}`,
+    `- Exported entities: ${JSON.stringify(report.entityCounts.exported)}`,
+    "",
+    "## Text",
+    "",
+    `- Text entities in scene: ${report.text.textEntities}`,
+    `- Exported text entities: ${report.text.exportedTextEntities}`,
+    `- Skipped text entities: ${report.text.skippedTextEntities}`,
+    `- Text Z lift: ${report.text.textZLift}`,
+    `- Suspicious source text heights: ${report.text.suspiciousLargeTextHeights.length}`,
+    "",
+    "## Risks",
+    "",
+    ...report.risks.map((risk) => `- ${risk}`),
+    "",
+    "## Import Warnings",
+    "",
+    `- Warning counts: ${JSON.stringify(report.importWarnings.warningCounts)}`,
+    `- Warning details: ${report.importWarnings.warnings.length}`,
+    "",
+    "## Layers",
+    "",
+    "| Layer | Entities | Bounds |",
+    "| --- | ---: | --- |",
+    ...report.layers.map((layer) => `| ${cell(layer.name)} | ${layer.entityCount} | ${layer.bounds ? JSON.stringify(layer.bounds) : "n/a"} |`)
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function buildReport(stats, scene, sceneEntityCounts, sourceCounts, layerReports, textMetrics, outputPaths) {
+  const suspiciousLargeTextHeights = textMetrics
+    .filter((entry) => entry.sourceHeight >= 300)
+    .map((entry) => ({
+      label: entry.label,
+      sourceHeight: Number(entry.sourceHeight.toFixed(6)),
+      exportedTextHeight: Number(entry.exportedTextHeight.toFixed(6)),
+      capHeight: Number(entry.capHeight.toFixed(6)),
+      z: Number(entry.z.toFixed(6)),
+      sourceRef: entry.sourceRef,
+      layerId: entry.layerId
+    }))
+    .sort((a, b) => `${b.sourceHeight}:${a.label}:${a.sourceRef}`.localeCompare(`${a.sourceHeight}:${b.label}:${b.sourceRef}`));
+
+  const risks = [];
+  if (stats.skippedTextEntities > 0) {
+    risks.push(`${stats.skippedTextEntities} scene text entities were intentionally filtered from key-text GLB outputs.`);
+  }
+  if (suspiciousLargeTextHeights.length > 0) {
+    risks.push(`${suspiciousLargeTextHeights.length} source text entities are >= 300 source units and should be visually checked.`);
+  }
+  if (stats.coordinateScale !== 1) {
+    risks.push("GLB coordinates are scaled from source units; text styling constants are scaled by the same coordinate scale.");
+  }
+  if ((scene.importReport.warnings ?? []).length > 0) {
+    risks.push(`${scene.importReport.warnings.length} DXF import warnings are included in importWarnings for skipped or approximated source geometry.`);
+  } else {
+    risks.push("No import-report.json was found beside the scene; source DXF skipped/unsupported entities may be incomplete in this report.");
+  }
+
+  return {
+    format: "kairo-cadex-glb-report",
+    version: 1,
+    sourceFile: sourceBaseName(scene.manifest.source?.path),
+    sourceUnits: stats.sourceUnits,
+    outputUnits: stats.outputUnits,
+    coordinateScale: stats.coordinateScale,
+    entityCounts: {
+      sourceMap: sourceCounts,
+      scene: sortedObjectFromMap(sceneEntityCounts),
+      exported: {
+        curveEntities: stats.curveEntities,
+        lineSegments: stats.lineSegments,
+        textEntities: stats.exportedTextEntities,
+        textStrokeSegments: stats.textStrokeSegments
+      }
+    },
+    text: {
+      textEntities: stats.textEntities,
+      exportedTextEntities: stats.exportedTextEntities,
+      skippedTextEntities: stats.skippedTextEntities,
+      textZLift: Number((TEXT_Z_LIFT_SOURCE * stats.coordinateScale).toFixed(6)),
+      suspiciousLargeTextHeights
+    },
+    importWarnings: {
+      warningCounts: importWarningCounts(scene.importReport),
+      warnings: (scene.importReport.warnings ?? []).map((warning) => ({
+        code: warning.code,
+        entityType: warning.entityType,
+        handle: warning.handle,
+        message: warning.message
+      }))
+    },
+    layers: [...layerReports.values()]
+      .map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        entityCount: layer.entityCount,
+        bounds: finiteBounds(layer.bounds)
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    outputs: Object.fromEntries(Object.entries(outputPaths).map(([key, value]) => [key, path.basename(value)])),
+    risks
+  };
+}
+
 async function main() {
   const { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits } = parseArgs(process.argv.slice(2));
   if (
@@ -578,7 +777,7 @@ async function main() {
     indices: []
   };
   const stats = {
-    source: scene.manifest.source?.path,
+    source: sourceBaseName(scene.manifest.source?.path),
     units: scene.manifest.units,
     geometryDocuments: scene.geometryFiles.length,
     curveSets: 0,
@@ -595,6 +794,20 @@ async function main() {
     outputUnits,
     materialCount: 0
   };
+  const sceneEntityCounts = new Map();
+  const sourceCounts = sourceEntityCounts(scene.sourceMap);
+  const layerReports = new Map(
+    scene.layers.layers.map((layer) => [
+      layer.id,
+      {
+        id: layer.id,
+        name: layer.name,
+        entityCount: 0,
+        bounds: emptyBounds()
+      }
+    ])
+  );
+  const textMetrics = [];
 
   for (const fileName of scene.geometryFiles) {
     const document = JSON.parse(await readFile(path.join(scene.geometryDir, fileName), "utf8"));
@@ -604,13 +817,28 @@ async function main() {
       const fallbackLayerId = geometry.layerId;
       for (const entity of geometry.entities ?? []) {
         const layerId = entity.layerId ?? fallbackLayerId ?? "unknown";
+        increment(sceneEntityCounts, entity.type);
+        const layerReport = groupFor(layerReports, layerId, () => ({
+          id: layerId,
+          name: layerById.get(layerId)?.name ?? layerId,
+          entityCount: 0,
+          bounds: emptyBounds()
+        }));
+        layerReport.entityCount += 1;
         if (entity.type === "text") {
           stats.textEntities += 1;
+          if (entity.position) {
+            includePoint(layerReport.bounds, scalePoint(entity.position, coordinateScale));
+          }
           if (shouldExportMainText(entity.text)) {
-            const strokeCount = addTextStrokes(textLineGroup, textRibbonGroup, scaleEntityForExport(entity, coordinateScale));
-            if (strokeCount > 0) {
+            const textResult = addTextStrokes(textLineGroup, textRibbonGroup, scaleEntityForExport(entity, coordinateScale), {
+              coordinateScale,
+              sourceHeight: entity.height ?? 0
+            });
+            if (textResult.strokeCount > 0) {
               stats.exportedTextEntities += 1;
-              stats.textStrokeSegments += strokeCount;
+              stats.textStrokeSegments += textResult.strokeCount;
+              textMetrics.push(textResult);
             }
           } else {
             stats.skippedTextEntities += 1;
@@ -620,6 +848,9 @@ async function main() {
 
         const points = pointsForEntity(entity).map((point) => scalePoint(point, coordinateScale));
         if (points.length < 2) continue;
+        for (const point of points) {
+          includePoint(layerReport.bounds, point);
+        }
         stats.curveEntities += 1;
         const materialIndex = resolveMaterial(layerId);
         const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
@@ -681,6 +912,13 @@ async function main() {
     `${outputRoot}.cadex-summary.json`,
     `${JSON.stringify({ ...stats, outputs: { linesPath, linesTextPath, meshPath } }, null, 2)}\n`
   );
+  const report = buildReport(stats, scene, sceneEntityCounts, sourceCounts, layerReports, textMetrics, {
+    linesPath,
+    linesTextPath,
+    meshPath
+  });
+  await writeFile(`${outputRoot}.cadex-report.json`, `${JSON.stringify(report, null, 2)}\n`);
+  await writeFile(`${outputRoot}.cadex-report.md`, reportMarkdown(report));
   console.log(`Wrote ${linesPath}`);
   console.log(`Wrote ${linesTextPath}`);
   console.log(`Wrote ${meshPath}`);

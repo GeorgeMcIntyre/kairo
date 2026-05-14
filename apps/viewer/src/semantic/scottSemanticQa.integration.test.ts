@@ -163,6 +163,52 @@ describe.skipIf(!existsSync(scottSceneDir))("Scott staged scene semantic machine
     expect(requiredResults.every((entry) => entry.associationConfidence !== undefined)).toBe(true);
     expect(requiredResults.every((entry) => Array.isArray(entry.candidateGroupIds))).toBe(true);
 
+    const robotBasePlate = effectiveSemantics.devices.find(
+      (device) => device.labelText.replace(/\s+/g, " ").trim() === "7B-040L-03 (M/H) BASE PLATE"
+    );
+    expect(robotBasePlate).toMatchObject({
+      kind: "device_number",
+      stationId: "7B-040L",
+      associationStatus: "linked",
+      geometryGroupId: "insert-174bd-u36"
+    });
+    expect(robotBasePlate?.linkedEntityIds.length).toBeGreaterThan(0);
+    expect(robotBasePlate?.associationReason.join(" ")).toContain("robot block ambiguity resolved");
+
+    const robotBasePlateLabels = [
+      "7B-040L-03 (M/H) BASE PLATE",
+      "7B-050L-03 (M/H) BASE PLATE",
+      "7B-060L-03 (M/H) BASE PLATE"
+    ];
+    for (const label of robotBasePlateLabels) {
+      const device = effectiveSemantics.devices.find((candidate) => candidate.labelText.replace(/\s+/g, " ").trim() === label);
+      expect(device, `missing robot base plate semantic ${label}`).toBeDefined();
+      expect(device?.associationStatus).toBe("linked");
+      expect(device?.geometryGroupId).toMatch(/-u36$/);
+      expect(device?.geometryGroupId).not.toMatch(/controller/i);
+      expect(device?.linkedEntityIds.length).toBeGreaterThan(0);
+    }
+
+    const robotControllerLabels = ["7B-040L-01", "7B-050L-01", "7B-060L-01"];
+    for (const label of robotControllerLabels) {
+      const device = effectiveSemantics.devices.find((candidate) => candidate.labelText.replace(/\s+/g, " ").trim() === label);
+      expect(device, `missing robot controller semantic ${label}`).toBeDefined();
+      expect(device).toMatchObject({
+        kind: "robot_controller",
+        associationStatus: "linked"
+      });
+      expect(device?.geometryGroupId).toMatch(/fanuc-henrob-controller/i);
+      expect(device?.associationReason.join(" ")).toContain("robot controller block hint");
+      expect(device?.evidence.join(" ")).toContain("geometry resolved device_number to robot_controller");
+    }
+
+    const linkedRobotModels = effectiveSemantics.devices.filter(
+      (device) => device.kind === "robot_model" && device.associationStatus === "linked"
+    );
+    expect(linkedRobotModels.length).toBeGreaterThan(10);
+    expect(linkedRobotModels.some((device) => /-u36$/.test(device.geometryGroupId ?? ""))).toBe(true);
+    expect(linkedRobotModels.every((device) => !/controller/i.test(device.geometryGroupId ?? ""))).toBe(true);
+
     expect(markdown).toBe(markdownAgain);
     expect(markdown).toContain("Reviewer result");
     expect(markdown).toContain("Reviewer notes");

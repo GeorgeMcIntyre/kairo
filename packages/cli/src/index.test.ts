@@ -166,6 +166,13 @@ describe("kairo validate", () => {
     expect(importResult.stdout).toContain("Kairo DXF import passed\n");
     expect(importResult.stdout).toContain("Supported entities: 1\n");
     expect(importResult.stdout).toContain("Unsupported entities: 0\n");
+    const importReport = JSON.parse(await readFile(path.join(outputDir, "import-report.json"), "utf8")) as {
+      summary: { supportedEntityCount: number; warningCount: number };
+      warnings: unknown[];
+    };
+    expect(importReport.summary.supportedEntityCount).toBe(1);
+    expect(importReport.summary.warningCount).toBe(0);
+    expect(importReport.warnings).toEqual([]);
 
     const validateResult = await captureCli(["validate", outputDir]);
     expect(validateResult.code).toBe(0);

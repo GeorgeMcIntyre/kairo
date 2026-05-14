@@ -5,6 +5,7 @@ import { parseDeviceText, type DeviceDictionaryMatch, type DeviceKind } from "./
 import {
   associateLabelToGeometry,
   buildSemanticGeometryGroups,
+  refineDeviceKindFromGeometry,
   type DeviceGeometryAssociationCandidate,
   type DeviceGeometryAssociationStatus,
   type SemanticGeometryGroup,
@@ -614,6 +615,7 @@ export function buildDeviceSemantics(
     if (!parsed) continue;
     const geometryAssociation = associateLabelToGeometry(label, geometryGroups, parsed, options);
     const linkedGroup = geometryAssociation.status === "linked" ? geometryAssociation.group : undefined;
+    const deviceKind = refineDeviceKindFromGeometry(label, parsed, linkedGroup);
     const association = stationAssociationFor(label, stations, options, parsed);
     const associatedEntityCount = linkedGroup?.entityIds.length ?? 0;
     const nearbyBoost = Math.min(0.08, associatedEntityCount / 80);
@@ -638,8 +640,8 @@ export function buildDeviceSemantics(
       ...(label.isLongText ? [`long ${label.noteKind ?? "annotation"} text retained as secondary evidence`] : [])
     ];
     devices.push({
-      id: semanticDeviceId(label, parsed.kind, deviceNumber),
-      kind: parsed.kind,
+      id: semanticDeviceId(label, deviceKind, deviceNumber),
+      kind: deviceKind,
       labelText: primaryLabelText,
       rawText,
       displayText: label.displayText ?? safeDisplayText(primaryLabelText),
@@ -663,7 +665,11 @@ export function buildDeviceSemantics(
       stationAssociationMethod: association.method,
       tagSuffix: parsed.tagSuffix,
       confidence,
-      evidence: [...textEvidence, ...geometryAssociation.reason],
+      evidence: [
+        ...textEvidence,
+        ...(deviceKind !== parsed.kind ? [`geometry resolved ${parsed.kind} to ${deviceKind}`] : []),
+        ...geometryAssociation.reason
+      ],
       associationStatus: geometryAssociation.status,
       associationConfidence: geometryAssociation.confidence,
       associationReason: geometryAssociation.reason,

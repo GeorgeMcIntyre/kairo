@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import viewerPackage from "../package.json";
+import { exportScenePackageToCadExchangerGlb } from "./cadExchangerGlb";
 import { createCurveBatchData, pickEntryForIntersectionIndex, type CurveSegmentPickEntry, type PickableCurveEntity } from "./curveBatch";
 import {
   isPublicSceneAssetLoadError,
@@ -305,6 +306,33 @@ function makeCurveSet(
   return lineSegments;
 }
 
+function makeSemanticHighlightCurveSet(
+  geometry: Extract<Geometry, { kind: "curve-set" }>,
+  layerId: string | undefined,
+  includeEntityIds: ReadonlySet<string>,
+  hiddenEntityIds: ReadonlySet<string>
+) {
+  const batch = createCurveBatchData(geometry, layerId, { hiddenEntityIds, includeEntityIds });
+  if (batch.positions.length === 0) return undefined;
+  const bufferGeometry = new THREE.BufferGeometry();
+  bufferGeometry.setAttribute("position", new THREE.Float32BufferAttribute(batch.positions, 3));
+  const material = new THREE.LineBasicMaterial({ color: selectedColor, depthTest: false, transparent: true, opacity: 1 });
+  const lineSegments = new THREE.LineSegments(bufferGeometry, material);
+  lineSegments.renderOrder = 40;
+  lineSegments.userData.semanticHighlight = true;
+  return lineSegments;
+}
+
+function disposeObjectMaterials(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+      child.geometry?.dispose();
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      for (const material of materials) material?.dispose();
+    }
+  });
+}
+
 function applyHighlight(records: RenderRecord[], selectedNodeId: string, hoveredNodeId?: string) {
   for (const record of records) {
     const selected = record.nodeId === selectedNodeId;
@@ -435,6 +463,18 @@ function downloadTextFile(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadBinaryFile(filename: string, content: Uint8Array, type: string) {
+  const bytes = new Uint8Array(content.byteLength);
+  bytes.set(content);
+  const blob = new Blob([bytes.buffer], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function Viewport({
   scenePackage,
   robustBounds,
@@ -443,6 +483,7 @@ function Viewport({
   hiddenLayerIds,
   fitRequest,
   selectedNodeId,
+  semanticHighlightedEntityIds,
   onSelect,
   labelDensity,
   readableOrientation,
@@ -458,6 +499,7 @@ function Viewport({
   hiddenLayerIds: Set<string>;
   fitRequest: FitRequest;
   selectedNodeId: string;
+  semanticHighlightedEntityIds: ReadonlySet<string>;
   onSelect: (selection: ViewerSelection) => void;
   labelDensity: LabelDensityMode;
   readableOrientation: boolean;
@@ -467,7 +509,9 @@ function Viewport({
   onViewportDiagnostics?: (diagnostics: ViewportDiagnostics) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
   const recordsRef = useRef<RenderRecord[]>([]);
+  const semanticHighlightObjectsRef = useRef<THREE.Object3D[]>([]);
   const cameraRef = useRef<THREE.OrthographicCamera | THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -531,6 +575,7 @@ function Viewport({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#111927");
+    sceneRef.current = scene;
     const initialViewport = rendererViewportFromElement(host, window.devicePixelRatio || 1);
 
     const camera =
@@ -790,17 +835,16 @@ function Viewport({
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       controls.removeEventListener("change", onCameraChange);
       for (const record of records) {
-        record.object.traverse((child) => {
-          if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-            child.geometry?.dispose();
-            const mats = Array.isArray(child.material) ? child.material : [child.material];
-            for (const mat of mats) mat?.dispose();
-          }
-        });
+        disposeObjectMaterials(record.object);
       }
+      for (const object of semanticHighlightObjectsRef.current) {
+        disposeObjectMaterials(object);
+      }
+      semanticHighlightObjectsRef.current = [];
       host.removeChild(renderer.domElement);
       controls.dispose();
       renderer.dispose();
+      sceneRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
       rendererRef.current = null;
@@ -815,6 +859,46 @@ function Viewport({
       record.object.visible = !record.layerId || !hiddenLayerIds.has(record.layerId);
     }
   }, [hiddenLayerIds]);
+
+  // Semantic linked-line highlight: draw selected device entities as an overlay.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    for (const object of semanticHighlightObjectsRef.current) {
+      scene.remove(object);
+      disposeObjectMaterials(object);
+    }
+    semanticHighlightObjectsRef.current = [];
+
+    if (semanticHighlightedEntityIds.size === 0) {
+      return;
+    }
+
+    const geometryMap = geometryById(scenePackage);
+    const nextObjects: THREE.Object3D[] = [];
+    for (const node of scenePackage.scene.nodes) {
+      for (const geometryRef of node.geometryRefs ?? []) {
+        const geometry = geometryMap.get(geometryRef);
+        if (!geometry || geometry.kind !== "curve-set") continue;
+        const effectiveLayerId = node.layerId ?? geometry.layerId;
+        if (effectiveLayerId && hiddenLayerIds.has(effectiveLayerId)) continue;
+        const object = makeSemanticHighlightCurveSet(
+          geometry,
+          effectiveLayerId,
+          semanticHighlightedEntityIds,
+          hiddenOutlierEntityIds
+        );
+        if (!object) continue;
+        object.name = `${node.displayName} semantic linked highlight`;
+        object.applyMatrix4(matrixFromArray(node.localTransform));
+        scene.add(object);
+        nextObjects.push(object);
+      }
+    }
+    semanticHighlightObjectsRef.current = nextObjects;
+    setRafTick((tick) => tick + 1);
+  }, [scenePackage, semanticHighlightedEntityIds, hiddenLayerIds, hiddenOutlierEntityIds]);
 
   // Fit: reposition camera without rebuilding geometry.
   useEffect(() => {
@@ -962,6 +1046,7 @@ export function App() {
   const [semanticReviewDecision, setSemanticReviewDecision] = useState<SemanticReviewDecision>("draft");
   const [semanticReviewWarnings, setSemanticReviewWarnings] = useState<string[]>([]);
   const [semanticReviewStatus, setSemanticReviewStatus] = useState<string | undefined>();
+  const [glbExportStatus, setGlbExportStatus] = useState<string | undefined>();
   const [semanticFilters, setSemanticFilters] = useState<SemanticValidationFilters>({
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
@@ -1070,6 +1155,13 @@ export function App() {
   const selectedSemanticDetails = useMemo(
     () => resolveSemanticSelection(layoutSemantics, selectedSemantic),
     [layoutSemantics, selectedSemantic]
+  );
+  const semanticHighlightedEntityIds = useMemo(
+    () =>
+      selectedSemantic?.kind === "device" && selectedSemanticDetails
+        ? new Set(selectedSemanticDetails.linkedEntityIds)
+        : new Set<string>(),
+    [selectedSemantic, selectedSemanticDetails]
   );
   const semanticSummaryCounts = useMemo(() => {
     if (semanticAnalysisStatus !== "ready") return EMPTY_SEMANTIC_SUMMARY_COUNTS;
@@ -1373,6 +1465,7 @@ export function App() {
     setSemanticReviewDecision("draft");
     setSemanticReviewWarnings([]);
     setSemanticReviewStatus(undefined);
+    setGlbExportStatus(undefined);
   }, [scenePackage]);
 
   const updateSelectedDeviceOverride = (patch: SemanticDeviceOverride) => {
@@ -1513,6 +1606,34 @@ export function App() {
     downloadTextFile(`kairo-advanced-layout.${extension}`, advancedLayoutExportContent(format), mime);
   };
 
+  const buildCadExchangerGlbExport = async () => {
+    setGlbExportStatus("Building GLB");
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return exportScenePackageToCadExchangerGlb(scenePackage);
+  };
+
+  const downloadCadExchangerGlb = () => {
+    void buildCadExchangerGlbExport()
+      .then((result) => {
+        downloadBinaryFile(result.filename, result.bytes, "model/gltf-binary");
+        setGlbExportStatus(`Downloaded ${result.filename}`);
+      })
+      .catch((error: unknown) => {
+        setGlbExportStatus(error instanceof Error ? `GLB export failed: ${error.message}` : "GLB export failed");
+      });
+  };
+
+  const downloadCadExchangerGlbReport = () => {
+    void buildCadExchangerGlbExport()
+      .then((result) => {
+        downloadTextFile(result.reportFilename, result.reportMarkdown, "text/markdown");
+        setGlbExportStatus(`Downloaded ${result.reportFilename}`);
+      })
+      .catch((error: unknown) => {
+        setGlbExportStatus(error instanceof Error ? `GLB report failed: ${error.message}` : "GLB report failed");
+      });
+  };
+
   return (
     <main
       className={`app-shell${landingMode ? " landing-mode" : ""}${sceneIsLoading ? " loading-mode" : ""}${dxfDragActive ? " dxf-drag-active" : ""}`}
@@ -1549,6 +1670,12 @@ export function App() {
             </button>
             <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
               Load Demo Layout
+            </button>
+            <button disabled={sceneIsLoading || sceneStats.curveEntityCount === 0} onClick={downloadCadExchangerGlb} type="button">
+              Download GLB
+            </button>
+            <button disabled={sceneIsLoading || sceneStats.curveEntityCount === 0} onClick={downloadCadExchangerGlbReport} type="button">
+              GLB report
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <button onClick={() => requestFit("scene")} type="button">
@@ -1688,6 +1815,7 @@ export function App() {
               Diagnostics
             </button>
           </div>
+          {glbExportStatus ? <span className="toolbar-status">{glbExportStatus}</span> : null}
         </div>
         <Viewport
           fitRequest={fitRequest}
@@ -1696,6 +1824,7 @@ export function App() {
           robustBounds={robustBounds}
           scenePackage={scenePackage}
           selectedNodeId={selectedNodeId}
+          semanticHighlightedEntityIds={semanticHighlightedEntityIds}
           viewMode={viewMode}
           onSelect={selectViewport}
           labelDensity={labelDensity}

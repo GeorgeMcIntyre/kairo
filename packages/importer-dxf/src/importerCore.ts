@@ -65,6 +65,12 @@ type LegacyPolylineEntity = EntityCommons & {
   vertices: LegacyPolylineVertex[];
 };
 
+type LwPolylineVertex = {
+  x?: number;
+  y?: number;
+  bulge?: number;
+};
+
 type DxfBlockEntityCollections = {
   lines: LineEntity[];
   lwPolylines: LWPolylineEntity[];
@@ -287,9 +293,57 @@ function lwPolylineToEntity(entity: LWPolylineEntity, fallbackIndex: number): Dr
   return {
     ...entityBase(entity, "polyline", fallbackIndex),
     type: "polyline",
-    points: entity.vertices.map((vertex) => point(vertex.x, vertex.y, entity.elevation ?? 0)),
+    points: lwPolylinePoints(entity.vertices, entity.elevation ?? 0, (entity.flag & 1) === 1),
     closed: (entity.flag & 1) === 1
   };
+}
+
+function sampleBulgeSegment(start: LwPolylineVertex, end: LwPolylineVertex, z: number): Array<[number, number, number]> {
+  const bulge = start.bulge ?? 0;
+  const startX = start.x ?? 0;
+  const startY = start.y ?? 0;
+  const endX = end.x ?? 0;
+  const endY = end.y ?? 0;
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const chord = Math.hypot(dx, dy);
+  if (Math.abs(bulge) < 1e-12 || chord < 1e-9) {
+    return [point(endX, endY, z)];
+  }
+
+  const theta = 4 * Math.atan(bulge);
+  const radius = chord / (2 * Math.abs(Math.sin(theta / 2)));
+  const chordAngle = Math.atan2(dy, dx);
+  const centerAngle = chordAngle + (Math.PI / 2 - 2 * Math.atan(bulge));
+  const centerX = startX + Math.cos(centerAngle) * radius;
+  const centerY = startY + Math.sin(centerAngle) * radius;
+  const startAngle = Math.atan2(startY - centerY, startX - centerX);
+  const segmentCount = Math.max(2, Math.min(64, Math.ceil(Math.abs(theta) / (Math.PI / 18))));
+  const points: Array<[number, number, number]> = [];
+
+  for (let index = 1; index <= segmentCount; index += 1) {
+    const angle = startAngle + (theta * index) / segmentCount;
+    points.push(point(centerX + Math.cos(angle) * radius, centerY + Math.sin(angle) * radius, z));
+  }
+
+  return points;
+}
+
+function lwPolylinePoints(vertices: LwPolylineVertex[], elevation: number, closed: boolean): Array<[number, number, number]> {
+  if (vertices.length === 0) {
+    return [];
+  }
+
+  const points: Array<[number, number, number]> = [point(vertices[0].x, vertices[0].y, elevation)];
+  for (let index = 0; index < vertices.length - 1; index += 1) {
+    points.push(...sampleBulgeSegment(vertices[index], vertices[index + 1], elevation));
+  }
+
+  if (closed && vertices.length > 1 && Math.abs(vertices[vertices.length - 1].bulge ?? 0) > 1e-12) {
+    points.push(...sampleBulgeSegment(vertices[vertices.length - 1], vertices[0], elevation));
+  }
+
+  return points;
 }
 
 function isSimpleLegacyPolyline(entity: LegacyPolylineEntity) {
@@ -531,7 +585,9 @@ function expandBlockLWPolyline(entity: LWPolylineEntity, insert: DxfInsertEntity
   return {
     ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
     type: "polyline",
-    points: entity.vertices.map((vertex) => transformBlockPoint(vertex.x, vertex.y, entity.elevation ?? 0, insert, block)),
+    points: lwPolylinePoints(entity.vertices, entity.elevation ?? 0, (entity.flag & 1) === 1).map((vertex) =>
+      transformBlockPoint(vertex[0], vertex[1], vertex[2], insert, block)
+    ),
     closed: (entity.flag & 1) === 1
   };
 }

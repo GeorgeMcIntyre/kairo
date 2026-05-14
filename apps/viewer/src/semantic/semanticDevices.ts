@@ -10,6 +10,7 @@ import type { DeviceDictionaryMatch } from "./deviceDictionary";
 import type { LayoutSemanticOptions, SemanticTextLabel } from "./layoutSemantics";
 
 export type SemanticGeometryGroupSource = "block-insert" | "cluster";
+export type SemanticGeometryGroupRole = "robot-body" | "robot-controller" | "robot-power" | "other";
 
 export type SemanticGeometryGroup = {
   id: string;
@@ -221,15 +222,81 @@ function clamped(value: number, min = 0, max = 1): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function labelKindHint(parsed: DeviceDictionaryMatch | undefined, group: SemanticGeometryGroup): { boost: number; reasons: string[] } {
+function groupHaystack(group: SemanticGeometryGroup | undefined): string {
+  if (!group) return "";
+  return [group.blockName, ...group.layerNames, ...group.layerIds, ...group.sourceRefs].filter(Boolean).join(" ").toUpperCase();
+}
+
+export function semanticGeometryGroupRole(group: SemanticGeometryGroup | undefined): SemanticGeometryGroupRole {
+  if (!group || group.source !== "block-insert") return "other";
+  const haystack = groupHaystack(group);
+  if (/\b(CONTROLLER|CONTROL|CNTRL|CNTR)\b/.test(haystack)) return "robot-controller";
+  if (/\b(PDP|POWER|PANEL\s*400A|400A)\b/.test(haystack)) return "robot-power";
+  if (/\b(U36|R2000|R-?2000|210L|210F)\b/.test(haystack)) return "robot-body";
+  if (/\bROBOT\b/.test(haystack) && !/\b(FANUC|HENROB)\b/.test(haystack)) return "robot-body";
+  return "other";
+}
+
+function isRobotBodySemanticLabel(label: SemanticTextLabel, parsed: DeviceDictionaryMatch | undefined): boolean {
+  const text = `${label.text} ${label.normalizedText} ${label.associationText ?? ""}`.toUpperCase();
+  if (parsed?.kind === "robot_model") return true;
+  if (parsed?.kind === "base_plate" || parsed?.kind === "material_handling_robot_or_tooling") return true;
+  if (/\b(M\/H|MATERIAL\s+HANDLING)\b/.test(text)) return true;
+  return /\bBASE\s+PLATE\b/.test(text) && /\b(RIVET|RESPOT|ROBOT|M\/H|MATERIAL\s+HANDLING)\b/.test(text);
+}
+
+function expectedGeometryRoleForLabel(
+  label: SemanticTextLabel,
+  parsed: DeviceDictionaryMatch | undefined
+): SemanticGeometryGroupRole | undefined {
+  if (!parsed) return undefined;
+  if (parsed.kind === "robot_controller") return "robot-controller";
+  if (parsed.kind === "pdp_panel") return "robot-power";
+  if (isRobotBodySemanticLabel(label, parsed)) return "robot-body";
+  if (parsed.kind === "device_number" && parsed.tagSuffix === "01") return "robot-controller";
+  return undefined;
+}
+
+function labelKindHint(
+  label: SemanticTextLabel,
+  parsed: DeviceDictionaryMatch | undefined,
+  group: SemanticGeometryGroup
+): { boost: number; reasons: string[] } {
   if (!parsed) return { boost: 0, reasons: [] };
-  const haystack = [group.blockName, ...group.layerNames, ...group.layerIds].filter(Boolean).join(" ").toUpperCase();
+  const role = semanticGeometryGroupRole(group);
+  const expectedRole = expectedGeometryRoleForLabel(label, parsed);
+  const haystack = groupHaystack(group);
   const reasons: string[] = [];
   let boost = 0;
 
-  if ((parsed.kind === "device_number" || parsed.kind === "robot_model") && /\b(ROBOT|RBT|GENRO|FANUC)\b/.test(haystack)) {
-    boost += 0.08;
-    reasons.push("robot layer/block hint");
+  if (expectedRole === "robot-body") {
+    if (role === "robot-body") {
+      boost += 0.12;
+      reasons.push("robot body block hint");
+    } else if (role === "robot-controller" || role === "robot-power") {
+      boost -= 0.18;
+      reasons.push("controller or power block is not robot body geometry");
+    }
+  }
+
+  if (expectedRole === "robot-controller") {
+    if (role === "robot-controller") {
+      boost += 0.12;
+      reasons.push("robot controller block hint");
+    } else if (role === "robot-body") {
+      boost -= 0.12;
+      reasons.push("robot body block is not controller geometry");
+    }
+  }
+
+  if (expectedRole === "robot-power") {
+    if (role === "robot-power") {
+      boost += 0.1;
+      reasons.push("robot power panel block hint");
+    } else if (role === "robot-body" || role === "robot-controller") {
+      boost -= 0.1;
+      reasons.push("robot body/controller block is not power panel geometry");
+    }
   }
 
   if (parsed.kind === "dunnage" && /\b(DUNNAGE|RACK|DN|MTLONST)\b/.test(haystack)) {
@@ -248,6 +315,31 @@ function labelKindHint(parsed: DeviceDictionaryMatch | undefined, group: Semanti
   }
 
   return { boost, reasons };
+}
+
+function canResolveRobotBlockAmbiguity(
+  label: SemanticTextLabel,
+  parsed: DeviceDictionaryMatch | undefined,
+  best: DeviceGeometryAssociationCandidate,
+  group: SemanticGeometryGroup | undefined,
+  maxDistance: number
+): boolean {
+  if (expectedGeometryRoleForLabel(label, parsed) !== "robot-body") return false;
+  if (semanticGeometryGroupRole(group) !== "robot-body") return false;
+  if (best.confidence < 0.58) return false;
+  return best.distanceToBounds <= Math.max(maxDistance * 0.75, 750);
+}
+
+export function refineDeviceKindFromGeometry(
+  label: SemanticTextLabel,
+  parsed: DeviceDictionaryMatch,
+  group: SemanticGeometryGroup | undefined
+): DeviceDictionaryMatch["kind"] {
+  const role = semanticGeometryGroupRole(group);
+  if (parsed.kind === "device_number" && parsed.tagSuffix === "01" && role === "robot-controller") {
+    return "robot_controller";
+  }
+  return parsed.kind;
 }
 
 function sizeSanity(group: SemanticGeometryGroup, label: SemanticTextLabel): { adjustment: number; reason?: string } {
@@ -273,7 +365,7 @@ function candidateForGroup(
   const distanceConfidence = clamped(1 - distanceToBounds / maxDistance);
   const centroidConfidence = clamped(1 - distanceToCentroid / (maxDistance * 1.6));
   const labelConfidence = parsed?.confidence ?? 0.32;
-  const hint = labelKindHint(parsed, group);
+  const hint = labelKindHint(label, parsed, group);
   const sanity = sizeSanity(group, label);
   const confidence = clamped(
     labelConfidence * 0.55 + distanceConfidence * 0.3 + centroidConfidence * 0.1 + hint.boost + sanity.adjustment,
@@ -350,6 +442,16 @@ export function associateLabelToGeometry(
 
   const group = groups.find((entry) => entry.id === best.groupId);
   const ambiguous = isAmbiguous(best, candidates[1]);
+  if (ambiguous && canResolveRobotBlockAmbiguity(label, parsed, best, group, maxDistance)) {
+    return {
+      status: "linked",
+      confidence: Math.max(best.confidence, 0.72),
+      reason: [...best.reason, "robot block ambiguity resolved to nearest robot block"],
+      group,
+      candidates
+    };
+  }
+
   if (ambiguous) {
     return {
       status: "ambiguous",

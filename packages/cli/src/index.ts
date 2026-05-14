@@ -231,16 +231,27 @@ async function validateCommand(args: string[], io: CliIo): Promise<number> {
 }
 
 async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
-  const [inputPath, outputDir] = args;
+  const quietWarnings = args.includes("--quiet-warnings");
+  const positional = args.filter((arg) => arg !== "--quiet-warnings");
+  const [inputPath, outputDir] = positional;
 
   if (!inputPath || !outputDir) {
-    io.stderr("Kairo DXF import failed\n- ERROR MISSING_IMPORT_ARGS: Usage: kairo import-dxf <input.dxf> <output-dir>\n");
+    io.stderr("Kairo DXF import failed\n- ERROR MISSING_IMPORT_ARGS: Usage: kairo import-dxf <input.dxf> <output-dir> [--quiet-warnings]\n");
     return 1;
   }
 
   try {
     const result = await importDxfToKairo(inputPath);
     await writeScenePackage(outputDir, result.scenePackage);
+    await writeFile(
+      path.join(path.resolve(outputDir), "import-report.json"),
+      stableJson({
+        summary: result.summary,
+        warnings: result.warnings,
+        preCleanReport: result.preCleanReport,
+        timing: result.timing
+      })
+    );
     const validationReport = validateScenePackage(result.scenePackage);
 
     if (!validationReport.valid) {
@@ -261,11 +272,13 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
         `Pre-clean missing EOF appended: ${result.preCleanReport.appendedMissingEof}`
       ].join("\n") + "\n"
     );
-    for (const warning of result.preCleanReport.warnings) {
-      io.stderr(`- WARNING ${warning.code}${warning.line ? ` line ${warning.line}` : ""}: ${warning.message}\n`);
-    }
-    for (const warning of result.warnings) {
-      io.stderr(`- WARNING ${warning.code}${warning.entityType ? ` ${warning.entityType}` : ""}${warning.handle ? ` ${warning.handle}` : ""}: ${warning.message}\n`);
+    if (!quietWarnings) {
+      for (const warning of result.preCleanReport.warnings) {
+        io.stderr(`- WARNING ${warning.code}${warning.line ? ` line ${warning.line}` : ""}: ${warning.message}\n`);
+      }
+      for (const warning of result.warnings) {
+        io.stderr(`- WARNING ${warning.code}${warning.entityType ? ` ${warning.entityType}` : ""}${warning.handle ? ` ${warning.handle}` : ""}: ${warning.message}\n`);
+      }
     }
     return 0;
   } catch (error) {

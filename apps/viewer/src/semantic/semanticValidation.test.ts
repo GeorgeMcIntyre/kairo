@@ -230,6 +230,44 @@ describe("buildSemanticOverlayModel", () => {
     expect(model.stations).toHaveLength(1);
     expect(model.deviceCandidates.map((device) => device.id)).toEqual(["device-lift"]);
   });
+
+  it("prioritizes robot-related candidates when the overlay is capped", () => {
+    const semantics = semanticsFixture();
+    const genericDevices = Array.from({ length: 12 }, (_, index) => ({
+      ...semantics.devices[1],
+      id: `generic-${index}`,
+      kind: "nest" as const,
+      labelText: `7B-040L-${index}N`,
+      normalizedText: `7B-040L-${index}N`,
+      confidence: 0.95
+    }));
+    const robotBasePlate = {
+      ...semantics.devices[0],
+      id: "robot-base-plate",
+      kind: "device_number" as const,
+      labelText: "7B-040L-03 (M/H) BASE PLATE",
+      normalizedText: "7B-040L-03 (M/H) BASE PLATE",
+      confidence: 0.91,
+      associationStatus: "ambiguous" as const
+    };
+    const robotModel = {
+      ...semantics.devices[0],
+      id: "robot-model",
+      kind: "robot_model" as const,
+      labelText: "R2000iC-210F",
+      normalizedText: "R2000IC-210F",
+      confidence: 0.89,
+      associationStatus: "ambiguous" as const
+    };
+    const model = buildSemanticOverlayModel(
+      { ...semantics, devices: [...genericDevices, robotBasePlate, robotModel] },
+      DEFAULT_SEMANTIC_VALIDATION_FILTERS,
+      undefined,
+      { deviceLimit: 2 }
+    );
+
+    expect(model.deviceCandidates.map((device) => device.id)).toEqual(["robot-model", "robot-base-plate"]);
+  });
 });
 
 describe("computeOutlierSummary", () => {

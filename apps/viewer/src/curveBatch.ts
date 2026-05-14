@@ -20,6 +20,7 @@ export type CurveBatchData = {
 
 export type CurveBatchOptions = {
   hiddenEntityIds?: ReadonlySet<string>;
+  includeEntityIds?: ReadonlySet<string>;
 };
 
 const CIRCLE_SEGMENTS = 32;
@@ -108,6 +109,7 @@ export function createCurveBatchData(
 ): CurveBatchData {
   let segmentCount = 0;
   for (const entity of geometry.entities) {
+    if (options.includeEntityIds && !options.includeEntityIds.has(entity.id)) continue;
     if (options.hiddenEntityIds?.has(entity.id)) continue;
     segmentCount += segmentCountForEntity(entity);
   }
@@ -117,6 +119,9 @@ export function createCurveBatchData(
   let positionOffset = 0;
 
   for (const entity of geometry.entities) {
+    if (options.includeEntityIds && !options.includeEntityIds.has(entity.id)) {
+      continue;
+    }
     if (options.hiddenEntityIds?.has(entity.id)) {
       continue;
     }

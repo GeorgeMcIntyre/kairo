@@ -109,6 +109,57 @@ describe("createCurveBatchData", () => {
     expect(batch.positions).toHaveLength(6);
     expect(batch.pickEntriesBySegment.map((entry) => entry.entityId)).toEqual(["visible-line"]);
   });
+
+  it("can emit only explicitly included entities", () => {
+    const batch = createCurveBatchData(
+      curveSet([
+        {
+          id: "linked-line",
+          type: "line",
+          start: [0, 0, 0],
+          end: [10, 0, 0]
+        },
+        {
+          id: "other-line",
+          type: "line",
+          start: [20, 0, 0],
+          end: [30, 0, 0]
+        }
+      ]),
+      undefined,
+      { includeEntityIds: new Set(["linked-line"]) }
+    );
+
+    expect(batch.positions).toHaveLength(6);
+    expect(batch.pickEntriesBySegment.map((entry) => entry.entityId)).toEqual(["linked-line"]);
+  });
+
+  it("lets hidden entities win over included entities", () => {
+    const batch = createCurveBatchData(
+      curveSet([
+        {
+          id: "linked-visible",
+          type: "line",
+          start: [0, 0, 0],
+          end: [10, 0, 0]
+        },
+        {
+          id: "linked-hidden",
+          type: "line",
+          start: [20, 0, 0],
+          end: [30, 0, 0]
+        }
+      ]),
+      undefined,
+      {
+        includeEntityIds: new Set(["linked-visible", "linked-hidden"]),
+        hiddenEntityIds: new Set(["linked-hidden"])
+      }
+    );
+
+    expect(batch.positions).toHaveLength(6);
+    expect(batch.pickEntriesBySegment.map((entry) => entry.entityId)).toEqual(["linked-visible"]);
+  });
 });
 
 describe("pickEntryForIntersectionIndex", () => {

@@ -41,6 +41,28 @@ const blockLWPolyline = (handle: string, layer = "0") => [
   "20",
   "10"
 ];
+const blockLWPolylineBulge = (handle: string, layer = "0") => [
+  "0",
+  "LWPOLYLINE",
+  "5",
+  handle,
+  "8",
+  layer,
+  "90",
+  "2",
+  "70",
+  "0",
+  "10",
+  "0",
+  "20",
+  "0",
+  "42",
+  "1",
+  "10",
+  "10",
+  "20",
+  "0"
+];
 const blockText = ["0", "TEXT", "5", "T1", "8", "0", "10", "0", "20", "0", "30", "0", "40", "1", "1", "LABEL"];
 const blockTextAt = (handle: string, x: number, y: number, height = 1, content = "LABEL", layer = "0", rotation?: number) => {
   const base = ["0", "TEXT", "5", handle, "8", layer, "10", String(x), "20", String(y), "30", "0", "40", String(height), "1", content];
@@ -464,6 +486,25 @@ describe("importDxfToKairo", () => {
         expectPointClose(geometry.entities[0].points[0], [5, 6, 0]);
         expectPointClose(geometry.entities[0].points[1], [5, 16, 0]);
         expectPointClose(geometry.entities[0].points[2], [-5, 16, 0]);
+      }
+    });
+  });
+
+  it("samples LWPOLYLINE bulge arcs before block transforms", async () => {
+    const content = blockScene([...blockHeader("BULGEPLINE"), ...blockLWPolylineBulge("P1"), ...blockFooter], blockInsert("BULGEPLINE", "I1", "DETAIL", ["50", "90"]));
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toEqual([]);
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "polyline") {
+        expect(geometry.entities[0].points.length).toBeGreaterThan(2);
+        expectPointClose(geometry.entities[0].points[0], [5, 6, 0]);
+        expectPointClose(geometry.entities[0].points.at(-1) ?? [], [5, 16, 0]);
+        expect(geometry.entities[0].points.some((p) => Math.abs(p[0] - 5) > 1e-6)).toBe(true);
       }
     });
   });

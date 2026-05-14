@@ -153,6 +153,33 @@ function deviceMatchesKind(device: DeviceSemantic, kind: SemanticValidationFilte
   return device.kind === kind;
 }
 
+function robotReviewPriority(device: DeviceSemantic): number {
+  const text = `${device.kind} ${device.labelText} ${device.normalizedText} ${device.associationText ?? ""}`.toUpperCase();
+  if (device.kind === "robot_model") return 0;
+  if (/\b(M\/H|MATERIAL\s+HANDLING)\b/.test(text)) return 1;
+  if (/\bBASE\s+PLATE\b/.test(text) && /\b[A-Z0-9]+-\d{3}[LR]-\d+\b/.test(text)) return 2;
+  if (device.kind === "robot_controller" || device.kind === "pdp_panel") return 3;
+  if (device.kind === "device_number") return 4;
+  if (device.kind === "base_plate" || device.kind === "material_handling_robot_or_tooling") return 5;
+  return 6;
+}
+
+function associationPriority(status: DeviceSemantic["associationStatus"]): number {
+  if (status === "linked") return 0;
+  if (status === "ambiguous") return 1;
+  return 2;
+}
+
+function prioritizeOverlayDevices(devices: readonly DeviceSemantic[]): DeviceSemantic[] {
+  return [...devices].sort(
+    (left, right) =>
+      robotReviewPriority(left) - robotReviewPriority(right) ||
+      associationPriority(left.associationStatus) - associationPriority(right.associationStatus) ||
+      right.confidence - left.confidence ||
+      left.id.localeCompare(right.id)
+  );
+}
+
 export function filterSemanticValidation(
   semantics: LayoutSemantics,
   filters: SemanticValidationFilters
@@ -323,7 +350,7 @@ export function buildSemanticOverlayModel(
     (station) => station.stationId
   );
   const devices = limitWithSelected(
-    addSelectedDevice(filtered.devices, semantics, selection),
+    prioritizeOverlayDevices(addSelectedDevice(filtered.devices, semantics, selection)),
     options.deviceLimit,
     selectedDevice,
     (device) => device.id

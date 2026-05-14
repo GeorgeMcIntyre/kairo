@@ -292,6 +292,14 @@ button:hover {
   color: #ffd37a;
 }
 
+.toolbar-status {
+  flex: 0 0 auto;
+  color: #6ab4e8;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .file-input {
   position: absolute;
   width: 1px;
@@ -1499,6 +1507,12 @@ button:hover {
     width: 100%;
     padding-left: 0;
     overflow-x: auto;
+  }
+
+  .toolbar-status {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .demo-landing {
