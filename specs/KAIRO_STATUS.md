@@ -6,7 +6,7 @@ Last updated: 2026-05-14
 
 - Branch: `codex/kairo-viewer-semantics-integrated`
 - HEAD before package/ISSUE-019 integration: `b34d5ad feat: add advanced layout exports`
-- Current checkpoint includes `.kairo` package support, viewer diagnostics, ISSUE-019 semantic QA diagnostics, a non-browser Scott semantic machine QA pass with partial association findings, targeted manual semantic QA PASS, ISSUE-018 review JSON persistence work, the Scott layout content coverage pack, `.kairo` package machine QA, and scoped drawing-first viewer UI polish.
+- Current checkpoint includes `.kairo` package support, viewer diagnostics, ISSUE-019 semantic QA diagnostics, a non-browser Scott semantic machine QA pass with partial association findings, targeted manual semantic QA PASS, ISSUE-018 review JSON persistence work, the Scott layout content coverage pack, `.kairo` package machine QA, scoped drawing-first viewer UI polish, and a clean large-DXF loading/performance instrumentation pass.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
@@ -15,7 +15,7 @@ Last updated: 2026-05-14
 |---|---|
 | `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 293/293 passed |
 | `pnpm.cmd typecheck` | Clean |
-| `pnpm.cmd build` | Clean (viewer bundle ~880 kB, chunk size warning only) |
+| `pnpm.cmd build` | Clean (viewer bundle ~882 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | `node packages\cli\dist\index.js layout-content apps\viewer\public\scenes\scott-dxf2013-import --dxf <Scott DXF> --output-dir specs\investigations\scott-layout-content-coverage` | Passed; generated Markdown + CSV coverage pack |
 | `node packages\cli\dist\index.js package-qa apps\viewer\public\scenes\scott-dxf2013-import C:\tmp\kairo-scott-package-qa\scott-dxf2013-import-redacted.kairo --redact-source-paths --report specs\investigations\SCOTT_KAIRO_PACKAGE_QA.md` | Passed; package validates, counts match, local paths removed |
@@ -63,6 +63,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Semantic device association MVP: labels are linked to nearby geometry groups using block-insert provenance first and fallback geometry clusters second. Each semantic device records linked entity IDs, label entity IDs, bounds, centroid, association status (`linked`, `ambiguous`, `unlinked`), association confidence, candidates, and reason strings. These links are automated candidate evidence; visual usefulness still requires ISSUE-019 manual review.
 - Viewer semantic workflow: semantic overlays show station/device outlines, label markers, and label-to-geometry link lines. Selecting a label/device shows class, confidence, evidence, association candidates, linked entity IDs, and bounds. Selecting linked geometry shows the assigned semantic device.
 - Viewer performance diagnostics follow-up: DXF browser loads now carry lightweight stage timings for file read, importer module load, parse/import stages, semantic analysis, viewport batch build, render setup, and first render. Timings are shown only in the collapsed Diagnostics panel.
+- Large-DXF loading UX/performance follow-up: local and public scene loads now use explicit loading state with phase progress, hide stale/sample canvas content behind the dark CAD grid during loading, and avoid marking the new file active until scene activation succeeds. Heavy semantic export artifacts are computed on demand instead of during the default render path.
 - Viewer semantic performance follow-up: semantic analysis is deferred after scene activation so geometry can become visible before the semantic pass completes. Semantic overlay rendering is capped for broad station/device/unknown lists while preserving the selected item.
 - Drawing-first panel controls: Layers, Semantics, and Inspector panels can be hidden independently from the toolbar and from each panel header without changing layer visibility, selection, or semantic overlay state. Loaded scenes now default to a canvas-first view with Layers/Inspector/Diagnostics collapsed, a compact status strip for selected context and scene counts, and automatic Inspector opening after selecting geometry or a semantic item.
 - Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
@@ -84,6 +85,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 Known visual issues still requiring work:
 - Text anchor position is now correct per-entity but visual overlap/density may still need tuning in dense label areas
 - Drawing-first UI polish has a first implementation, but still needs browser review on the Scott staged scene and `.kairo` package open/drop path
+- Large-DXF browser timings still need to be captured from Diagnostics after the clean-loader pass; see `specs/investigations/SCOTT_VIEWER_PERFORMANCE_REVIEW.md`
 - Browser console still reports duplicate React keys in the text overlay for some expanded labels; this needs follow-up QA/fix and is separate from the picking/zoom work.
 
 ## What Is Broken / Missing

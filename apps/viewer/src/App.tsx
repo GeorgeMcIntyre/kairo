@@ -21,7 +21,8 @@ import {
   loadLocalSceneFilePackage,
   loadPublicScenePackage,
   resolveViewerSceneRequest,
-  sampleScenePackage
+  sampleScenePackage,
+  type SceneLoadProgress
 } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 import {
@@ -82,6 +83,14 @@ import {
 const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const DEMO_SCENE_NAME = "scott-dxf2013-import";
 const APP_VERSION = viewerPackage.version;
+const EMPTY_SEMANTIC_SUMMARY_COUNTS = {
+  stations: 0,
+  devices: 0,
+  linkedDevices: 0,
+  ambiguousDevices: 0,
+  unlinkedDevices: 0,
+  unknownLabels: 0
+};
 
 const EMPTY_LAYOUT_SEMANTICS: LayoutSemantics = {
   textEntities: [],
@@ -108,6 +117,14 @@ type ViewerSelection = {
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "main" | "selected" | "raw";
 type AdvancedLayoutExportFormat = "json" | "csv" | "markdown";
+type ViewerLoadingKind = "public-scene" | "local-file";
+
+type ViewerLoadingState = {
+  kind: ViewerLoadingKind;
+  name: string;
+  phase: string;
+  startedAt: number;
+};
 
 type FitRequest = {
   target: FitTarget;
@@ -884,6 +901,8 @@ export function App() {
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
   const [activeSceneName, setActiveSceneName] = useState<string | undefined>();
+  const [loadingState, setLoadingState] = useState<ViewerLoadingState | undefined>();
+  const [loadingElapsedMs, setLoadingElapsedMs] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("top2d");
   const [fitRequest, setFitRequest] = useState<FitRequest>({ target: "main", serial: 0 });
   const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
@@ -957,6 +976,18 @@ export function App() {
     };
   }, [scenePackage, robustBounds]);
 
+  useEffect(() => {
+    if (!loadingState) {
+      setLoadingElapsedMs(0);
+      return;
+    }
+
+    const updateElapsed = () => setLoadingElapsedMs(Math.max(0, performance.now() - loadingState.startedAt));
+    updateElapsed();
+    const handle = globalThis.setInterval(updateElapsed, 250);
+    return () => globalThis.clearInterval(handle);
+  }, [loadingState]);
+
   const layoutSemantics = useMemo(
     () => applySemanticDeviceOverrides(detectedLayoutSemantics, semanticDeviceOverrides),
     [detectedLayoutSemantics, semanticDeviceOverrides]
@@ -992,45 +1023,17 @@ export function App() {
     () => resolveSemanticSelection(layoutSemantics, selectedSemantic),
     [layoutSemantics, selectedSemantic]
   );
-  const semanticSummary = useMemo(
-    () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path),
-    [layoutSemantics, scenePackage.manifest.source.path]
-  );
-  const semanticQaReport = useMemo(
-    () => buildScottSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path),
-    [layoutSemantics, scenePackage.manifest.source.path]
-  );
-  const semanticReviewFingerprint = useMemo(
-    () => buildSemanticReviewFingerprint(scenePackage, layoutSemantics),
-    [scenePackage, layoutSemantics]
-  );
-  const semanticReviewDocument = useMemo(
-    () =>
-      buildSemanticReviewDocument({
-        scenePackage,
-        semantics: layoutSemantics,
-        devices: semanticSummary.devices,
-        requiredLabels: semanticQaReport.requiredLabels,
-        overrides: semanticDeviceOverrides,
-        review: semanticReviewStates,
-        decision: semanticReviewDecision,
-        warnings: semanticReviewWarnings
-      }),
-    [
-      scenePackage,
-      layoutSemantics,
-      semanticSummary.devices,
-      semanticQaReport.requiredLabels,
-      semanticDeviceOverrides,
-      semanticReviewStates,
-      semanticReviewDecision,
-      semanticReviewWarnings
-    ]
-  );
-  const advancedLayoutModel = useMemo(
-    () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
-    [scenePackage, layoutSemantics]
-  );
+  const semanticSummaryCounts = useMemo(() => {
+    if (semanticAnalysisStatus !== "ready") return EMPTY_SEMANTIC_SUMMARY_COUNTS;
+    return {
+      stations: layoutSemantics.stations.length,
+      devices: layoutSemantics.devices.length,
+      linkedDevices: layoutSemantics.devices.filter((device) => device.associationStatus === "linked").length,
+      ambiguousDevices: layoutSemantics.devices.filter((device) => device.associationStatus === "ambiguous").length,
+      unlinkedDevices: layoutSemantics.devices.filter((device) => device.associationStatus === "unlinked").length,
+      unknownLabels: layoutSemantics.unknownTextEntities.length
+    };
+  }, [layoutSemantics, semanticAnalysisStatus]);
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
     () => (showOutliers ? new Set<string>() : new Set(robustBounds.outlierEntityIds)),
@@ -1065,11 +1068,12 @@ export function App() {
   const stationListCount = showingFirstLabel(visibleSemanticStations.length, semanticValidation.stations.length);
   const deviceListCount = showingFirstLabel(visibleSemanticDevices.length, semanticValidation.devices.length);
   const unknownListCount = showingFirstLabel(visibleUnknownText.length, semanticValidation.unknownTextEntities.length);
-  const sceneIsLoading = sceneStatus.startsWith("Loading ");
-  const landingMode = !activeSceneName && !sceneLoadError;
+  const sceneIsLoading = Boolean(loadingState);
+  const landingMode = !activeSceneName && !sceneLoadError && !sceneIsLoading;
   const selectedContextTitle = selectedSemanticDetails?.title ?? selectedEntity?.entityId ?? selectedNode.displayName;
   const selectedContextSubtitle = selectedSemanticDetails?.subtitle ?? selectedLayerName ?? selectedLayerId ?? "No layer";
   const openPanelCount = [layersPanelOpen, semanticOverlayEnabled && semanticPanelOpen, inspectorPanelOpen, diagnosticsOpen].filter(Boolean).length;
+  const loadingKindLabel = loadingState?.kind === "public-scene" ? "Loading scene" : "Opening drawing";
 
   const requestFit = (target: FitTarget) => {
     setFitRequest((current) => ({ target, serial: current.serial + 1 }));
@@ -1118,6 +1122,16 @@ export function App() {
 
   const isCurrentSceneLoad = useCallback((serial: number) => sceneLoadSerialRef.current === serial, []);
 
+  const beginSceneLoading = useCallback((serial: number, kind: ViewerLoadingKind, name: string, phase: string) => {
+    if (!isCurrentSceneLoad(serial)) return;
+    setLoadingState({ kind, name, phase, startedAt: performance.now() });
+  }, [isCurrentSceneLoad]);
+
+  const updateSceneLoadProgress = useCallback((serial: number, progress: SceneLoadProgress) => {
+    if (!isCurrentSceneLoad(serial)) return;
+    setLoadingState((current) => (current ? { ...current, phase: progress.label } : current));
+  }, [isCurrentSceneLoad]);
+
   const activateScenePackage = useCallback(
     (
       loadedScenePackage: ScenePackage,
@@ -1145,6 +1159,7 @@ export function App() {
       setFitRequest((current) => ({ target: "main", serial: current.serial + 1 }));
       setSceneStatus(options.status);
       setSceneLoadError(undefined);
+      setLoadingState(undefined);
       setActiveSceneName(options.activeName);
       setSceneLoadTiming(options.timing ?? []);
       setLayersPanelOpen(false);
@@ -1162,14 +1177,17 @@ export function App() {
 
   const loadPublicScene = useCallback(async (sceneName: string, options?: { updateUrl?: boolean }) => {
     const loadSerial = startSceneLoad();
+    beginSceneLoading(loadSerial, "public-scene", sceneName, "Loading scene manifest");
     setSceneStatus(`Loading ${sceneName}`);
     setSceneLoadError(undefined);
     setSceneLoadTiming([]);
-    setActiveSceneName(sceneName);
 
     try {
-      const loadedScenePackage = await loadPublicScenePackage(`/scenes/${sceneName}`);
+      const loadedScenePackage = await loadPublicScenePackage(`/scenes/${sceneName}`, fetch, {
+        onProgress: (progress) => updateSceneLoadProgress(loadSerial, progress)
+      });
       if (!isCurrentSceneLoad(loadSerial)) return;
+      updateSceneLoadProgress(loadSerial, { phase: "public-scene-read", label: "Activating scene" });
       activateScenePackage(loadedScenePackage, {
         activeName: sceneName,
         status: `Loaded ${sceneName}`
@@ -1182,7 +1200,7 @@ export function App() {
       }
     } catch (error) {
       if (!isCurrentSceneLoad(loadSerial)) return;
-      setActiveSceneName(undefined);
+      setLoadingState(undefined);
       setSceneLoadTiming([]);
       if (isPublicSceneAssetLoadError(error)) {
         setSceneStatus("Open a local DXF / Kairo file");
@@ -1196,20 +1214,23 @@ export function App() {
           : `Could not load ${sceneName}. ${String(error)}`
       );
     }
-  }, [activateScenePackage, isCurrentSceneLoad, startSceneLoad]);
+  }, [activateScenePackage, beginSceneLoading, isCurrentSceneLoad, startSceneLoad, updateSceneLoadProgress]);
 
   const loadLocalSceneFile = useCallback(
     async (file: File) => {
       const loadSerial = startSceneLoad();
       const fileName = file.name || "uploaded.kairo";
+      beginSceneLoading(loadSerial, "local-file", fileName, "Preparing file");
       setSceneStatus(`Loading ${fileName}`);
       setSceneLoadError(undefined);
       setSceneLoadTiming([]);
-      setActiveSceneName(fileName);
 
       try {
-        const result = await loadLocalSceneFilePackage(file);
+        const result = await loadLocalSceneFilePackage(file, {
+          onProgress: (progress) => updateSceneLoadProgress(loadSerial, progress)
+        });
         if (!isCurrentSceneLoad(loadSerial)) return;
+        updateSceneLoadProgress(loadSerial, { phase: result.kind === "dxf" ? "dxf-import" : "kairo-package-read", label: "Activating scene" });
         const warningSuffix = result.warningCount === 0 ? "" : ` (${result.warningCount} warnings)`;
         const loadedVerb = result.kind === "dxf" ? "Imported" : "Opened";
         activateScenePackage(result.scenePackage, {
@@ -1225,7 +1246,7 @@ export function App() {
         window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
       } catch (error) {
         if (!isCurrentSceneLoad(loadSerial)) return;
-        setActiveSceneName(undefined);
+        setLoadingState(undefined);
         setSceneStatus("File open failed");
         setSceneLoadTiming([]);
         setSceneLoadError(
@@ -1235,7 +1256,7 @@ export function App() {
         );
       }
     },
-    [activateScenePackage, isCurrentSceneLoad, startSceneLoad]
+    [activateScenePackage, beginSceneLoading, isCurrentSceneLoad, startSceneLoad, updateSceneLoadProgress]
   );
 
   const openLocalFilePicker = () => {
@@ -1334,7 +1355,10 @@ export function App() {
     });
   };
 
+  const buildCurrentSemanticSummary = () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path);
+
   const copySemanticExport = (format: "json" | "markdown") => {
+    const semanticSummary = buildCurrentSemanticSummary();
     const content =
       format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
     const writeText = navigator.clipboard?.writeText;
@@ -1348,6 +1372,7 @@ export function App() {
   };
 
   const downloadSemanticExport = (format: "json" | "markdown") => {
+    const semanticSummary = buildCurrentSemanticSummary();
     const content =
       format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
     const extension = format === "json" ? "json" : "md";
@@ -1356,10 +1381,23 @@ export function App() {
   };
 
   const downloadSemanticQaReport = () => {
+    const semanticQaReport = buildScottSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path);
     downloadTextFile("scott-semantic-qa-report.md", exportScottSemanticQaMarkdown(semanticQaReport), "text/markdown");
   };
 
   const downloadSemanticReview = () => {
+    const semanticSummary = buildCurrentSemanticSummary();
+    const semanticQaReport = buildScottSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path);
+    const semanticReviewDocument = buildSemanticReviewDocument({
+      scenePackage,
+      semantics: layoutSemantics,
+      devices: semanticSummary.devices,
+      requiredLabels: semanticQaReport.requiredLabels,
+      overrides: semanticDeviceOverrides,
+      review: semanticReviewStates,
+      decision: semanticReviewDecision,
+      warnings: semanticReviewWarnings
+    });
     downloadTextFile("kairo-semantic-review.json", exportSemanticReviewJson(semanticReviewDocument), "application/json");
     setSemanticReviewStatus("Downloaded review JSON");
   };
@@ -1378,7 +1416,7 @@ export function App() {
       const reviewDocument = parseSemanticReviewDocument(JSON.parse(await file.text()));
       const reconciled = reconcileSemanticReviewDocument(
         reviewDocument,
-        semanticReviewFingerprint,
+        buildSemanticReviewFingerprint(scenePackage, layoutSemantics),
         layoutSemantics.devices.map((device) => device.id)
       );
       setSemanticDeviceOverrides(reconciled.overrides);
@@ -1404,6 +1442,7 @@ export function App() {
   };
 
   const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
+    const advancedLayoutModel = buildAdvancedLayoutModel(scenePackage, layoutSemantics);
     if (format === "json") return exportAdvancedLayoutJson(advancedLayoutModel);
     if (format === "csv") return exportAdvancedLayoutCsv(advancedLayoutModel);
     return exportAdvancedLayoutMarkdown(advancedLayoutModel);
@@ -1658,8 +1697,12 @@ export function App() {
 
       {sceneIsLoading ? (
         <section className="scene-loading" role="status">
-          <span>Opening drawing</span>
-          <strong>{activeSceneName}</strong>
+          <span>{loadingKindLabel}</span>
+          <strong>{loadingState?.name}</strong>
+          <p>{loadingState?.phase ?? "Preparing"} / {formatTimingMs(loadingElapsedMs)}</p>
+          <div className="scene-loading-bar" aria-hidden="true">
+            <i />
+          </div>
         </section>
       ) : null}
 
@@ -1744,27 +1787,27 @@ export function App() {
           </div>
           <div className="semantic-summary-grid" aria-label="Semantic summary">
             <span>
-              <strong>{semanticSummary.counts.stations}</strong>
+              <strong>{semanticSummaryCounts.stations}</strong>
               stations
             </span>
             <span>
-              <strong>{semanticSummary.counts.devices}</strong>
+              <strong>{semanticSummaryCounts.devices}</strong>
               devices
             </span>
             <span>
-              <strong>{semanticSummary.counts.linkedDevices}</strong>
+              <strong>{semanticSummaryCounts.linkedDevices}</strong>
               linked
             </span>
             <span>
-              <strong>{semanticSummary.counts.ambiguousDevices}</strong>
+              <strong>{semanticSummaryCounts.ambiguousDevices}</strong>
               ambiguous
             </span>
             <span>
-              <strong>{semanticSummary.counts.unlinkedDevices}</strong>
+              <strong>{semanticSummaryCounts.unlinkedDevices}</strong>
               unlinked
             </span>
             <span>
-              <strong>{semanticSummary.counts.unknownLabels}</strong>
+              <strong>{semanticSummaryCounts.unknownLabels}</strong>
               unknown
             </span>
           </div>

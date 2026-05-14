@@ -49,6 +49,22 @@ type FetchLike = (input: string) => Promise<{
   json: () => Promise<unknown>;
 }>;
 
+export type SceneLoadProgressPhase =
+  | "file-read"
+  | "importer-module-load"
+  | "dxf-import"
+  | "kairo-package-read"
+  | "public-scene-read";
+
+export type SceneLoadProgress = {
+  phase: SceneLoadProgressPhase;
+  label: string;
+};
+
+export type SceneLoadOptions = {
+  onProgress?: (progress: SceneLoadProgress) => void;
+};
+
 const dxfFilePattern = /\.dxf$/i;
 const kairoFilePattern = /\.kairo$/i;
 
@@ -100,7 +116,12 @@ function geometryRefsFromScene(sceneDocument: SceneDocument) {
   ].sort((a, b) => a.localeCompare(b));
 }
 
-export async function loadPublicScenePackage(basePath: string, fetcher: FetchLike = fetch): Promise<ScenePackage> {
+export async function loadPublicScenePackage(
+  basePath: string,
+  fetcher: FetchLike = fetch,
+  options: SceneLoadOptions = {}
+): Promise<ScenePackage> {
+  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene manifest" });
   const [manifestDocument, sceneDocument, layersDocument, materialsDocument, sourceMapDocument] = await Promise.all([
     fetchJson(fetcher, `${basePath}/manifest.json`),
     fetchJson(fetcher, `${basePath}/scene.json`),
@@ -110,6 +131,7 @@ export async function loadPublicScenePackage(basePath: string, fetcher: FetchLik
   ]);
 
   const sceneData = sceneDocument as SceneDocument;
+  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene geometry" });
   const geometry = await Promise.all(
     geometryRefsFromScene(sceneData).map((geometryRef) => fetchJson(fetcher, `${basePath}/geometry/${encodeURIComponent(geometryRef)}.json`) as Promise<GeometryDocument>)
   );
@@ -124,7 +146,7 @@ export async function loadPublicScenePackage(basePath: string, fetcher: FetchLik
   });
 }
 
-export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResult> {
+export async function loadDxfFileScenePackage(file: File, options: SceneLoadOptions = {}): Promise<DxfImportResult> {
   const totalStartedAt = performance.now();
   const timing: DxfImportTimingStage[] = [];
   const recordStage = (stage: string, startedAt: number) => {
@@ -137,14 +159,17 @@ export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResu
   }
 
   const fileReadStartedAt = performance.now();
+  options.onProgress?.({ phase: "file-read", label: "Reading file" });
   const text = await file.text();
   recordStage("file-read", fileReadStartedAt);
 
   const moduleLoadStartedAt = performance.now();
+  options.onProgress?.({ phase: "importer-module-load", label: "Loading DXF importer" });
   const { importDxfTextToKairo } = await import("@kairo/importer-dxf/browser");
   recordStage("importer-module-load", moduleLoadStartedAt);
 
   const importStartedAt = performance.now();
+  options.onProgress?.({ phase: "dxf-import", label: "Importing DXF" });
   const result = await importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
   recordStage("dxf-import", importStartedAt);
 
@@ -158,12 +183,13 @@ export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResu
   };
 }
 
-export async function loadKairoPackageFileScenePackage(file: File): Promise<ScenePackage> {
+export async function loadKairoPackageFileScenePackage(file: File, options: SceneLoadOptions = {}): Promise<ScenePackage> {
   const fileName = file.name.trim() || "uploaded.kairo";
   if (!kairoFilePattern.test(fileName)) {
     throw new Error("Only .kairo files can be opened as Kairo packages.");
   }
 
+  options.onProgress?.({ phase: "kairo-package-read", label: "Opening Kairo package" });
   const bytes = new Uint8Array(await file.arrayBuffer());
   return readKairoPackage(bytes).scenePackage;
 }
@@ -182,10 +208,10 @@ export type LocalSceneFileLoadResult =
       timing?: DxfImportTimingStage[];
     };
 
-export async function loadLocalSceneFilePackage(file: File): Promise<LocalSceneFileLoadResult> {
+export async function loadLocalSceneFilePackage(file: File, options: SceneLoadOptions = {}): Promise<LocalSceneFileLoadResult> {
   const fileName = file.name.trim();
   if (dxfFilePattern.test(fileName)) {
-    const result = await loadDxfFileScenePackage(file);
+    const result = await loadDxfFileScenePackage(file, options);
     return {
       kind: "dxf",
       scenePackage: result.scenePackage,
@@ -198,7 +224,7 @@ export async function loadLocalSceneFilePackage(file: File): Promise<LocalSceneF
     const startedAt = performance.now();
     return {
       kind: "kairo-package",
-      scenePackage: await loadKairoPackageFileScenePackage(file),
+      scenePackage: await loadKairoPackageFileScenePackage(file, options),
       warningCount: 0,
       timing: [{ stage: "kairo-package-read", ms: Math.max(0, performance.now() - startedAt) }]
     };
