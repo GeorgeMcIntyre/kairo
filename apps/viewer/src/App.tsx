@@ -79,10 +79,12 @@ import {
   rendererViewportFromElement,
   type ViewportSize
 } from "./viewerMath";
+import type { SemanticAnalysisWorkerResponse } from "./semanticAnalysis.worker";
 
 const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const DEMO_SCENE_NAME = "scott-dxf2013-import";
 const APP_VERSION = viewerPackage.version;
+let semanticAnalysisRequestId = 0;
 const EMPTY_SEMANTIC_SUMMARY_COUNTS = {
   stations: 0,
   devices: 0,
@@ -144,6 +146,43 @@ type ViewportDiagnostics = {
   browserZoomWarning: boolean;
   timing?: DxfImportTimingStage[];
 };
+
+function runSemanticAnalysis(scenePackage: ScenePackage, robustBounds: RobustSceneBounds) {
+  if (typeof Worker === "undefined") {
+    const startedAt = performance.now();
+    const semantics = computeLayoutSemantics(scenePackage, robustBounds);
+    return Promise.resolve({
+      semantics,
+      elapsedMs: Math.max(0, performance.now() - startedAt)
+    });
+  }
+
+  const id = ++semanticAnalysisRequestId;
+  const worker = new Worker(new URL("./semanticAnalysis.worker.ts", import.meta.url), { type: "module" });
+
+  return new Promise<{ semantics: LayoutSemantics; elapsedMs: number }>((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent<SemanticAnalysisWorkerResponse>) => {
+      if (event.data.id !== id) return;
+      worker.terminate();
+      if (event.data.ok) {
+        resolve({ semantics: event.data.semantics, elapsedMs: event.data.elapsedMs });
+        return;
+      }
+
+      const error = new Error(event.data.error.message);
+      error.name = event.data.error.name ?? "SemanticAnalysisWorkerError";
+      if (event.data.error.stack) error.stack = event.data.error.stack;
+      reject(error);
+    };
+
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Semantic analysis worker failed."));
+    };
+
+    worker.postMessage({ id, scenePackage, robustBounds });
+  });
+}
 
 const SEMANTIC_OVERLAY_LIMITS = {
   stationLimit: 40,
@@ -949,23 +988,32 @@ export function App() {
     setDetectedLayoutSemantics(EMPTY_LAYOUT_SEMANTICS);
 
     const runAnalysis = () => {
-      const startedAt = performance.now();
-      const nextSemantics = computeLayoutSemantics(scenePackage, robustBounds);
-      if (cancelled) return;
-      const elapsedMs = Math.max(0, performance.now() - startedAt);
-      setDetectedLayoutSemantics(nextSemantics);
-      setSemanticAnalysisStatus("ready");
-      setSemanticAnalysisTiming({ stage: "semantic-analysis", ms: elapsedMs });
+      void runSemanticAnalysis(scenePackage, robustBounds)
+        .then(({ semantics, elapsedMs }) => {
+          if (cancelled) return;
+          setDetectedLayoutSemantics(semantics);
+          setSemanticAnalysisStatus("ready");
+          setSemanticAnalysisTiming({ stage: "semantic-analysis", ms: elapsedMs });
 
-      if (DEV_MODE) {
-        // eslint-disable-next-line no-console
-        console.info("[Kairo] semantic analysis", {
-          ms: Math.round(elapsedMs),
-          stations: nextSemantics.stations.length,
-          devices: nextSemantics.devices.length,
-          unknownTextEntities: nextSemantics.unknownTextEntities.length
+          if (DEV_MODE) {
+            // eslint-disable-next-line no-console
+            console.info("[Kairo] semantic analysis", {
+              ms: Math.round(elapsedMs),
+              stations: semantics.stations.length,
+              devices: semantics.devices.length,
+              unknownTextEntities: semantics.unknownTextEntities.length
+            });
+          }
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setSemanticAnalysisStatus("ready");
+          setSemanticAnalysisTiming({ stage: "semantic-analysis", ms: 0 });
+          if (DEV_MODE) {
+            // eslint-disable-next-line no-console
+            console.error("[Kairo] semantic analysis failed", error);
+          }
         });
-      }
     };
 
     const handle = globalThis.setTimeout(runAnalysis, 50);

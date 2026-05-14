@@ -37,6 +37,8 @@ The Scott staged semantic machine QA test loads the staged scene and runs robust
 - During loading, the previous/sample canvas and text overlay are hidden behind the normal dark CAD grid.
 - The loading card shows file name, current phase, elapsed time, and an indeterminate progress bar.
 - Local file loading emits progress phases for file read, importer module load, DXF import, and Kairo package read.
+- Browser DXF import now runs in a module Web Worker when `Worker` is available, with the direct importer kept as the Node/test fallback.
+- Semantic analysis now runs in a module Web Worker when `Worker` is available, with the direct analyzer kept as the Node/test fallback.
 - Public scene loading emits progress phases for manifest and geometry reads.
 - Heavy semantic export artifacts are computed only when requested:
   - semantic summary export
@@ -47,10 +49,9 @@ The Scott staged semantic machine QA test loads the staged scene and runs robust
 
 ## Remaining Performance Risks
 
-- DXF import still runs on the browser main thread.
-- Semantic analysis still runs on the browser main thread after a short deferral.
 - Large semantic validation and overlay work is still proportional to detected semantic item count when the Semantics panel or overlay is active.
 - The browser must still build Three.js curve batches for all staged geometry documents before first render.
+- Transferring the imported scene package and semantic result between workers and the UI thread may still take noticeable time on very large DXFs.
 
 ## Next Recommendation
 
@@ -64,4 +65,4 @@ Use the viewer Diagnostics panel on `http://127.0.0.1:5194/` with the primary Sc
 - `first-render-ready`
 - `semantic-analysis`
 
-If `browser-dxf-load-total` or `semantic-analysis` still blocks interaction for an unacceptable period, the next implementation should move DXF import and/or semantic analysis into a Web Worker. Do not start that worker refactor until these new timings are reviewed.
+If scene activation, worker result transfer, or viewport batch creation still blocks interaction for an unacceptable period, the next implementation should move scene activation preparation into a chunked pipeline and investigate transferable compact geometry buffers.
