@@ -514,6 +514,78 @@ button:hover {
   line-height: 1.4;
 }
 
+.drawing-status-strip {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: minmax(180px, 320px) auto auto;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 24px);
+  min-height: 42px;
+  padding: 8px 10px 8px 12px;
+  transform: translateX(-50%);
+  border: 1px solid #29344a;
+  border-radius: 6px;
+  background: rgba(13, 21, 34, 0.88);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+}
+
+.drawing-status-primary {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.drawing-status-primary strong,
+.drawing-status-primary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawing-status-primary strong {
+  color: #f4f8fc;
+  font-size: 12px;
+}
+
+.drawing-status-primary span {
+  color: #8aa2b6;
+  font-size: 11px;
+}
+
+.drawing-status-metrics,
+.drawing-status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drawing-status-metrics span {
+  color: #8aa2b6;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.drawing-status-actions button {
+  min-height: 26px;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.drawing-status-actions button.active {
+  border-color: #1a6ea8;
+  background: #0b3360;
+  color: #6ab4e8;
+}
+
 .viewport {
   min-height: 0;
   position: relative;
@@ -1410,6 +1482,18 @@ button:hover {
     top: 104px;
     bottom: 12px;
     grid-template-columns: 1fr;
+  }
+
+  .drawing-status-strip {
+    left: 12px;
+    right: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    transform: none;
+  }
+
+  .drawing-status-metrics,
+  .drawing-status-actions {
+    overflow-x: auto;
   }
 }
 

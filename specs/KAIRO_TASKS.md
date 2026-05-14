@@ -47,7 +47,11 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ### ISSUE-004: Viewer UI drawing-first review mode (P1)
 
+**Status:** Scoped implementation added; browser review still pending.
+
 **Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers/Semantics/Inspector are now hideable; next pass should make the layout more intentional without a full redesign.
+
+**Current checkpoint:** Loaded scenes now start with Layers, Inspector, and Diagnostics collapsed so the CAD drawing owns the viewport. A compact drawing status strip shows selected context, layer/hidden/panel counts, semantic device count, and quick panel toggles. Selecting geometry or semantic items opens the Inspector automatically.
 
 **Not allowed:** Touch importer/schema/GLB/JT/export. Remove sample scene support.
 

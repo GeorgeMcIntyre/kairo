@@ -893,9 +893,9 @@ export function App() {
   const [labelDensity, setLabelDensity] = useState<LabelDensityMode>("auto");
   const [readableOrientation, setReadableOrientation] = useState(true);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const [layersPanelOpen, setLayersPanelOpen] = useState(true);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [semanticPanelOpen, setSemanticPanelOpen] = useState(false);
-  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(true);
+  const [inspectorPanelOpen, setInspectorPanelOpen] = useState(false);
   const [showOutliers, setShowOutliers] = useState(false);
   const [semanticOverlayEnabled, setSemanticOverlayEnabled] = useState(false);
   const [selectedSemantic, setSelectedSemantic] = useState<SemanticSelection | undefined>();
@@ -1067,6 +1067,9 @@ export function App() {
   const unknownListCount = showingFirstLabel(visibleUnknownText.length, semanticValidation.unknownTextEntities.length);
   const sceneIsLoading = sceneStatus.startsWith("Loading ");
   const landingMode = !activeSceneName && !sceneLoadError;
+  const selectedContextTitle = selectedSemanticDetails?.title ?? selectedEntity?.entityId ?? selectedNode.displayName;
+  const selectedContextSubtitle = selectedSemanticDetails?.subtitle ?? selectedLayerName ?? selectedLayerId ?? "No layer";
+  const openPanelCount = [layersPanelOpen, semanticOverlayEnabled && semanticPanelOpen, inspectorPanelOpen, diagnosticsOpen].filter(Boolean).length;
 
   const requestFit = (target: FitTarget) => {
     setFitRequest((current) => ({ target, serial: current.serial + 1 }));
@@ -1082,11 +1085,13 @@ export function App() {
     setSelectedNodeId(selection.nodeId);
     setSelectedEntity(selection.entity);
     setSelectedSemantic(undefined);
+    setInspectorPanelOpen(true);
   };
 
   const selectSemantic = (selection: SemanticSelection) => {
     setSelectedEntity(undefined);
     setSelectedSemantic(selection);
+    setInspectorPanelOpen(true);
   };
 
   const updateSemanticFilters = (patch: Partial<SemanticValidationFilters>) => {
@@ -1142,6 +1147,9 @@ export function App() {
       setSceneLoadError(undefined);
       setActiveSceneName(options.activeName);
       setSceneLoadTiming(options.timing ?? []);
+      setLayersPanelOpen(false);
+      setInspectorPanelOpen(false);
+      setDiagnosticsOpen(false);
       if (options.semanticOverlayEnabled !== undefined) {
         setSemanticOverlayEnabled(options.semanticOverlayEnabled);
       }
@@ -1662,6 +1670,47 @@ export function App() {
           <button onClick={openLocalFilePicker} type="button">
             Open DXF / Kairo
           </button>
+        </section>
+      ) : null}
+
+      {!landingMode && !sceneIsLoading ? (
+        <section className="drawing-status-strip" aria-label="Drawing review status">
+          <div className="drawing-status-primary">
+            <strong>{selectedContextTitle}</strong>
+            <span>{selectedContextSubtitle}</span>
+          </div>
+          <div className="drawing-status-metrics">
+            <span>{sceneStats.layerCount} layers</span>
+            <span>{hiddenLayerIds.size} hidden</span>
+            <span>{openPanelCount} panels</span>
+            <span>{semanticAnalysisStatus === "pending" ? "semantics pending" : `${layoutSemantics.devices.length} devices`}</span>
+          </div>
+          <div className="drawing-status-actions">
+            <button
+              aria-pressed={layersPanelOpen}
+              className={layersPanelOpen ? "active" : ""}
+              onClick={() => setLayersPanelOpen((current) => !current)}
+              type="button"
+            >
+              Layers
+            </button>
+            <button
+              aria-pressed={inspectorPanelOpen}
+              className={inspectorPanelOpen ? "active" : ""}
+              onClick={() => setInspectorPanelOpen((current) => !current)}
+              type="button"
+            >
+              Inspector
+            </button>
+            <button
+              aria-pressed={diagnosticsOpen}
+              className={diagnosticsOpen ? "active" : ""}
+              onClick={() => setDiagnosticsOpen((current) => !current)}
+              type="button"
+            >
+              Diagnostics
+            </button>
+          </div>
         </section>
       ) : null}
 
