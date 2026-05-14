@@ -35,7 +35,11 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ### ISSUE-020: `.kairo` package QA and sharing workflow (P1)
 
+**Status:** Machine QA passed; manual browser open/drop confirmation pending.
+
 **Goal:** Use `pack-scene` to create a `.kairo` package from the primary Scott import, open it through the viewer, and confirm it is practical for internal sharing without restaging public scene assets.
+
+**Current checkpoint:** `package-qa` created a redacted Scott `.kairo` package at `C:\tmp\kairo-scott-package-qa\scott-dxf2013-import-redacted.kairo`, validated it, and confirmed count parity with the staged scene. Findings are recorded in `specs/investigations/SCOTT_KAIRO_PACKAGE_QA.md`.
 
 **Not allowed:** Replace raw DXF import, add 7z/WASM tooling, or change the neutral scene schema unless package QA proves a missing field.
 

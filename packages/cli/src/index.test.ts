@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readKairoPackage } from "@kairo/core";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -263,6 +264,31 @@ describe("kairo validate", () => {
     expect(validateResult.stdout).toContain("Scene: Bracket Exchange Sample\n");
   });
 
+  it("packs a redacted .kairo package for sharing", async () => {
+    const redactedScenePath = await copySampleScene(tempRoot, "local-path-scene");
+    const manifestPath = path.join(redactedScenePath, "manifest.json");
+    const sourceMapPath = path.join(redactedScenePath, "source-map.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { source: { path?: string } };
+    const sourceMap = JSON.parse(await readFile(sourceMapPath, "utf8")) as { sources: Array<{ path: string }> };
+    manifest.source.path = "C:\\Users\\georgem\\Downloads\\ScottLayouts\\layout.dxf";
+    sourceMap.sources = sourceMap.sources.map((source) => ({
+      ...source,
+      path: "C:\\Users\\georgem\\Downloads\\ScottLayouts\\layout.dxf"
+    }));
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await writeFile(sourceMapPath, `${JSON.stringify(sourceMap, null, 2)}\n`);
+
+    const outputPath = path.join(tempRoot, "redacted.kairo");
+    const packResult = await captureCli(["pack-scene", redactedScenePath, outputPath, "--redact-source-paths"]);
+
+    expect(packResult.code).toBe(0);
+    expect(packResult.stderr).toBe("");
+    expect(packResult.stdout).toContain("Source paths: redacted to file names\n");
+    const loaded = readKairoPackage(await readFile(outputPath)).scenePackage;
+    expect(loaded.manifest.source.path).toBe("layout.dxf");
+    expect(loaded.sourceMap.sources.every((source) => source.path === "layout.dxf")).toBe(true);
+  });
+
   it("requires the .kairo extension when packing a scene", async () => {
     const result = await captureCli(["pack-scene", sampleScenePath, path.join(tempRoot, "sample.zip")]);
 
@@ -271,6 +297,24 @@ describe("kairo validate", () => {
     expect(result.stderr).toBe(
       "Kairo scene package failed\n- ERROR INVALID_PACKAGE_PATH: Output file must use the .kairo extension.\n"
     );
+  });
+
+  it("runs package QA and writes a machine-verifiable report", async () => {
+    const outputPath = path.join(tempRoot, "qa-package.kairo");
+    const reportPath = path.join(tempRoot, "qa-report.md");
+    const result = await captureCli(["package-qa", sampleScenePath, outputPath, "--redact-source-paths", "--report", reportPath]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo package QA passed\n");
+    expect(result.stdout).toContain("Counts match: true\n");
+    expect(result.stdout).toContain("Local source paths in package: 0\n");
+    const report = await readFile(reportPath, "utf8");
+    expect(report).toContain("# Kairo Package QA");
+    expect(report).toContain("Machine QA: PASS");
+    expect(report).toContain("Manual browser open/drop confirmation is still pending.");
+    expect(report).not.toContain(repoRoot);
+    expect(report).not.toMatch(/\d{4}-\d{2}-\d{2}/);
   });
 
   it("rejects unsafe viewer scene names", async () => {

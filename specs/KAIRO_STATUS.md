@@ -6,18 +6,19 @@ Last updated: 2026-05-14
 
 - Branch: `codex/kairo-viewer-semantics-integrated`
 - HEAD before package/ISSUE-019 integration: `b34d5ad feat: add advanced layout exports`
-- Current checkpoint includes `.kairo` package support, viewer diagnostics, ISSUE-019 semantic QA diagnostics, a non-browser Scott semantic machine QA pass with partial association findings, targeted manual semantic QA PASS, ISSUE-018 review JSON persistence work, and the Scott layout content coverage pack.
+- Current checkpoint includes `.kairo` package support, viewer diagnostics, ISSUE-019 semantic QA diagnostics, a non-browser Scott semantic machine QA pass with partial association findings, targeted manual semantic QA PASS, ISSUE-018 review JSON persistence work, the Scott layout content coverage pack, and `.kairo` package machine QA.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 289/289 passed |
+| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 293/293 passed |
 | `pnpm.cmd typecheck` | Clean |
 | `pnpm.cmd build` | Clean (viewer bundle ~879 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | `node packages\cli\dist\index.js layout-content apps\viewer\public\scenes\scott-dxf2013-import --dxf <Scott DXF> --output-dir specs\investigations\scott-layout-content-coverage` | Passed; generated Markdown + CSV coverage pack |
+| `node packages\cli\dist\index.js package-qa apps\viewer\public\scenes\scott-dxf2013-import C:\tmp\kairo-scott-package-qa\scott-dxf2013-import-redacted.kairo --redact-source-paths --report specs\investigations\SCOTT_KAIRO_PACKAGE_QA.md` | Passed; package validates, counts match, local paths removed |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 | `pnpm.cmd test apps/viewer/src/semantic/scottSemanticQa.integration.test.ts -- --minWorkers=1 --maxWorkers=1` | Passed; Machine QA partial |
 | Targeted manual semantic QA | PASS; see `specs/investigations/SCOTT_SEMANTIC_QA_MANUAL_FINDINGS.md` |
@@ -40,8 +41,8 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 ## What Works
 
 - Full monorepo build: schema, validator, core, importer-dxf, CLI, viewer.
-- CLI commands: `validate`, `import-dxf`, `pack-scene`, `inspect-dxf`, `stage-viewer-scene`, `scene-outliers`, `layout-content`.
-- `.kairo` package format: standard deflated ZIP container with custom extension. `pack-scene` writes packages, `validate` reads packages, and the viewer opens `.kairo` files through the same local file picker/drop path as raw DXF.
+- CLI commands: `validate`, `import-dxf`, `pack-scene`, `inspect-dxf`, `stage-viewer-scene`, `scene-outliers`, `layout-content`, `package-qa`.
+- `.kairo` package format: standard deflated ZIP container with custom extension. `pack-scene` writes packages, `validate` reads packages, and the viewer opens `.kairo` files through the same local file picker/drop path as raw DXF. `--redact-source-paths` removes local directory paths from packaged manifest/source-map entries while preserving source file names.
 - DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains, TEXT, ATTDEF (default value or tag fallback), MTEXT (via direct ENTITIES-section scanner).
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
 - INSERT expansion: up to two levels deep (parent + one nested child), curve-only blocks, uniform scale (positive or negative mirror), Z-axis rotation, z-offset flattening.
@@ -71,6 +72,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - ISSUE-019 semantic QA support: viewer can download `scott-semantic-qa-report.md`, a deterministic Markdown review report covering required Scott labels, association status/confidence, candidate groups, risk markers, reviewer columns, and known limits. Non-browser machine QA found and correctly classified all four required labels, but `7B-070L-DN1` and `7B-070L-DN2` are ambiguous geometry associations. George completed targeted manual visual QA and confirmed DN1/DN2 visually match the intended dunnage/rack geometry. ISSUE-019 is DONE for the required labels.
 - ISSUE-018 semantic review persistence: viewer can export/import a separate `kairo-semantic-review.json` file containing a full effective semantic device snapshot, existing override map, reviewer confirmations/notes, required-label rows, scene fingerprint, and stale/mismatch warnings. This does not change the staged scene format or `.kairo` package format.
 - Scott layout content coverage pack: `kairo layout-content` generates a deterministic Markdown + CSV inventory for Scott/domain review from the staged scene and optional raw DXF audit. Current output lives in `specs/investigations/scott-layout-content-coverage/` and includes layer/entity counts, text labels, semantic items, top DXF blocks, coverage risks, and reviewer columns. It intentionally omits local paths and timestamps and does not claim visual correctness.
+- Scott `.kairo` package QA: `kairo package-qa` generated `C:\tmp\kairo-scott-package-qa\scott-dxf2013-import-redacted.kairo` and `specs/investigations/SCOTT_KAIRO_PACKAGE_QA.md`. Machine QA passed: validation 0/0/0, counts match, 28 package geometry entries, 9,835,317 bytes, and 0 local source paths in the packaged scene. Manual browser open/drop confirmation is still pending.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
@@ -105,7 +107,7 @@ Known visual issues still requiring work:
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
 1. Review the Scott layout content coverage pack with Scott and capture missing/wrong content.
 2. QA the ISSUE-018 review JSON import/export workflow on the Scott staged scene.
-3. **ISSUE-020** - `.kairo` package QA and sharing workflow.
+3. **ISSUE-020** - `.kairo` package browser open/drop confirmation.
 4. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
 5. Text visual QA / alignment polish
 6. Coordinate precision audit

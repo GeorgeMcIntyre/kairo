@@ -7,6 +7,12 @@ import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildLayoutContentCoveragePack, writeLayoutContentCoveragePack } from "./layoutContentReport";
+import {
+  buildPackageQaResult,
+  createPackageQaArchive,
+  redactScenePackageSourcePaths,
+  renderPackageQaMarkdown
+} from "./packageQaReport";
 import { computeOutlierBlockSummary, findOutliers, flattenCurveEntities } from "./sceneOutliers";
 
 type CliIo = {
@@ -270,10 +276,12 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
 }
 
 async function packSceneCommand(args: string[], io: CliIo): Promise<number> {
-  const [scenePath, outputPath] = args;
+  const redactSourcePaths = args.includes("--redact-source-paths");
+  const positional = args.filter((arg) => arg !== "--redact-source-paths");
+  const [scenePath, outputPath] = positional;
 
   if (!scenePath || !outputPath) {
-    io.stderr("Kairo scene package failed\n- ERROR MISSING_PACK_ARGS: Usage: kairo pack-scene <scene-path> <output.kairo>\n");
+    io.stderr("Kairo scene package failed\n- ERROR MISSING_PACK_ARGS: Usage: kairo pack-scene <scene-path> <output.kairo> [--redact-source-paths]\n");
     return 1;
   }
 
@@ -291,7 +299,8 @@ async function packSceneCommand(args: string[], io: CliIo): Promise<number> {
     }
 
     const scenePackage = scenePackageSchema.parse(sceneData);
-    const archive = createKairoPackage(scenePackage, { createdBy: "kairo cli" });
+    const packagedScene = redactSourcePaths ? redactScenePackageSourcePaths(scenePackage) : scenePackage;
+    const archive = createKairoPackage(packagedScene, { createdBy: "kairo cli" });
     const absoluteOutputPath = path.resolve(outputPath);
     await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
     await writeFile(absoluteOutputPath, archive);
@@ -302,6 +311,7 @@ async function packSceneCommand(args: string[], io: CliIo): Promise<number> {
         `Scene: ${scenePackage.scene.nodes.find((node) => node.id === scenePackage.scene.rootNodeId)?.displayName ?? scenePackage.scene.rootNodeId}`,
         `Input: ${path.resolve(scenePath)}`,
         `Output: ${absoluteOutputPath}`,
+        `Source paths: ${redactSourcePaths ? "redacted to file names" : "preserved"}`,
         `Package bytes: ${archive.byteLength}`
       ].join("\n") + "\n"
     );
@@ -594,6 +604,93 @@ async function layoutContentCommand(args: string[], io: CliIo): Promise<number> 
   }
 }
 
+async function packageQaCommand(args: string[], io: CliIo): Promise<number> {
+  const positional: string[] = [];
+  let reportPath: string | undefined;
+  const redactSourcePaths = args.includes("--redact-source-paths");
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--redact-source-paths") {
+      continue;
+    }
+    if (arg === "--report") {
+      reportPath = args[i + 1];
+      if (!reportPath) {
+        io.stderr("Kairo package-qa failed\n- ERROR MISSING_REPORT_PATH: --report requires a Markdown report path.\n");
+        return 1;
+      }
+      i++;
+    } else {
+      positional.push(arg);
+    }
+  }
+
+  const [scenePath, outputPath] = positional;
+  if (!scenePath || !outputPath) {
+    io.stderr("Kairo package-qa failed\n- ERROR MISSING_PACKAGE_QA_ARGS: Usage: kairo package-qa <scene-path> <output.kairo> [--redact-source-paths] [--report report.md]\n");
+    return 1;
+  }
+
+  if (path.extname(outputPath).toLowerCase() !== ".kairo") {
+    io.stderr("Kairo package-qa failed\n- ERROR INVALID_PACKAGE_PATH: Output file must use the .kairo extension.\n");
+    return 1;
+  }
+
+  try {
+    const sceneData = await loadScenePackageFromPath(scenePath);
+    const originalValidation = validateScenePackage(sceneData);
+    if (!originalValidation.valid) {
+      io.stderr(`${formatInvalidOutput(originalValidation)}\n`);
+      return 1;
+    }
+
+    const scenePackage = scenePackageSchema.parse(sceneData);
+    const { archive, loaded } = createPackageQaArchive(scenePackage, redactSourcePaths);
+    const packagedValidation = validateScenePackage(loaded.scenePackage);
+    const absoluteOutputPath = path.resolve(outputPath);
+    await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
+    await writeFile(absoluteOutputPath, archive);
+
+    const result = buildPackageQaResult(
+      scenePackage,
+      loaded.scenePackage,
+      originalValidation,
+      packagedValidation,
+      archive.byteLength,
+      loaded.packageIndex,
+      redactSourcePaths ? "redacted" : "preserved"
+    );
+
+    if (reportPath) {
+      const absoluteReportPath = path.resolve(reportPath);
+      await mkdir(path.dirname(absoluteReportPath), { recursive: true });
+      await writeFile(absoluteReportPath, renderPackageQaMarkdown(result));
+    }
+
+    io.stdout(
+      [
+        "Kairo package QA passed",
+        `Scene: ${result.original.rootName}`,
+        `Output: ${absoluteOutputPath}`,
+        reportPath ? `Report: ${path.resolve(reportPath)}` : "",
+        `Source paths: ${result.sourcePathMode}`,
+        `Package bytes: ${result.packageBytes}`,
+        `Packaged validation: ${packagedValidation.summary.errors} errors, ${packagedValidation.summary.warnings} warnings, ${packagedValidation.summary.infos} infos`,
+        `Counts match: ${result.countsMatch}`,
+        `Local source paths in package: ${result.localPathCount}`
+      ]
+        .filter(Boolean)
+        .join("\n") + "\n"
+    );
+    return result.packagedValidation.valid && result.countsMatch && (redactSourcePaths ? result.localPathCount === 0 : true) ? 0 : 1;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo package-qa failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
 export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   const [command, ...args] = argv;
 
@@ -625,8 +722,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return layoutContentCommand(args, io);
   }
 
+  if (command === "package-qa") {
+    return packageQaCommand(args, io);
+  }
+
   const message =
-    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N] | kairo layout-content <scene-path> [--dxf input.dxf] --output-dir <dir>";
+    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> [--redact-source-paths] | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N] | kairo layout-content <scene-path> [--dxf input.dxf] --output-dir <dir> | kairo package-qa <scene-path> <output.kairo> [--redact-source-paths] [--report report.md]";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }
