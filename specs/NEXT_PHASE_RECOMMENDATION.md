@@ -22,9 +22,11 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Caps broad semantic overlay lists while preserving selected items, and keeps local DXF opens drawing-first by collapsing the Semantics panel by default.
 - Provides advanced layout JSON/CSV/Markdown export and a Scott semantic QA Markdown report.
 - Has non-browser Scott semantic machine QA findings recorded as partial: all four required labels classify correctly, while `7B-070L-DN1` and `7B-070L-DN2` remain ambiguous geometry associations.
+- Has targeted manual semantic QA PASS recorded by George for the required labels, including visual confirmation that DN1/DN2 correspond to the intended dunnage/rack geometry.
+- Provides file-based semantic review JSON import/export for reviewed device snapshots, overrides, reviewer confirmations, required-label rows, and scene mismatch warnings.
 - Verification must be rerun after integration. The viewer build is expected to report the chunk-size warning only.
 
-POC readiness: ~89%. Do not raise this to ~92% until ISSUE-019 manual visual QA is captured.
+POC readiness: ~92% after targeted ISSUE-019 manual PASS and ISSUE-018 file-based review JSON persistence. Keep it below production readiness until review JSON workflow QA, `.kairo` package sharing QA, drawing-first UI polish, and deployment checks are complete.
 
 ---
 
@@ -43,35 +45,31 @@ POC readiness: ~89%. Do not raise this to ~92% until ISSUE-019 manual visual QA 
 
 ## Recommended Priority Order
 
-### 1 - ISSUE-019: Scott DXF semantic association QA pass (P1, NOW)
+### 1 - ISSUE-018: Review JSON workflow QA (P1, NOW)
 
-QA support is ready through `scott-semantic-qa-report.md`, `specs/investigations/SCOTT_SEMANTIC_QA_RUNBOOK.md`, `specs/investigations/SCOTT_SEMANTIC_QA_FINDINGS_TEMPLATE.md`, and `specs/investigations/SCOTT_SEMANTIC_QA_MACHINE_FINDINGS.md`. Machine QA passed classification for all required labels but is partial overall because `7B-070L-DN1` and `7B-070L-DN2` are ambiguous geometry associations. George still needs to manually inspect high-value labels and linked/candidate geometry in the primary Scott DXF staged scene, then record false positives, ambiguous associations, and unlinked labels. Required labels: `7B-020L-04` is a robot/device number, not a station; `7B-070L-DN1` and `7B-070L-DN2` are dunnage stations; `7B-060L-1N` is a nest.
+Open the Scott staged scene, confirm the four required labels, set review status/notes, download `kairo-semantic-review.json`, refresh/reopen the scene, import the review JSON, and confirm overrides/reviewer fields restore without local paths or stale device warnings.
 
-### 2 - ISSUE-018: Persist reviewed semantic devices and overrides (P1, BLOCKED/GATED)
-
-Add a small project-level semantic model for confirmed class overrides, geometry association overrides, unlinked labels, and warnings. Reload it with the staged scene so user corrections survive refresh/export. This remains gated until ISSUE-019 manual visual QA is PASS, or a manual PARTIAL result explicitly lists semantic fixes to make first.
-
-### 3 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
+### 2 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
 
 Create a `.kairo` package from the primary Scott import, open it through the viewer on the shared test port, and confirm other domain users can load the package without staged public scene assets.
 
-### 4 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
+### 3 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
 
 Maximize canvas space. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers should become the main side panel. Diagnostics should be collapsed by default. Tree panel should be optional or hidden by default.
 
-### 5 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
+### 4 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
 
 Manual CAD/browser QA is still needed for dense label areas. Fix only specific, proven placement/readability issues; otherwise record screenshots and keep importer/schema changes parked.
 
-### 6 - ISSUE-015: Coordinate precision audit (P2, NEXT)
+### 5 - ISSUE-015: Coordinate precision audit (P2, NEXT)
 
 Audit world-space coordinate precision for the Scott DXF. Facility coordinates are at roughly 116k mm; with single-precision float in Three.js this may cause high-zoom jitter.
 
-### 7 - ISSUE-016: Cloudflare deploy check (P1, NEXT)
+### 6 - ISSUE-016: Cloudflare deploy check (P1, NEXT)
 
 Confirm Pages settings, local dist contents, `_redirects`, and staged scene payload. Use the CLI `stage-viewer-scene` command; there is no viewer `stage` script.
 
-### 8 - ISSUE-017: CAD Exchanger GLB primitive probe (P2, NEXT - research only)
+### 7 - ISSUE-017: CAD Exchanger GLB primitive probe (P2, NEXT - research only)
 
 Research only. Do not implement an exporter. First prove CAD Exchanger behavior with a small GLB probe covering LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback, material/layer preservation, and coordinate precision.
 
@@ -93,12 +91,13 @@ Research only. Do not implement an exporter. First prove CAD Exchanger behavior 
 
 ## What Done Looks Like After Priority 1-8
 
+- Review JSON workflow is manually QA'd on the primary Scott layout.
 - `.kairo` package sharing works for the primary Scott layout.
-- Scott DXF semantic associations have a documented manual QA pass.
-- Reviewed semantic corrections can be saved and reloaded only after ISSUE-019 passes or has an explicit PARTIAL gate decision.
+- Scott DXF semantic associations have a documented targeted manual QA pass.
+- Reviewed semantic corrections can be saved and reloaded through review JSON.
 - Canvas-dominant viewer layout with collapsible panels.
 - Text visual QA notes are captured; any remaining alignment issues are labeled "needs manual QA."
 - Coordinate precision has a written pass/fail recommendation.
 - Cloudflare staging/deploy steps reference real commands.
 - CAD Exchanger probe results identify which GLB primitives and metadata survive import.
-- POC readiness remains ~89% until the manual semantic QA and persistence gate are resolved; diagnostics/export support alone is not enough to claim ~92%.
+- POC readiness remains around ~92% until review JSON workflow QA, package sharing, viewer polish, and deployment checks are resolved.

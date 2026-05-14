@@ -979,6 +979,31 @@ button:hover {
   font-weight: 700;
 }
 
+.semantic-copy-status.warning {
+  color: #ffd37a;
+}
+
+.semantic-review-decision {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8aa2b6;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.semantic-review-decision select {
+  height: 28px;
+  border: 1px solid #34445c;
+  border-radius: 4px;
+  background: #111927;
+  color: #c9d4df;
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+}
+
 .semantic-validation-lists {
   display: grid;
   gap: 12px;
@@ -1158,6 +1183,11 @@ button:hover {
   gap: 8px;
 }
 
+.semantic-review-controls {
+  display: grid;
+  gap: 8px;
+}
+
 .semantic-full-text {
   max-height: 9em;
   overflow: auto;
@@ -1178,15 +1208,46 @@ button:hover {
   text-transform: uppercase;
 }
 
-.semantic-override-controls select {
+.semantic-review-controls label {
+  display: grid;
+  gap: 4px;
+  color: #6a8499;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.semantic-review-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.semantic-review-checkbox input {
+  margin: 0;
+}
+
+.semantic-override-controls select,
+.semantic-review-controls select,
+.semantic-review-controls textarea {
   min-width: 0;
-  height: 30px;
   border: 1px solid #34445c;
   border-radius: 4px;
   background: #111927;
   color: #c9d4df;
   font: inherit;
   font-size: 12px;
+}
+
+.semantic-override-controls select,
+.semantic-review-controls select {
+  height: 30px;
+}
+
+.semantic-review-controls textarea {
+  min-height: 70px;
+  padding: 7px 8px;
+  line-height: 1.35;
+  resize: vertical;
 }
 
 .semantic-override-controls button {

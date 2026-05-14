@@ -53,6 +53,18 @@ import {
 } from "./semantic/semanticSummary";
 import { buildScottSemanticQaReport, exportScottSemanticQaMarkdown } from "./semantic/semanticQaReport";
 import {
+  buildSemanticReviewDocument,
+  buildSemanticReviewFingerprint,
+  exportSemanticReviewJson,
+  parseSemanticReviewDocument,
+  reconcileSemanticReviewDocument,
+  semanticReviewStateWithPatch,
+  type SemanticGeometryReviewStatus,
+  type SemanticReviewDecision,
+  type SemanticReviewStateMap,
+  type SemanticReviewStatus
+} from "./semantic/semanticReview";
+import {
   collectTextItems,
   SceneTextOverlay,
   type LabelDensityMode,
@@ -866,6 +878,7 @@ function LayerPanel({
 
 export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const reviewFileInputRef = useRef<HTMLInputElement | null>(null);
   const sceneLoadSerialRef = useRef(0);
   const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
@@ -887,6 +900,10 @@ export function App() {
   const [semanticOverlayEnabled, setSemanticOverlayEnabled] = useState(false);
   const [selectedSemantic, setSelectedSemantic] = useState<SemanticSelection | undefined>();
   const [semanticDeviceOverrides, setSemanticDeviceOverrides] = useState<SemanticOverrideMap>({});
+  const [semanticReviewStates, setSemanticReviewStates] = useState<SemanticReviewStateMap>({});
+  const [semanticReviewDecision, setSemanticReviewDecision] = useState<SemanticReviewDecision>("draft");
+  const [semanticReviewWarnings, setSemanticReviewWarnings] = useState<string[]>([]);
+  const [semanticReviewStatus, setSemanticReviewStatus] = useState<string | undefined>();
   const [semanticFilters, setSemanticFilters] = useState<SemanticValidationFilters>({
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
@@ -983,6 +1000,33 @@ export function App() {
     () => buildScottSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path),
     [layoutSemantics, scenePackage.manifest.source.path]
   );
+  const semanticReviewFingerprint = useMemo(
+    () => buildSemanticReviewFingerprint(scenePackage, layoutSemantics),
+    [scenePackage, layoutSemantics]
+  );
+  const semanticReviewDocument = useMemo(
+    () =>
+      buildSemanticReviewDocument({
+        scenePackage,
+        semantics: layoutSemantics,
+        devices: semanticSummary.devices,
+        requiredLabels: semanticQaReport.requiredLabels,
+        overrides: semanticDeviceOverrides,
+        review: semanticReviewStates,
+        decision: semanticReviewDecision,
+        warnings: semanticReviewWarnings
+      }),
+    [
+      scenePackage,
+      layoutSemantics,
+      semanticSummary.devices,
+      semanticQaReport.requiredLabels,
+      semanticDeviceOverrides,
+      semanticReviewStates,
+      semanticReviewDecision,
+      semanticReviewWarnings
+    ]
+  );
   const advancedLayoutModel = useMemo(
     () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
     [scenePackage, layoutSemantics]
@@ -1014,6 +1058,7 @@ export function App() {
   const selectedSemanticDevice =
     selectedSemantic?.kind === "device" ? semanticDevicesById.get(selectedSemantic.id) : undefined;
   const selectedSemanticOverride = selectedSemanticDevice ? semanticDeviceOverrides[selectedSemanticDevice.id] : undefined;
+  const selectedSemanticReview = selectedSemanticDevice ? semanticReviewStates[selectedSemanticDevice.id] : undefined;
   const visibleSemanticStations = semanticValidation.stations.slice(0, 28);
   const visibleSemanticDevices = semanticValidation.devices.slice(0, 48);
   const visibleUnknownText = semanticValidation.unknownTextEntities.slice(0, 20);
@@ -1084,6 +1129,10 @@ export function App() {
       setSelectedEntity(undefined);
       setSelectedSemantic(undefined);
       setSemanticDeviceOverrides({});
+      setSemanticReviewStates({});
+      setSemanticReviewDecision("draft");
+      setSemanticReviewWarnings([]);
+      setSemanticReviewStatus(undefined);
       setSemanticFilters({ ...DEFAULT_SEMANTIC_VALIDATION_FILTERS });
       setHiddenLayerIds(new Set());
       setShowOutliers(false);
@@ -1243,6 +1292,10 @@ export function App() {
 
   useEffect(() => {
     setSemanticDeviceOverrides({});
+    setSemanticReviewStates({});
+    setSemanticReviewDecision("draft");
+    setSemanticReviewWarnings([]);
+    setSemanticReviewStatus(undefined);
   }, [scenePackage]);
 
   const updateSelectedDeviceOverride = (patch: SemanticDeviceOverride) => {
@@ -1253,6 +1306,14 @@ export function App() {
         ...(current[selectedSemanticDevice.id] ?? {}),
         ...patch
       }
+    }));
+  };
+
+  const updateSelectedDeviceReview = (patch: Partial<SemanticReviewStateMap[string]>) => {
+    if (!selectedSemanticDevice) return;
+    setSemanticReviewStates((current) => ({
+      ...current,
+      [selectedSemanticDevice.id]: semanticReviewStateWithPatch(current[selectedSemanticDevice.id], patch)
     }));
   };
 
@@ -1288,6 +1349,50 @@ export function App() {
 
   const downloadSemanticQaReport = () => {
     downloadTextFile("scott-semantic-qa-report.md", exportScottSemanticQaMarkdown(semanticQaReport), "text/markdown");
+  };
+
+  const downloadSemanticReview = () => {
+    downloadTextFile("kairo-semantic-review.json", exportSemanticReviewJson(semanticReviewDocument), "application/json");
+    setSemanticReviewStatus("Downloaded review JSON");
+  };
+
+  const openSemanticReviewPicker = () => {
+    reviewFileInputRef.current?.click();
+  };
+
+  const loadSemanticReviewFile = async (file: File) => {
+    if (semanticAnalysisStatus !== "ready") {
+      setSemanticReviewStatus("Wait for semantic analysis before opening review JSON");
+      return;
+    }
+
+    try {
+      const reviewDocument = parseSemanticReviewDocument(JSON.parse(await file.text()));
+      const reconciled = reconcileSemanticReviewDocument(
+        reviewDocument,
+        semanticReviewFingerprint,
+        layoutSemantics.devices.map((device) => device.id)
+      );
+      setSemanticDeviceOverrides(reconciled.overrides);
+      setSemanticReviewStates(reconciled.review);
+      setSemanticReviewDecision(reviewDocument.decision);
+      setSemanticReviewWarnings(reconciled.warnings);
+      setSemanticReviewStatus(
+        reconciled.warnings.length > 0
+          ? `Loaded review JSON with ${reconciled.warnings.length} warning(s)`
+          : "Loaded review JSON"
+      );
+    } catch (error) {
+      setSemanticReviewStatus(error instanceof Error ? `Review JSON failed: ${error.message}` : "Review JSON failed");
+    }
+  };
+
+  const handleSemanticReviewInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) {
+      void loadSemanticReviewFile(file);
+    }
   };
 
   const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
@@ -1335,6 +1440,13 @@ export function App() {
               accept=".dxf,.kairo"
               className="file-input"
               onChange={handleLocalFileInputChange}
+              type="file"
+            />
+            <input
+              ref={reviewFileInputRef}
+              accept=".json,application/json"
+              className="file-input"
+              onChange={handleSemanticReviewInputChange}
               type="file"
             />
             <button onClick={openLocalFilePicker} type="button">
@@ -1713,6 +1825,24 @@ export function App() {
             <button onClick={downloadSemanticQaReport} type="button">
               Download QA MD
             </button>
+            <button onClick={openSemanticReviewPicker} type="button">
+              Open review JSON
+            </button>
+            <button onClick={downloadSemanticReview} type="button">
+              Download review JSON
+            </button>
+            <label className="semantic-review-decision">
+              <span>Decision</span>
+              <select
+                value={semanticReviewDecision}
+                onChange={(event) => setSemanticReviewDecision(event.target.value as SemanticReviewDecision)}
+              >
+                <option value="draft">Draft</option>
+                <option value="pass">Pass</option>
+                <option value="partial">Partial</option>
+                <option value="fail">Fail</option>
+              </select>
+            </label>
             <span className="semantic-action-divider" aria-hidden="true" />
             <button onClick={() => copyAdvancedLayoutExport("json")} type="button">
               Copy AE JSON
@@ -1735,6 +1865,16 @@ export function App() {
             {semanticCopyStatus ? (
               <span className="semantic-copy-status" role="status">
                 {semanticCopyStatus}
+              </span>
+            ) : null}
+            {semanticReviewStatus ? (
+              <span className="semantic-copy-status" role="status">
+                {semanticReviewStatus}
+              </span>
+            ) : null}
+            {semanticReviewWarnings.length > 0 ? (
+              <span className="semantic-copy-status warning" role="status">
+                {semanticReviewWarnings.length} review warning(s)
               </span>
             ) : null}
           </div>
@@ -2016,6 +2156,59 @@ export function App() {
                       <button onClick={clearSelectedDeviceOverride} type="button">
                         Revert override
                       </button>
+                    </div>
+                  </dd>
+                  <dt>Review</dt>
+                  <dd>
+                    <div className="semantic-review-controls">
+                      <label>
+                        <span>Class check</span>
+                        <select
+                          value={selectedSemanticReview?.classificationStatus ?? "unreviewed"}
+                          onChange={(event) =>
+                            updateSelectedDeviceReview({
+                              classificationStatus: event.target.value as SemanticReviewStatus
+                            })
+                          }
+                        >
+                          <option value="unreviewed">Unreviewed</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="incorrect">Incorrect</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Geometry check</span>
+                        <select
+                          value={selectedSemanticReview?.geometryStatus ?? "unreviewed"}
+                          onChange={(event) =>
+                            updateSelectedDeviceReview({
+                              geometryStatus: event.target.value as SemanticGeometryReviewStatus
+                            })
+                          }
+                        >
+                          <option value="unreviewed">Unreviewed</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="incorrect">Incorrect</option>
+                          <option value="not-applicable">Not applicable</option>
+                        </select>
+                      </label>
+                      <label className="semantic-review-checkbox">
+                        <input
+                          checked={selectedSemanticReview?.needsOverride ?? false}
+                          onChange={(event) => updateSelectedDeviceReview({ needsOverride: event.target.checked })}
+                          type="checkbox"
+                        />
+                        <span>Needs override</span>
+                      </label>
+                      <label>
+                        <span>Notes</span>
+                        <textarea
+                          onChange={(event) => updateSelectedDeviceReview({ notes: event.target.value })}
+                          placeholder="Reviewer notes"
+                          rows={3}
+                          value={selectedSemanticReview?.notes ?? ""}
+                        />
+                      </label>
                     </div>
                   </dd>
                 </>

@@ -6,11 +6,11 @@ Scene: `apps/viewer/public/scenes/scott-dxf2013-import`
 
 ## Verdict
 
-Machine QA = PARTIAL  
-Manual visual QA = PENDING  
-ISSUE-018 = still gated
+Machine QA = PARTIAL
+Manual visual QA = completed after this machine run
+ISSUE-018 = ungated after manual PASS
 
-All four required labels were found and classified as the expected semantic kind. Geometry association is not fully accepted by machine checks because `7B-070L-DN1` and `7B-070L-DN2` are ambiguous and have no linked entity IDs. Manual visual geometry confirmation is still pending.
+All four required labels were found and classified as the expected semantic kind. Geometry association was not fully accepted by machine checks because `7B-070L-DN1` and `7B-070L-DN2` are ambiguous and have no linked entity IDs. George later completed targeted manual visual QA and confirmed the intended DN1/DN2 dunnage geometry in `SCOTT_SEMANTIC_QA_MANUAL_FINDINGS.md`.
 
 ## Commands Run
 
@@ -65,12 +65,12 @@ The test also asserts deterministic Markdown export behavior, reviewer columns, 
 - `7B-070L-DN1` and `7B-070L-DN2` classify correctly as dunnage, but both are ambiguous and require visual review before they can be accepted as quote evidence or persistence input.
 - The machine report found no missing required labels and no unlinked required labels.
 - Automated association remains heuristic evidence only. It cannot prove that linked or candidate geometry visually matches the intended Scott layout equipment.
-- Manual visual geometry confirmation is still pending.
+- Manual visual geometry confirmation is captured separately in `SCOTT_SEMANTIC_QA_MANUAL_FINDINGS.md`.
 
 ## Decision
 
-Machine QA = PARTIAL  
-Manual visual QA = PENDING  
-ISSUE-018 = still gated
+Machine QA = PARTIAL
+Manual visual QA = PASS
+ISSUE-018 = ungated
 
-Do not start ISSUE-018 until manual visual QA confirms the linked/ambiguous geometry decisions or records exact semantic fixes required before persistence.
+The machine ambiguity remains useful metadata for persistence, but manual QA accepted the required dunnage associations as visually useful for this reviewed scene.

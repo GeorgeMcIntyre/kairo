@@ -637,7 +637,7 @@ Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB pro
 
 ## ISSUE-018 — Persist reviewed semantic devices and overrides
 
-- **Status:** BLOCKED (GATED)
+- **Status:** DONE (file-based review JSON v1; manual workflow QA next)
 - **Priority:** P1
 
 **Goal:**
@@ -647,7 +647,7 @@ Save user-confirmed semantic device records, class overrides, geometry associati
 Session overrides are useful for review, but they disappear on refresh. Persistence is only worthwhile after the current semantic associations prove useful on the Scott layout.
 
 **Gate:**
-Do not start until ISSUE-019 manual QA is PASS, or a PARTIAL result explicitly lists semantic fixes to make before persistence.
+ISSUE-019 targeted manual QA is PASS. The v1 implementation uses a separate review JSON file and does not change `.kairo` packages or staged scene payloads.
 
 **Not allowed:**
 - Do not replace the staged scene format
@@ -661,7 +661,7 @@ Do not start until ISSUE-019 manual QA is PASS, or a PARTIAL result explicitly l
 
 ## ISSUE-019 — Scott DXF semantic association QA pass
 
-- **Status:** NOW — QA support ready / manual review pending
+- **Status:** DONE — targeted manual PASS captured
 - **Priority:** P1
 
 **Goal:**
@@ -678,6 +678,8 @@ Export-first QA diagnostics are available through `scott-semantic-qa-report.md`,
 - `specs/investigations/SCOTT_SEMANTIC_QA_CHECKLIST.md`
 - `specs/investigations/SCOTT_SEMANTIC_QA_FINDINGS_TEMPLATE.md`
 - `specs/investigations/ISSUE_019_DEMO_READINESS_NOTE.md`
+- `specs/investigations/SCOTT_SEMANTIC_QA_MACHINE_FINDINGS.md`
+- `specs/investigations/SCOTT_SEMANTIC_QA_MANUAL_FINDINGS.md`
 
 **Required labels:**
 - `7B-020L-04` — robot/device number, not station
@@ -721,8 +723,8 @@ Export-first QA diagnostics are available through `scott-semantic-qa-report.md`,
 | ISSUE-015 | Coordinate precision audit | NEXT | P2 |
 | ISSUE-016 | Cloudflare deploy check | NEXT | P1 |
 | ISSUE-017 | CAD Exchanger GLB primitive probe | NEXT | P2 |
-| ISSUE-018 | Persist reviewed semantic devices and overrides | BLOCKED (GATED) | P1 |
-| ISSUE-019 | Scott DXF semantic association QA pass | NOW — QA support ready / manual review pending | P1 |
+| ISSUE-018 | Persist reviewed semantic devices and overrides | DONE — review JSON v1 / workflow QA next | P1 |
+| ISSUE-019 | Scott DXF semantic association QA pass | DONE — targeted manual PASS captured | P1 |
 | ISSUE-006 | Layer controls and isolate workflow | LATER | P1 |
 | ISSUE-010 | Fast viewer QA workflow documentation | LATER | P1 |
 | ISSUE-012 | Claude skills for Kairo | LATER | P2 |
