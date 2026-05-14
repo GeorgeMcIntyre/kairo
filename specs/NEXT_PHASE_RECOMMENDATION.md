@@ -19,13 +19,14 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Provides session-only correction controls and JSON/Markdown semantic summary export.
 - Supports local `.dxf` import and `.kairo` package open/drop. `.kairo` packages are ZIP-backed neutral scene packages created with `pack-scene`; `package-qa` can generate a redacted share package and compare package round-trip counts.
 - Includes lightweight performance diagnostics for browser DXF load stages, importer parse/build stages, semantic analysis, viewport batch build, render setup, and first render in the existing Diagnostics panel.
-- Caps broad semantic overlay lists while preserving selected items, and keeps local DXF opens drawing-first by collapsing the Semantics panel by default.
+- Caps broad semantic overlay lists while preserving selected items, and keeps loaded scenes drawing-first by collapsing Layers, Inspector, Semantics, and Diagnostics by default.
 - Provides advanced layout JSON/CSV/Markdown export and a Scott semantic QA Markdown report.
 - Has non-browser Scott semantic machine QA findings recorded as partial: all four required labels classify correctly, while `7B-070L-DN1` and `7B-070L-DN2` remain ambiguous geometry associations.
 - Has targeted manual semantic QA PASS recorded by George for the required labels, including visual confirmation that DN1/DN2 correspond to the intended dunnage/rack geometry.
 - Provides file-based semantic review JSON import/export for reviewed device snapshots, overrides, reviewer confirmations, required-label rows, and scene mismatch warnings.
 - Provides a Scott layout content coverage pack at `specs/investigations/scott-layout-content-coverage/` with imported layer/entity counts, raw DXF block/text audit counts, label inventory, semantic item inventory, coverage risks, and reviewer columns for Scott feedback.
 - Has Scott `.kairo` package machine QA recorded in `specs/investigations/SCOTT_KAIRO_PACKAGE_QA.md`: redacted package validates, counts match the staged scene, and local source paths are removed. Manual browser open/drop confirmation is still pending.
+- Includes scoped drawing-first viewer polish: a compact drawing status strip, panel quick toggles, and automatic Inspector opening after geometry/semantic selection.
 - Verification must be rerun after integration. The viewer build is expected to report the chunk-size warning only.
 
 POC readiness: ~92% after targeted ISSUE-019 manual PASS and ISSUE-018 file-based review JSON persistence. Keep it below production readiness until review JSON workflow QA, `.kairo` package sharing QA, drawing-first UI polish, and deployment checks are complete.
@@ -59,9 +60,9 @@ Open the Scott staged scene, confirm the four required labels, set review status
 
 Open `C:\tmp\kairo-scott-package-qa\scott-dxf2013-import-redacted.kairo` through the viewer on the shared test port and confirm it loads without staged public scene assets. Machine package QA has already passed.
 
-### 4 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
+### 4 - ISSUE-004: Drawing-first viewer UI browser review (P1, NEXT)
 
-Maximize canvas space. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers should become the main side panel. Diagnostics should be collapsed by default. Tree panel should be optional or hidden by default.
+Review the scoped drawing-first implementation on the Scott staged scene and redacted `.kairo` package. Confirm the canvas-first default, compact status strip, quick panel toggles, and automatic Inspector opening are practical before broader UI redesign work.
 
 ### 5 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
 
@@ -101,7 +102,7 @@ Research only. Do not implement an exporter. First prove CAD Exchanger behavior 
 - `.kairo` package machine QA has passed for the primary Scott layout; browser open/drop confirmation remains pending.
 - Scott DXF semantic associations have a documented targeted manual QA pass.
 - Reviewed semantic corrections can be saved and reloaded through review JSON.
-- Canvas-dominant viewer layout with collapsible panels.
+- Canvas-dominant viewer layout with collapsible panels has a scoped implementation and needs browser review.
 - Text visual QA notes are captured; any remaining alignment issues are labeled "needs manual QA."
 - Coordinate precision has a written pass/fail recommendation.
 - Cloudflare staging/deploy steps reference real commands.
