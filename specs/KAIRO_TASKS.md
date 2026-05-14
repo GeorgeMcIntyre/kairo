@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-05-13
+Last updated: 2026-05-14
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -9,11 +9,11 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ### ISSUE-019: Scott DXF semantic association QA pass (P1)
 
-**Status:** QA support ready / manual review pending.
+**Status:** QA support ready / machine QA partial / manual review pending.
 
 **Goal:** Manually inspect the primary Scott DXF staged scene and record whether high-value labels such as `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N` link to the expected nearby geometry. Tune only proven association thresholds or layer/block hints.
 
-**Current checkpoint:** Export-first QA support exists through `scott-semantic-qa-report.md`, plus the manual runbook, checklist, findings template, and demo note in `specs/investigations/`. ISSUE-019 is not DONE until George fills the manual findings/checklist and confirms whether associations are useful.
+**Current checkpoint:** Export-first QA support exists through `scott-semantic-qa-report.md`, plus the manual runbook, checklist, findings template, demo note, and machine findings in `specs/investigations/`. Non-browser machine QA found and correctly classified `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N`; `7B-070L-DN1` and `7B-070L-DN2` remain ambiguous geometry associations. ISSUE-019 is not DONE until George fills the manual findings/checklist and confirms whether associations are useful.
 
 **Not allowed:** Rewrite viewer batching, create per-entity Three.js objects, hardcode the Scott DXF path into production code, or begin persistence.
 
@@ -115,7 +115,7 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
 
-**Blocked by:** ISSUE-019 manual visual QA. Do not start until the result is PASS, or a PARTIAL result lists the exact semantic fixes required before persistence.
+**Blocked by:** ISSUE-019 manual visual QA. Machine QA is partial because the required dunnage labels classify correctly but remain ambiguous geometry associations. Do not start until manual QA is PASS, or a manual PARTIAL result lists the exact semantic fixes required before persistence.
 
 **Goal:** Save user-confirmed semantic device records, class overrides, geometry association overrides, and unlinked warnings to a project-level JSON model that can be reloaded with the staged scene.
 
