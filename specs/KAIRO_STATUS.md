@@ -6,19 +6,20 @@ Last updated: 2026-05-14
 
 - Branch: `codex/kairo-viewer-semantics-integrated`
 - HEAD before package/ISSUE-019 integration: `b34d5ad feat: add advanced layout exports`
-- Current checkpoint includes `.kairo` package support, viewer diagnostics, ISSUE-019 semantic QA diagnostics, and a non-browser Scott semantic machine QA pass with partial association findings.
+- Current checkpoint includes `.kairo` package support, viewer diagnostics, ISSUE-019 semantic QA diagnostics, a non-browser Scott semantic machine QA pass with partial association findings, targeted manual semantic QA PASS, and ISSUE-018 review JSON persistence work.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 283/283 passed |
+| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 287/287 passed |
 | `pnpm.cmd typecheck` | Clean |
-| `pnpm.cmd build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
+| `pnpm.cmd build` | Clean (viewer bundle ~879 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
-| `pnpm.cmd test apps/viewer/src/semantic/scottSemanticQa.integration.test.ts -- --minWorkers=1 --maxWorkers=1` | Passed; Machine QA partial / manual visual QA pending |
+| `pnpm.cmd test apps/viewer/src/semantic/scottSemanticQa.integration.test.ts -- --minWorkers=1 --maxWorkers=1` | Passed; Machine QA partial |
+| Targeted manual semantic QA | PASS; see `specs/investigations/SCOTT_SEMANTIC_QA_MANUAL_FINDINGS.md` |
 
 ## Current Staged Scott Scene
 
@@ -66,7 +67,8 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Advanced layout exports: viewer can export a concept-quote oriented model as JSON, CSV, or Markdown with lines, stations, devices, annotations, warnings, review items, and summary counts.
-- ISSUE-019 semantic QA support: viewer can download `scott-semantic-qa-report.md`, a deterministic Markdown review report covering required Scott labels, association status/confidence, candidate groups, risk markers, reviewer columns, and known limits. Non-browser machine QA found and correctly classified all four required labels, but `7B-070L-DN1` and `7B-070L-DN2` are ambiguous geometry associations. Machine QA partial / manual visual QA pending. Manual runbook/findings docs exist under `specs/investigations/`.
+- ISSUE-019 semantic QA support: viewer can download `scott-semantic-qa-report.md`, a deterministic Markdown review report covering required Scott labels, association status/confidence, candidate groups, risk markers, reviewer columns, and known limits. Non-browser machine QA found and correctly classified all four required labels, but `7B-070L-DN1` and `7B-070L-DN2` are ambiguous geometry associations. George completed targeted manual visual QA and confirmed DN1/DN2 visually match the intended dunnage/rack geometry. ISSUE-019 is DONE for the required labels.
+- ISSUE-018 semantic review persistence: viewer can export/import a separate `kairo-semantic-review.json` file containing a full effective semantic device snapshot, existing override map, reviewer confirmations/notes, required-label rows, scene fingerprint, and stale/mismatch warnings. This does not change the staged scene format or `.kairo` package format.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
@@ -89,8 +91,8 @@ Known visual issues still requiring work:
 - Text overlay does not collision-detect or z-order against curves.
 - Direct raw DXF browser upload and `.kairo` package upload are implemented; staged public scenes are still useful for fixed demos.
 - Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
-- ISSUE-019 manual visual QA has not been captured yet. Machine QA partial results are recorded in `specs/investigations/SCOTT_SEMANTIC_QA_MACHINE_FINDINGS.md`, but semantic associations are not accepted as persistence input.
-- Manual semantic overrides are session-only and are not persisted to a project file yet.
+- ISSUE-019 manual visual QA is captured as a targeted PASS for the required labels. Machine QA partial results remain recorded in `specs/investigations/SCOTT_SEMANTIC_QA_MACHINE_FINDINGS.md`.
+- Review JSON persistence exists in the viewer, but it is a file-based v1 workflow rather than backend/browser autosave or `.kairo` embedding.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable; CAD Exchanger is the temporary JT bridge direction only.
 - No CI pipeline; tests run locally only.
@@ -99,8 +101,8 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. Complete ISSUE-019 manual semantic association QA on the Scott DXF using `specs/investigations/SCOTT_SEMANTIC_QA_RUNBOOK.md`, `specs/investigations/SCOTT_SEMANTIC_QA_FINDINGS_TEMPLATE.md`, and the machine partial findings in `specs/investigations/SCOTT_SEMANTIC_QA_MACHINE_FINDINGS.md`.
-2. Start ISSUE-018 persistence only after ISSUE-019 manual QA is PASS, or after a PARTIAL result lists required semantic fixes.
+1. QA the ISSUE-018 review JSON import/export workflow on the Scott staged scene.
+2. **ISSUE-020** - `.kairo` package QA and sharing workflow.
 3. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
 4. Text visual QA / alignment polish
 5. Coordinate precision audit
