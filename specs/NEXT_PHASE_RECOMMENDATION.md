@@ -27,7 +27,7 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Provides a Scott layout content coverage pack at `specs/investigations/scott-layout-content-coverage/` with imported layer/entity counts, raw DXF block/text audit counts, label inventory, semantic item inventory, coverage risks, and reviewer columns for Scott feedback.
 - Has Scott `.kairo` package machine QA recorded in `specs/investigations/SCOTT_KAIRO_PACKAGE_QA.md`: redacted package validates, counts match the staged scene, and local source paths are removed. Manual browser open/drop confirmation is still pending.
 - Includes scoped drawing-first viewer polish: a compact drawing status strip, panel quick toggles, and automatic Inspector opening after geometry/semantic selection.
-- Includes a clean large-DXF loading pass and performance review artifact at `specs/investigations/SCOTT_VIEWER_PERFORMANCE_REVIEW.md`; browser Diagnostics timing capture remains the next performance validation step.
+- Includes a clean large-DXF loading pass with workerized browser DXF import and semantic analysis plus a performance review artifact at `specs/investigations/SCOTT_VIEWER_PERFORMANCE_REVIEW.md`; browser Diagnostics timing capture remains the next performance validation step.
 - Verification must be rerun after integration. The viewer build is expected to report the chunk-size warning only.
 
 POC readiness: ~92% after targeted ISSUE-019 manual PASS and ISSUE-018 file-based review JSON persistence. Keep it below production readiness until review JSON workflow QA, `.kairo` package sharing QA, drawing-first UI polish, and deployment checks are complete.

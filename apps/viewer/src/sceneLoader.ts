@@ -1,6 +1,7 @@
 import { scenePackageSchema, type GeometryDocument, type SceneDocument, type ScenePackage } from "@kairo/schema";
 import { readKairoPackage } from "@kairo/core";
 import type { DxfImportResult, DxfImportTimingStage } from "@kairo/importer-dxf/browser";
+import type { DxfImportWorkerResponse } from "./dxfImport.worker";
 import manifest from "../../../examples/example-scene/manifest.json";
 import scene from "../../../examples/example-scene/scene.json";
 import meshGeometry from "../../../examples/example-scene/geometry/bracket.mesh.json";
@@ -63,10 +64,13 @@ export type SceneLoadProgress = {
 
 export type SceneLoadOptions = {
   onProgress?: (progress: SceneLoadProgress) => void;
+  useWorker?: boolean;
 };
 
 const dxfFilePattern = /\.dxf$/i;
 const kairoFilePattern = /\.kairo$/i;
+const browserWorkerAvailable = () => typeof Worker !== "undefined";
+let dxfImportRequestId = 0;
 
 export const sampleScenePackage = scenePackageSchema.parse({
   manifest,
@@ -163,14 +167,20 @@ export async function loadDxfFileScenePackage(file: File, options: SceneLoadOpti
   const text = await file.text();
   recordStage("file-read", fileReadStartedAt);
 
+  const useWorker = options.useWorker ?? browserWorkerAvailable();
   const moduleLoadStartedAt = performance.now();
-  options.onProgress?.({ phase: "importer-module-load", label: "Loading DXF importer" });
-  const { importDxfTextToKairo } = await import("@kairo/importer-dxf/browser");
+  options.onProgress?.({
+    phase: "importer-module-load",
+    label: useWorker ? "Starting DXF worker" : "Loading DXF importer"
+  });
+  const importer = useWorker ? undefined : await import("@kairo/importer-dxf/browser");
   recordStage("importer-module-load", moduleLoadStartedAt);
 
   const importStartedAt = performance.now();
-  options.onProgress?.({ phase: "dxf-import", label: "Importing DXF" });
-  const result = await importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
+  options.onProgress?.({ phase: "dxf-import", label: useWorker ? "Importing DXF in worker" : "Importing DXF" });
+  const result = useWorker
+    ? await importDxfTextWithWorker(fileName, text)
+    : await importer!.importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
   recordStage("dxf-import", importStartedAt);
 
   return {
@@ -231,4 +241,32 @@ export async function loadLocalSceneFilePackage(file: File, options: SceneLoadOp
   }
 
   throw new Error("Only .dxf and .kairo files can be opened.");
+}
+
+function importDxfTextWithWorker(fileName: string, text: string): Promise<DxfImportResult> {
+  const id = ++dxfImportRequestId;
+  const worker = new Worker(new URL("./dxfImport.worker.ts", import.meta.url), { type: "module" });
+
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent<DxfImportWorkerResponse>) => {
+      if (event.data.id !== id) return;
+      worker.terminate();
+      if (event.data.ok) {
+        resolve(event.data.result);
+        return;
+      }
+
+      const error = new Error(event.data.error.message);
+      error.name = event.data.error.name ?? "DxfImportWorkerError";
+      if (event.data.error.stack) error.stack = event.data.error.stack;
+      reject(error);
+    };
+
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "DXF import worker failed."));
+    };
+
+    worker.postMessage({ id, fileName, text });
+  });
 }

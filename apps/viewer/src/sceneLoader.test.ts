@@ -143,9 +143,10 @@ describe("viewer scene loader", () => {
     ).rejects.toSatisfy(isPublicSceneAssetLoadError);
   });
 
-  it("loads a local DXF file through the browser importer", async () => {
+  it("loads a local DXF file through the direct importer fallback", async () => {
     const progress: string[] = [];
     const loaded = await loadDxfFileScenePackage(new File([oneLineDxf], "uploaded.dxf"), {
+      useWorker: false,
       onProgress: (entry) => progress.push(`${entry.phase}:${entry.label}`)
     });
 
@@ -192,6 +193,7 @@ describe("viewer scene loader", () => {
     const dxfProgress: string[] = [];
     const kairoProgress: string[] = [];
     const dxfLoaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "uploaded.dxf"), {
+      useWorker: false,
       onProgress: (entry) => dxfProgress.push(entry.phase)
     });
     const kairoLoaded = await loadLocalSceneFilePackage(
