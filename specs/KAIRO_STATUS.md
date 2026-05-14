@@ -13,7 +13,7 @@ Last updated: 2026-05-13
 
 | Check | Result |
 |---|---|
-| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | Integration verification required after cherry-pick |
+| `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1` | 281/281 passed |
 | `pnpm.cmd typecheck` | Clean |
 | `pnpm.cmd build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
