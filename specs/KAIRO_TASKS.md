@@ -7,6 +7,18 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## NOW
 
+### Scott layout content coverage review with Scott (P1)
+
+**Status:** Coverage pack generated; waiting for Scott/domain review.
+
+**Goal:** Use `specs/investigations/scott-layout-content-coverage/README.md` and the paired CSV files to let Scott confirm expected layout content, missing items, and wrong classifications without relying on visual browser inspection alone.
+
+**Current checkpoint:** The pack includes imported layer/entity counts, raw DXF block/text audit counts, label inventory, semantic item inventory, and coverage risks. Reviewer columns are included in the CSV files for Scott feedback.
+
+**Not allowed:** Treat the coverage pack as proof of visual correctness, start DXF block-instance extraction, or change importer coverage until Scott identifies specific missing/wrong content.
+
+---
+
 ### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
 
 **Status:** Implemented for file-based v1 review JSON persistence; manual workflow QA next.
@@ -120,6 +132,18 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-022: Scott layout content coverage pack (P1)
+
+**Completed:** 2026-05-14
+
+Added `kairo layout-content <scene-path> [--dxf input.dxf] --output-dir <dir>` and generated `specs/investigations/scott-layout-content-coverage/`.
+
+Outputs include Markdown summary plus `layers.csv`, `labels.csv`, `semantic-items.csv`, `dxf-blocks.csv`, and `coverage-risks.csv`.
+
+Machine content inventory is available for Scott/domain review. Manual visual geometry confirmation remains separate.
+
+---
 
 ### ISSUE-019: Scott DXF semantic association QA pass (P1)
 

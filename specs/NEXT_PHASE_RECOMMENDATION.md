@@ -24,6 +24,7 @@ ISSUE-001, ISSUE-002, ISSUE-003, granular batched picking, zoom-to-cursor, seman
 - Has non-browser Scott semantic machine QA findings recorded as partial: all four required labels classify correctly, while `7B-070L-DN1` and `7B-070L-DN2` remain ambiguous geometry associations.
 - Has targeted manual semantic QA PASS recorded by George for the required labels, including visual confirmation that DN1/DN2 correspond to the intended dunnage/rack geometry.
 - Provides file-based semantic review JSON import/export for reviewed device snapshots, overrides, reviewer confirmations, required-label rows, and scene mismatch warnings.
+- Provides a Scott layout content coverage pack at `specs/investigations/scott-layout-content-coverage/` with imported layer/entity counts, raw DXF block/text audit counts, label inventory, semantic item inventory, coverage risks, and reviewer columns for Scott feedback.
 - Verification must be rerun after integration. The viewer build is expected to report the chunk-size warning only.
 
 POC readiness: ~92% after targeted ISSUE-019 manual PASS and ISSUE-018 file-based review JSON persistence. Keep it below production readiness until review JSON workflow QA, `.kairo` package sharing QA, drawing-first UI polish, and deployment checks are complete.
@@ -45,31 +46,35 @@ POC readiness: ~92% after targeted ISSUE-019 manual PASS and ISSUE-018 file-base
 
 ## Recommended Priority Order
 
-### 1 - ISSUE-018: Review JSON workflow QA (P1, NOW)
+### 1 - Scott layout content coverage review with Scott (P1, NOW)
+
+Send or review the coverage pack with Scott. Capture which expected layout items are present, missing, misclassified, or need importer follow-up. Do not start DXF block-instance extraction until Scott identifies specific missing/wrong content.
+
+### 2 - ISSUE-018: Review JSON workflow QA (P1, NOW)
 
 Open the Scott staged scene, confirm the four required labels, set review status/notes, download `kairo-semantic-review.json`, refresh/reopen the scene, import the review JSON, and confirm overrides/reviewer fields restore without local paths or stale device warnings.
 
-### 2 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
+### 3 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
 
 Create a `.kairo` package from the primary Scott import, open it through the viewer on the shared test port, and confirm other domain users can load the package without staged public scene assets.
 
-### 3 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
+### 4 - ISSUE-004: Drawing-first viewer UI (P1, NEXT)
 
 Maximize canvas space. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers should become the main side panel. Diagnostics should be collapsed by default. Tree panel should be optional or hidden by default.
 
-### 4 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
+### 5 - ISSUE-014: Text visual QA / alignment polish (P1, NEXT)
 
 Manual CAD/browser QA is still needed for dense label areas. Fix only specific, proven placement/readability issues; otherwise record screenshots and keep importer/schema changes parked.
 
-### 5 - ISSUE-015: Coordinate precision audit (P2, NEXT)
+### 6 - ISSUE-015: Coordinate precision audit (P2, NEXT)
 
 Audit world-space coordinate precision for the Scott DXF. Facility coordinates are at roughly 116k mm; with single-precision float in Three.js this may cause high-zoom jitter.
 
-### 6 - ISSUE-016: Cloudflare deploy check (P1, NEXT)
+### 7 - ISSUE-016: Cloudflare deploy check (P1, NEXT)
 
 Confirm Pages settings, local dist contents, `_redirects`, and staged scene payload. Use the CLI `stage-viewer-scene` command; there is no viewer `stage` script.
 
-### 7 - ISSUE-017: CAD Exchanger GLB primitive probe (P2, NEXT - research only)
+### 8 - ISSUE-017: CAD Exchanger GLB primitive probe (P2, NEXT - research only)
 
 Research only. Do not implement an exporter. First prove CAD Exchanger behavior with a small GLB probe covering LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback, material/layer preservation, and coordinate precision.
 

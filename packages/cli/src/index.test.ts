@@ -208,6 +208,28 @@ describe("kairo validate", () => {
     expect(result.stdout).not.toContain(".json / .md");
   });
 
+  it("generates a layout content coverage pack", async () => {
+    const outputDir = path.join(tempRoot, "layout-content");
+    const result = await captureCli(["layout-content", sampleScenePath, "--dxf", dxfFixturePath, "--output-dir", outputDir]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo layout-content coverage passed\n");
+    expect(result.stdout).toContain("Files: README.md, layers.csv, labels.csv, semantic-items.csv, dxf-blocks.csv, coverage-risks.csv\n");
+
+    const readme = await readFile(path.join(outputDir, "README.md"), "utf8");
+    expect(readme).toContain("# Scott Layout Content Coverage");
+    expect(readme).toContain("Manual visual geometry confirmation is still pending.");
+    expect(readme).not.toContain(repoRoot);
+    expect(readme).not.toContain("C:\\Users\\");
+    expect(readme).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    expect(await readFile(path.join(outputDir, "layers.csv"), "utf8")).toContain("reviewer_result,reviewer_notes");
+    expect(await readFile(path.join(outputDir, "labels.csv"), "utf8")).toContain("semantic_item_type");
+    expect(await readFile(path.join(outputDir, "semantic-items.csv"), "utf8")).toContain("candidate_group_ids");
+    expect(await readFile(path.join(outputDir, "dxf-blocks.csv"), "utf8")).toContain("block_name,insert_count");
+    expect(await readFile(path.join(outputDir, "coverage-risks.csv"), "utf8")).toContain("risk,severity,count");
+  });
+
   it("stages a validated exploded scene for the viewer public scene loader", async () => {
     const stagedRoot = path.join(tempRoot, "viewer-scenes");
     process.env.KAIRO_VIEWER_PUBLIC_SCENES_DIR = stagedRoot;

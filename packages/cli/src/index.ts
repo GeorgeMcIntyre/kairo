@@ -6,6 +6,7 @@ import { validateScenePackage } from "@kairo/validator";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildLayoutContentCoveragePack, writeLayoutContentCoveragePack } from "./layoutContentReport";
 import { computeOutlierBlockSummary, findOutliers, flattenCurveEntities } from "./sceneOutliers";
 
 type CliIo = {
@@ -536,6 +537,63 @@ async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> 
   }
 }
 
+async function layoutContentCommand(args: string[], io: CliIo): Promise<number> {
+  const positional: string[] = [];
+  let dxfPath: string | undefined;
+  let outputDir: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--dxf") {
+      dxfPath = args[i + 1];
+      if (!dxfPath) {
+        io.stderr("Kairo layout-content failed\n- ERROR MISSING_DXF_PATH: --dxf requires an input DXF path.\n");
+        return 1;
+      }
+      i++;
+    } else if (arg === "--output-dir") {
+      outputDir = args[i + 1];
+      if (!outputDir) {
+        io.stderr("Kairo layout-content failed\n- ERROR MISSING_OUTPUT_DIR: --output-dir requires a directory path.\n");
+        return 1;
+      }
+      i++;
+    } else {
+      positional.push(arg);
+    }
+  }
+
+  const scenePath = positional[0];
+  if (!scenePath || !outputDir) {
+    io.stderr("Kairo layout-content failed\n- ERROR MISSING_LAYOUT_CONTENT_ARGS: Usage: kairo layout-content <scene-path> [--dxf input.dxf] --output-dir <dir>\n");
+    return 1;
+  }
+
+  try {
+    const sceneData = await loadScenePackageFromPath(scenePath);
+    const validationReport = validateScenePackage(sceneData);
+    const scenePackage = scenePackageSchema.parse(sceneData);
+    const dxfInventory = dxfPath ? await analyzeDxfBlocks(dxfPath) : undefined;
+    const pack = buildLayoutContentCoveragePack(scenePackage, validationReport, dxfInventory);
+    await writeLayoutContentCoveragePack(pack, outputDir);
+
+    io.stdout(
+      [
+        "Kairo layout-content coverage passed",
+        `Scene: ${scenePackage.scene.nodes.find((node) => node.id === scenePackage.scene.rootNodeId)?.displayName ?? scenePackage.scene.rootNodeId}`,
+        `Output: ${path.resolve(outputDir)}`,
+        `Files: README.md, layers.csv, labels.csv, semantic-items.csv, dxf-blocks.csv, coverage-risks.csv`,
+        `Validation: ${validationReport.summary.errors} errors, ${validationReport.summary.warnings} warnings, ${validationReport.summary.infos} infos`
+      ].join("\n") + "\n"
+    );
+    return 0;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo layout-content failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
 export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   const [command, ...args] = argv;
 
@@ -563,8 +621,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return sceneOutliersCommand(args, io);
   }
 
+  if (command === "layout-content") {
+    return layoutContentCommand(args, io);
+  }
+
   const message =
-    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
+    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N] | kairo layout-content <scene-path> [--dxf input.dxf] --output-dir <dir>";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

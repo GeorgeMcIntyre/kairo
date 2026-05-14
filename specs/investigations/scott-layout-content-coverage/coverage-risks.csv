@@ -1,0 +1,6 @@
+risk,severity,count,details,reviewer_result,reviewer_notes
+BLOCK_TEXT_SKIPPED,warning,20,Some partially expanded blocks contain text/attributes that were skipped.,,
+HARD_TRANSFORM_BLOCKED_INSERTS,warning,108,Some INSERTs have non-uniform or negative transforms that are not fully expanded.,,
+NESTED_INSERTS_PRESENT,warning,314,Nested INSERTs exist in source blocks and may need targeted import review.,,
+SEMANTIC_REVIEW_REQUIRED,warning,1,80 device label(s) have ambiguous nearby geometry.,,
+SEMANTIC_REVIEW_REQUIRED,warning,1,948 text label(s) are unclassified.,,
