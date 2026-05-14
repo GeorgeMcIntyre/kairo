@@ -40,6 +40,7 @@ The Scott staged semantic machine QA test loads the staged scene and runs robust
 - Browser DXF import now runs in a module Web Worker when `Worker` is available, with the direct importer kept as the Node/test fallback.
 - Semantic analysis now runs in a module Web Worker when `Worker` is available, with the direct analyzer kept as the Node/test fallback.
 - Importer layer grouping was changed from repeated array cloning to in-place layer bucket appends. On the primary Scott DXF, the Node importer baseline before output writing dropped from roughly 72.9 seconds to roughly 4.5 seconds on this machine.
+- Curve batch creation now pre-counts rendered line segments and fills a `Float32Array` directly, avoiding per-point `THREE.Vector3` allocations and an extra positions-array conversion during first render setup.
 - Public scene loading emits progress phases for manifest and geometry reads.
 - Heavy semantic export artifacts are computed only when requested:
   - semantic summary export

@@ -14,7 +14,7 @@ export type CurveSegmentPickEntry = PickableCurveEntity & {
 };
 
 export type CurveBatchData = {
-  positions: number[];
+  positions: Float32Array;
   pickEntriesBySegment: CurveSegmentPickEntry[];
 };
 
@@ -24,6 +24,29 @@ export type CurveBatchOptions = {
 
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
+
+function segmentCountForEntity(entity: DrawingEntity): number {
+  if (entity.type === "line") return 1;
+  if (entity.type === "polyline") return Math.max(entity.points.length - 1 + (entity.closed ? 1 : 0), 0);
+  if (entity.type === "circle") return CIRCLE_SEGMENTS;
+  if (entity.type === "arc") return ARC_SEGMENTS;
+  return 0;
+}
+
+function pushSegment(
+  positions: Float32Array,
+  offset: number,
+  start: readonly number[],
+  end: readonly number[]
+): number {
+  positions[offset] = start[0] ?? 0;
+  positions[offset + 1] = start[1] ?? 0;
+  positions[offset + 2] = start[2] ?? 0;
+  positions[offset + 3] = end[0] ?? 0;
+  positions[offset + 4] = end[1] ?? 0;
+  positions[offset + 5] = end[2] ?? 0;
+  return offset + 6;
+}
 
 export function pointsForCircle(entity: Extract<DrawingEntity, { type: "circle" }>) {
   const points: THREE.Vector3[] = [];
@@ -83,15 +106,21 @@ export function createCurveBatchData(
   fallbackLayerId?: string,
   options: CurveBatchOptions = {}
 ): CurveBatchData {
-  const positions: number[] = [];
+  let segmentCount = 0;
+  for (const entity of geometry.entities) {
+    if (options.hiddenEntityIds?.has(entity.id)) continue;
+    segmentCount += segmentCountForEntity(entity);
+  }
+
+  const positions = new Float32Array(segmentCount * 6);
   const pickEntriesBySegment: CurveSegmentPickEntry[] = [];
+  let positionOffset = 0;
 
   for (const entity of geometry.entities) {
     if (options.hiddenEntityIds?.has(entity.id)) {
       continue;
     }
 
-    const points = pointsForEntity(entity);
     const pickable: PickableCurveEntity = {
       entityId: entity.id,
       sourceRef: entity.sourceRef,
@@ -99,18 +128,67 @@ export function createCurveBatchData(
       layerId: entity.layerId ?? fallbackLayerId ?? geometry.layerId
     };
 
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const startVertexIndex = positions.length / 3;
-      const segmentIndex = pickEntriesBySegment.length;
-      const entry = {
+    const pushPickEntry = () => {
+      pickEntriesBySegment.push({
         ...pickable,
-        startVertexIndex,
-        segmentIndex
-      };
-      positions.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
-      pickEntriesBySegment.push(entry);
+        startVertexIndex: positionOffset / 3,
+        segmentIndex: pickEntriesBySegment.length
+      });
+    };
+
+    if (entity.type === "line") {
+      pushPickEntry();
+      positionOffset = pushSegment(positions, positionOffset, entity.start, entity.end);
+      continue;
+    }
+
+    if (entity.type === "polyline") {
+      for (let i = 0; i < entity.points.length - 1; i += 1) {
+        pushPickEntry();
+        positionOffset = pushSegment(positions, positionOffset, entity.points[i], entity.points[i + 1]);
+      }
+      if (entity.closed && entity.points.length > 1) {
+        pushPickEntry();
+        positionOffset = pushSegment(positions, positionOffset, entity.points[entity.points.length - 1], entity.points[0]);
+      }
+      continue;
+    }
+
+    if (entity.type === "circle") {
+      let previous: [number, number, number] = [entity.center[0] + entity.radius, entity.center[1], entity.center[2]];
+      for (let i = 1; i <= CIRCLE_SEGMENTS; i += 1) {
+        const angle = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+        const next: [number, number, number] = [
+          entity.center[0] + Math.cos(angle) * entity.radius,
+          entity.center[1] + Math.sin(angle) * entity.radius,
+          entity.center[2]
+        ];
+        pushPickEntry();
+        positionOffset = pushSegment(positions, positionOffset, previous, next);
+        previous = next;
+      }
+      continue;
+    }
+
+    if (entity.type === "arc") {
+      const start = THREE.MathUtils.degToRad(entity.startAngleDeg);
+      const end = THREE.MathUtils.degToRad(entity.endAngleDeg);
+      let previous: [number, number, number] = [
+        entity.center[0] + Math.cos(start) * entity.radius,
+        entity.center[1] + Math.sin(start) * entity.radius,
+        entity.center[2]
+      ];
+      for (let i = 1; i <= ARC_SEGMENTS; i += 1) {
+        const angle = start + ((end - start) * i) / ARC_SEGMENTS;
+        const next: [number, number, number] = [
+          entity.center[0] + Math.cos(angle) * entity.radius,
+          entity.center[1] + Math.sin(angle) * entity.radius,
+          entity.center[2]
+        ];
+        pushPickEntry();
+        positionOffset = pushSegment(positions, positionOffset, previous, next);
+        previous = next;
+      }
     }
   }
 
