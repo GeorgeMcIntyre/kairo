@@ -4,8 +4,10 @@ import {
   type CircleEntity,
   type DxfGlobalObject,
   type EntityCommons,
+  type EllipseEntity,
   type LineEntity,
-  type LWPolylineEntity
+  type LWPolylineEntity,
+  type SplineEntity
 } from "@dxfjs/parser";
 import {
   formatName,
@@ -80,8 +82,8 @@ type DxfBlockEntityCollections = {
   inserts: EntityCommons[];
   points: EntityCommons[];
   texts: EntityCommons[];
-  splines: EntityCommons[];
-  ellipses: EntityCommons[];
+  splines: SplineEntity[];
+  ellipses: EllipseEntity[];
   solids: EntityCommons[];
   solid3ds: EntityCommons[];
   face3ds: EntityCommons[];
@@ -298,6 +300,65 @@ function lwPolylineToEntity(entity: LWPolylineEntity, fallbackIndex: number): Dr
   };
 }
 
+function ellipsePoints(entity: EllipseEntity): Array<[number, number, number]> {
+  const cx = entity.centerX ?? 0;
+  const cy = entity.centerY ?? 0;
+  const cz = entity.centerZ ?? 0;
+  const majorX = entity.majorAxisX ?? 0;
+  const majorY = entity.majorAxisY ?? 0;
+  const ratio = entity.ratioOfMinorAxisToMajorAxis ?? 1;
+  const minorX = -majorY * ratio;
+  const minorY = majorX * ratio;
+  const start = entity.startParameter ?? 0;
+  let end = entity.endParameter ?? Math.PI * 2;
+  while (end < start) {
+    end += Math.PI * 2;
+  }
+  const sweep = end - start;
+  const segmentCount = Math.max(12, Math.min(144, Math.ceil(Math.abs(sweep) / (Math.PI / 36))));
+  return Array.from({ length: segmentCount + 1 }, (_, index) => {
+    const t = start + (sweep * index) / segmentCount;
+    return point(cx + majorX * Math.cos(t) + minorX * Math.sin(t), cy + majorY * Math.cos(t) + minorY * Math.sin(t), cz);
+  });
+}
+
+function isFullEllipse(entity: EllipseEntity) {
+  const start = entity.startParameter ?? 0;
+  let end = entity.endParameter ?? Math.PI * 2;
+  while (end < start) {
+    end += Math.PI * 2;
+  }
+  return Math.abs(end - start - Math.PI * 2) < 1e-6;
+}
+
+function ellipseToEntity(entity: EllipseEntity, fallbackIndex: number): DrawingEntity {
+  return {
+    ...entityBase(entity, "polyline", fallbackIndex),
+    type: "polyline",
+    points: ellipsePoints(entity),
+    closed: isFullEllipse(entity)
+  };
+}
+
+function splinePoints(entity: SplineEntity): Array<[number, number, number]> {
+  const points = (entity.fitPoints?.length ?? 0) >= 2 ? entity.fitPoints : entity.controlPoints ?? [];
+  return points.map((record) => point(record.x, record.y, record.z ?? 0));
+}
+
+function splineToEntity(entity: SplineEntity, fallbackIndex: number): DrawingEntity | null {
+  const points = splinePoints(entity);
+  if (points.length < 2) {
+    return null;
+  }
+
+  return {
+    ...entityBase(entity, "polyline", fallbackIndex),
+    type: "polyline",
+    points,
+    closed: (entity.flags & 1) === 1
+  };
+}
+
 function sampleBulgeSegment(start: LwPolylineVertex, end: LwPolylineVertex, z: number): Array<[number, number, number]> {
   const bulge = start.bulge ?? 0;
   const startX = start.x ?? 0;
@@ -405,14 +466,14 @@ function insertScale(insert: DxfInsertEntity) {
   };
 }
 
-function hardInsertTransformReason(insert: DxfInsertEntity) {
+function hasNonUniformXYScale(insert: DxfInsertEntity) {
   const scale = insertScale(insert);
-  const absX = Math.abs(scale.x);
-  const absY = Math.abs(scale.y);
-  const absZ = Math.abs(scale.z);
-  const reasons: string[] = [];
-  if (Math.abs(absX - absY) > 1e-9 || Math.abs(absX - absZ) > 1e-9) reasons.push("non-uniform scale");
-  return reasons.join(", ");
+  return Math.abs(Math.abs(scale.x) - Math.abs(scale.y)) > 1e-9;
+}
+
+function insertTextScale(insert: DxfInsertEntity) {
+  const scale = insertScale(insert);
+  return (Math.abs(scale.x) + Math.abs(scale.y)) / 2;
 }
 
 function hasMirrorAxes(insert: DxfInsertEntity) {
@@ -432,10 +493,8 @@ function blockSkippableEntityTypes(block: DxfBlockDefinition) {
   const skippable: string[] = [];
   const entityGroups: Array<[string, EntityCommons[]]> = [
     ["ATTRIB", block.entities.attribs],
-    ["ELLIPSE", block.entities.ellipses],
     ["POINT", block.entities.points],
     ["SOLID", block.entities.solids],
-    ["SPLINE", block.entities.splines],
     ["3DFACE", block.entities.face3ds],
     ["3DSOLID", block.entities.solid3ds]
   ];
@@ -457,10 +516,8 @@ function blockSkippedEntityCounts(block: DxfBlockDefinition, skippableTypes: str
   const counts: string[] = [];
   const entityGroups: Array<[string, EntityCommons[]]> = [
     ["ATTRIB", block.entities.attribs],
-    ["ELLIPSE", block.entities.ellipses],
     ["POINT", block.entities.points],
     ["SOLID", block.entities.solids],
-    ["SPLINE", block.entities.splines],
     ["3DFACE", block.entities.face3ds],
     ["3DSOLID", block.entities.solid3ds]
   ];
@@ -592,6 +649,29 @@ function expandBlockLWPolyline(entity: LWPolylineEntity, insert: DxfInsertEntity
   };
 }
 
+function expandBlockEllipse(entity: EllipseEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  return {
+    ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
+    type: "polyline",
+    points: ellipsePoints(entity).map((vertex) => transformBlockPoint(vertex[0], vertex[1], vertex[2], insert, block)),
+    closed: isFullEllipse(entity)
+  };
+}
+
+function expandBlockSpline(entity: SplineEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity | null {
+  const points = splinePoints(entity);
+  if (points.length < 2) {
+    return null;
+  }
+
+  return {
+    ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
+    type: "polyline",
+    points: points.map((vertex) => transformBlockPoint(vertex[0], vertex[1], vertex[2], insert, block)),
+    closed: (entity.flags & 1) === 1
+  };
+}
+
 function expandBlockLegacyPolyline(
   entity: LegacyPolylineEntity,
   insert: DxfInsertEntity,
@@ -607,7 +687,41 @@ function expandBlockLegacyPolyline(
   };
 }
 
+function sampleCircle(cx: number, cy: number, radius: number, z: number): Array<[number, number, number]> {
+  const segmentCount = 96;
+  return Array.from({ length: segmentCount }, (_, index) => {
+    const angle = (Math.PI * 2 * index) / segmentCount;
+    return point(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius, z);
+  });
+}
+
+function sampleArc(cx: number, cy: number, radius: number, startAngleDeg: number, endAngleDeg: number, z: number): Array<[number, number, number]> {
+  const start = (startAngleDeg * Math.PI) / 180;
+  let end = (endAngleDeg * Math.PI) / 180;
+  while (end < start) {
+    end += Math.PI * 2;
+  }
+
+  const sweep = end - start;
+  const segmentCount = Math.max(2, Math.min(96, Math.ceil(Math.abs(sweep) / (Math.PI / 36))));
+  return Array.from({ length: segmentCount + 1 }, (_, index) => {
+    const angle = start + (sweep * index) / segmentCount;
+    return point(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius, z);
+  });
+}
+
 function expandBlockCircle(entity: CircleEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  if (hasNonUniformXYScale(insert)) {
+    return {
+      ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
+      type: "polyline",
+      points: sampleCircle(entity.centerX ?? 0, entity.centerY ?? 0, entity.radius ?? 0, entity.centerZ ?? 0).map((vertex) =>
+        transformBlockPoint(vertex[0], vertex[1], vertex[2], insert, block)
+      ),
+      closed: true
+    };
+  }
+
   return {
     ...expandedEntityBase("circle", insert, blockName, entity, fallbackIndex),
     type: "circle",
@@ -617,6 +731,17 @@ function expandBlockCircle(entity: CircleEntity, insert: DxfInsertEntity, block:
 }
 
 function expandBlockArc(entity: ArcEntity, insert: DxfInsertEntity, block: DxfBlockDefinition, blockName: string, fallbackIndex: number): DrawingEntity {
+  if (hasNonUniformXYScale(insert)) {
+    return {
+      ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
+      type: "polyline",
+      points: sampleArc(entity.centerX ?? 0, entity.centerY ?? 0, entity.radius ?? 0, entity.startAngle ?? 0, entity.endAngle ?? 0, entity.centerZ ?? 0).map((vertex) =>
+        transformBlockPoint(vertex[0], vertex[1], vertex[2], insert, block)
+      ),
+      closed: false
+    };
+  }
+
   const [startAngleDeg, endAngleDeg] = transformArcAngles(entity.startAngle, entity.endAngle, insert);
   return {
     ...expandedEntityBase("arc", insert, blockName, entity, fallbackIndex),
@@ -708,7 +833,7 @@ function expandBlockText(entity: DxfTextEntity, insert: DxfInsertEntity, block: 
   const useAlignment = h !== 0 || v !== 0;
   const secondPt = textSecondPoint(entity);
   const [x, y, z] = useAlignment ? secondPt : textInsertionPoint(entity);
-  const scaleMagnitude = Math.abs(insertScale(insert).x);
+  const scaleMagnitude = insertTextScale(insert);
   return {
     ...expandedEntityBase("text", insert, blockName, entity, fallbackIndex),
     type: "text",
@@ -729,7 +854,7 @@ function expandBlockAttdef(entity: DxfAttdefEntity, insert: DxfInsertEntity, blo
   const useAlignment = h !== 0 || v !== 0;
   const secondPt = attdefSecondPoint(entity);
   const [x, y, z] = useAlignment ? secondPt : textInsertionPoint(entity);
-  const scaleMagnitude = Math.abs(insertScale(insert).x);
+  const scaleMagnitude = insertTextScale(insert);
   return {
     ...expandedEntityBase("text", insert, blockName, entity, fallbackIndex),
     type: "text",
@@ -794,6 +919,25 @@ function convertEntities(parsed: DxfGlobalObject) {
     entities.push(converted);
     registerSource(converted, "ARC", entity.handle ?? converted.id);
   }
+  for (const entity of [...parsed.entities.ellipses].sort(byHandle)) {
+    const converted = ellipseToEntity(entity, index++);
+    entities.push(converted);
+    registerSource(converted, "ELLIPSE", entity.handle ?? converted.id, "Approximated as a polyline during DXF import.");
+  }
+  for (const entity of [...parsed.entities.splines].sort(byHandle)) {
+    const converted = splineToEntity(entity, index++);
+    if (converted) {
+      entities.push(converted);
+      registerSource(converted, "SPLINE", entity.handle ?? converted.id, "Approximated from fit/control points as a polyline during DXF import.");
+    } else {
+      warnings.push({
+        code: "DXF_SPLINE_UNSUPPORTED",
+        message: "DXF SPLINE had fewer than 2 fit/control points and was skipped.",
+        entityType: "SPLINE",
+        handle: entity.handle
+      });
+    }
+  }
 
   for (const entity of [...(parsed.entities.texts as unknown as DxfTextEntity[])].sort(byHandle)) {
     const converted = textToEntity(entity, index++);
@@ -847,15 +991,13 @@ function convertEntities(parsed: DxfGlobalObject) {
       continue;
     }
 
-    const hardReason = hardInsertTransformReason(entity);
-    if (hardReason) {
+    if (hasNonUniformXYScale(entity)) {
       warnings.push({
-        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-        message: `DXF INSERT transform is not supported by the simple expander (${hardReason}); entity was skipped.`,
+        code: "DXF_INSERT_NON_UNIFORM_FLATTENED",
+        message: `DXF INSERT non-uniform XY scale was expanded by transforming geometry points; block circles/arcs are approximated as polylines.`,
         entityType: "INSERT",
         handle: entity.handle
       });
-      continue;
     }
 
     const expandInsert = hasZOffset(entity) ? { ...entity, z: 0 } : entity;
@@ -907,6 +1049,25 @@ function convertEntities(parsed: DxfGlobalObject) {
       entities.push(converted);
       registerSource(converted, "ARC", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
     }
+    for (const child of [...block.entities.ellipses].sort(byHandle)) {
+      const converted = expandBlockEllipse(child, expandInsert, block, blockName, index++);
+      entities.push(converted);
+      registerSource(converted, "ELLIPSE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}; approximated as polyline.`);
+    }
+    for (const child of [...block.entities.splines].sort(byHandle)) {
+      const converted = expandBlockSpline(child, expandInsert, block, blockName, index++);
+      if (converted) {
+        entities.push(converted);
+        registerSource(converted, "SPLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}; approximated as polyline.`);
+      } else {
+        warnings.push({
+          code: "DXF_SPLINE_UNSUPPORTED",
+          message: "DXF SPLINE had fewer than 2 fit/control points and was skipped.",
+          entityType: "SPLINE",
+          handle: child.handle
+        });
+      }
+    }
     for (const child of [...block.entities.polylines].sort(byHandle)) {
       if (isSimpleLegacyPolyline(child)) {
         const converted = expandBlockLegacyPolyline(child, expandInsert, block, blockName, index++);
@@ -956,15 +1117,13 @@ function convertEntities(parsed: DxfGlobalObject) {
         continue;
       }
 
-      const childHardReason = hardInsertTransformReason(childInsertRaw);
-      if (childHardReason) {
+      if (hasNonUniformXYScale(childInsertRaw)) {
         warnings.push({
-          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-          message: `DXF INSERT transform is not supported by the simple expander (${childHardReason}); entity was skipped.`,
+          code: "DXF_INSERT_NON_UNIFORM_FLATTENED",
+          message: `DXF INSERT non-uniform XY scale was expanded by transforming geometry points; block circles/arcs are approximated as polylines.`,
           entityType: "INSERT",
           handle: childInsertRaw.handle
         });
-        continue;
       }
 
       const flatChildInsert = hasZOffset(childInsertRaw) ? { ...childInsertRaw, z: 0 } : childInsertRaw;
@@ -1018,6 +1177,25 @@ function convertEntities(parsed: DxfGlobalObject) {
         entities.push(converted);
         registerSource(converted, "ARC", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
       }
+      for (const grandchild of [...childBlock.entities.ellipses].sort(byHandle)) {
+        const converted = expandBlockEllipse(grandchild, composedInsert, childBlock, childBlockName, index++);
+        entities.push(converted);
+        registerSource(converted, "ELLIPSE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}; approximated as polyline.`);
+      }
+      for (const grandchild of [...childBlock.entities.splines].sort(byHandle)) {
+        const converted = expandBlockSpline(grandchild, composedInsert, childBlock, childBlockName, index++);
+        if (converted) {
+          entities.push(converted);
+          registerSource(converted, "SPLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}; approximated as polyline.`);
+        } else {
+          warnings.push({
+            code: "DXF_SPLINE_UNSUPPORTED",
+            message: "DXF SPLINE had fewer than 2 fit/control points and was skipped.",
+            entityType: "SPLINE",
+            handle: grandchild.handle
+          });
+        }
+      }
       for (const grandchild of [...childBlock.entities.polylines].sort(byHandle)) {
         if (isSimpleLegacyPolyline(grandchild)) {
           const converted = expandBlockLegacyPolyline(grandchild, composedInsert, childBlock, childBlockName, index++);
@@ -1057,8 +1235,6 @@ function convertEntities(parsed: DxfGlobalObject) {
 
   const unsupportedGroups: Array<[string, EntityCommons[]]> = [
     ["POINT", parsed.entities.points],
-    ["SPLINE", parsed.entities.splines],
-    ["ELLIPSE", parsed.entities.ellipses],
     ["SOLID", parsed.entities.solids],
     ["3DSOLID", parsed.entities.solid3ds],
     ["3DFACE", parsed.entities.face3ds],
