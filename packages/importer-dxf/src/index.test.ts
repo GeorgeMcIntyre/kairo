@@ -326,6 +326,63 @@ describe("importDxfToKairo", () => {
     }
   });
 
+  it("imports legacy POLYLINE bulge arcs as sampled polyline points", async () => {
+    const content = dxf([
+      "0", "SECTION", "2", "HEADER", "9", "$INSUNITS", "70", "4", "0", "ENDSEC",
+      ...dxfLayerTable,
+      "0", "SECTION", "2", "ENTITIES",
+      "0", "POLYLINE", "5", "BULGE1", "8", "CUT", "66", "1", "70", "0",
+      "0", "VERTEX", "5", "BV1", "8", "CUT", "10", "0", "20", "0", "30", "0", "42", "1",
+      "0", "VERTEX", "5", "BV2", "8", "CUT", "10", "10", "20", "0", "30", "0",
+      "0", "SEQEND", "5", "BSEQ", "8", "CUT",
+      "0", "ENDSEC",
+      "0", "EOF"
+    ]);
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(0);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set") {
+        const polyline = geometry.entities[0];
+        expect(polyline.type).toBe("polyline");
+        if (polyline.type === "polyline") {
+          expect(polyline.points.length).toBeGreaterThan(2);
+          expectPointClose(polyline.points[0], [0, 0, 0]);
+          expectPointClose(polyline.points[polyline.points.length - 1], [10, 0, 0]);
+        }
+      }
+    });
+  });
+
+  it("imports 3D legacy POLYLINE vertex chains for fixture footprints", async () => {
+    const content = dxf([
+      "0", "SECTION", "2", "HEADER", "9", "$INSUNITS", "70", "4", "0", "ENDSEC",
+      ...dxfLayerTable,
+      "0", "SECTION", "2", "ENTITIES",
+      "0", "POLYLINE", "5", "P3D1", "8", "CUT", "66", "1", "70", "8",
+      "0", "VERTEX", "5", "PV1", "8", "CUT", "10", "0", "20", "0", "30", "2",
+      "0", "VERTEX", "5", "PV2", "8", "CUT", "10", "10", "20", "5", "30", "2",
+      "0", "SEQEND", "5", "PSEQ", "8", "CUT",
+      "0", "ENDSEC",
+      "0", "EOF"
+    ]);
+
+    await withTempDxf(content, async (filePath) => {
+      const result = await importDxfToKairo(filePath);
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(0);
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      if (geometry.kind === "curve-set" && geometry.entities[0].type === "polyline") {
+        expect(geometry.entities[0].points).toEqual([
+          [0, 0, 2],
+          [10, 5, 2]
+        ]);
+      }
+    });
+  });
+
   it("warns and skips unsupported legacy POLYLINE mesh modes", async () => {
     const result = await importDxfToKairo(path.join(fixturesDir, "legacy-polyline-mesh-unsupported.dxf"));
 

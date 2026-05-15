@@ -359,7 +359,7 @@ function splineToEntity(entity: SplineEntity, fallbackIndex: number): DrawingEnt
   };
 }
 
-function sampleBulgeSegment(start: LwPolylineVertex, end: LwPolylineVertex, z: number): Array<[number, number, number]> {
+function sampleBulgeSegment(start: Pick<LwPolylineVertex, "x" | "y"> & { bulge?: number }, end: Pick<LwPolylineVertex, "x" | "y">, z: number): Array<[number, number, number]> {
   const bulge = start.bulge ?? 0;
   const startX = start.x ?? 0;
   const startY = start.y ?? 0;
@@ -407,11 +407,15 @@ function lwPolylinePoints(vertices: LwPolylineVertex[], elevation: number, close
   return points;
 }
 
-function isSimpleLegacyPolyline(entity: LegacyPolylineEntity) {
+function isImportableLegacyPolyline(entity: LegacyPolylineEntity) {
   const flag = entity.flag ?? 0;
-  const hasComplexFlag = (flag & 2) === 2 || (flag & 4) === 4 || (flag & 8) === 8 || (flag & 16) === 16 || (flag & 64) === 64;
-  const hasBulge = entity.vertices.some((vertex) => vertex.bulge !== undefined && Math.abs(vertex.bulge) > 1e-12);
-  return entity.vertices.length >= 2 && !hasComplexFlag && !hasBulge;
+  const isCurveOrSplineFit = (flag & 2) === 2 || (flag & 4) === 4;
+  const isMeshOrPolyface = (flag & 16) === 16 || (flag & 64) === 64;
+  return entity.vertices.length >= 2 && !isCurveOrSplineFit && !isMeshOrPolyface;
+}
+
+function canImportLegacyPolyline(entity: LegacyPolylineEntity) {
+  return isImportableLegacyPolyline(entity) || extractFittingVertices(entity) !== null;
 }
 
 function legacyPolylineUnsupportedReason(entity: LegacyPolylineEntity) {
@@ -440,11 +444,29 @@ function extractFittingVertices(entity: LegacyPolylineEntity): LegacyPolylineVer
   return null;
 }
 
+function legacyPolylinePoints(entity: LegacyPolylineEntity): Array<[number, number, number]> {
+  if (entity.vertices.length === 0) {
+    return [];
+  }
+
+  const zForVertex = (vertex: LegacyPolylineVertex) => vertex.z ?? entity.z ?? 0;
+  const points: Array<[number, number, number]> = [point(entity.vertices[0].x, entity.vertices[0].y, zForVertex(entity.vertices[0]))];
+  for (let index = 0; index < entity.vertices.length - 1; index += 1) {
+    points.push(...sampleBulgeSegment(entity.vertices[index], entity.vertices[index + 1], zForVertex(entity.vertices[index + 1])));
+  }
+
+  if (((entity.flag ?? 0) & 1) === 1 && entity.vertices.length > 1 && Math.abs(entity.vertices[entity.vertices.length - 1].bulge ?? 0) > 1e-12) {
+    points.push(...sampleBulgeSegment(entity.vertices[entity.vertices.length - 1], entity.vertices[0], zForVertex(entity.vertices[0])));
+  }
+
+  return points;
+}
+
 function legacyPolylineToEntity(entity: LegacyPolylineEntity, fallbackIndex: number): DrawingEntity {
   return {
     ...entityBase(entity, "polyline", fallbackIndex),
     type: "polyline",
-    points: entity.vertices.map((vertex) => point(vertex.x, vertex.y, vertex.z ?? entity.z ?? 0)),
+    points: legacyPolylinePoints(entity),
     closed: ((entity.flag ?? 0) & 1) === 1
   };
 }
@@ -505,7 +527,7 @@ function blockSkippableEntityTypes(block: DxfBlockDefinition) {
     }
   }
 
-  if ((block.entities.polylines ?? []).some((entity) => !isSimpleLegacyPolyline(entity) && extractFittingVertices(entity) === null)) {
+  if ((block.entities.polylines ?? []).some((entity) => !canImportLegacyPolyline(entity))) {
     skippable.push("COMPLEX_POLYLINE");
   }
 
@@ -528,7 +550,7 @@ function blockSkippedEntityCounts(block: DxfBlockDefinition, skippableTypes: str
     }
   }
 
-  const complexPolylineCount = (block.entities.polylines ?? []).filter((entity) => !isSimpleLegacyPolyline(entity) && extractFittingVertices(entity) === null).length;
+  const complexPolylineCount = (block.entities.polylines ?? []).filter((entity) => !canImportLegacyPolyline(entity)).length;
   if (skippableTypes.includes("COMPLEX_POLYLINE") && complexPolylineCount > 0) {
     counts.push(`COMPLEX_POLYLINE×${complexPolylineCount}`);
   }
@@ -682,7 +704,7 @@ function expandBlockLegacyPolyline(
   return {
     ...expandedEntityBase("polyline", insert, blockName, entity, fallbackIndex),
     type: "polyline",
-    points: entity.vertices.map((vertex) => transformBlockPoint(vertex.x, vertex.y, vertex.z ?? entity.z ?? 0, insert, block)),
+    points: legacyPolylinePoints(entity).map((vertex) => transformBlockPoint(vertex[0], vertex[1], vertex[2], insert, block)),
     closed: ((entity.flag ?? 0) & 1) === 1
   };
 }
@@ -946,7 +968,7 @@ function convertEntities(parsed: DxfGlobalObject) {
   }
 
   for (const entity of [...(parsed.entities.polylines as LegacyPolylineEntity[])].sort(byHandle)) {
-    if (isSimpleLegacyPolyline(entity)) {
+    if (isImportableLegacyPolyline(entity)) {
       const converted = legacyPolylineToEntity(entity, index++);
       entities.push(converted);
       registerSource(converted, "POLYLINE", entity.handle ?? converted.id);
@@ -1069,7 +1091,7 @@ function convertEntities(parsed: DxfGlobalObject) {
       }
     }
     for (const child of [...block.entities.polylines].sort(byHandle)) {
-      if (isSimpleLegacyPolyline(child)) {
+      if (isImportableLegacyPolyline(child)) {
         const converted = expandBlockLegacyPolyline(child, expandInsert, block, blockName, index++);
         entities.push(converted);
         registerSource(converted, "POLYLINE", child.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}.`);
@@ -1197,7 +1219,7 @@ function convertEntities(parsed: DxfGlobalObject) {
         }
       }
       for (const grandchild of [...childBlock.entities.polylines].sort(byHandle)) {
-        if (isSimpleLegacyPolyline(grandchild)) {
+        if (isImportableLegacyPolyline(grandchild)) {
           const converted = expandBlockLegacyPolyline(grandchild, composedInsert, childBlock, childBlockName, index++);
           entities.push(converted);
           registerSource(converted, "POLYLINE", grandchild.handle ?? converted.id, `Expanded from INSERT ${entity.handle ?? "unknown"}, BLOCK ${blockName}, INSERT ${childInsertRaw.handle ?? "unknown"}, BLOCK ${childBlockName}.`);
