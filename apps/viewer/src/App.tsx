@@ -22,7 +22,6 @@ import {
   loadLocalSceneFilePackage,
   loadPublicScenePackage,
   resolveViewerSceneRequest,
-  sampleScenePackage,
   type SceneLoadProgress
 } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
@@ -102,6 +101,34 @@ const EMPTY_LAYOUT_SEMANTICS: LayoutSemantics = {
   stations: [],
   devices: [],
   unknownTextEntities: []
+};
+
+const EMPTY_VIEWER_SCENE_PACKAGE: ScenePackage = {
+  manifest: {
+    format: "kairo-neutral-scene",
+    version: "0.1.0",
+    units: "millimeter",
+    axisSystem: { up: "Z", handedness: "right" },
+    rootSceneFile: "scene.json",
+    createdBy: { name: "kairo-viewer", version: APP_VERSION },
+    source: { format: "empty", note: "Initial empty viewer scene." }
+  },
+  scene: {
+    rootNodeId: "root",
+    nodes: [
+      {
+        id: "root",
+        displayName: "No drawing loaded",
+        type: "scene",
+        children: [],
+        localTransform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+      }
+    ]
+  },
+  geometry: [],
+  layers: { layers: [] },
+  materials: { materials: [] },
+  sourceMap: { sources: [] }
 };
 
 type RenderRecord = {
@@ -1020,8 +1047,8 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const reviewFileInputRef = useRef<HTMLInputElement | null>(null);
   const sceneLoadSerialRef = useRef(0);
-  const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
-  const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
+  const [scenePackage, setScenePackage] = useState<ScenePackage>(EMPTY_VIEWER_SCENE_PACKAGE);
+  const [sceneStatus, setSceneStatus] = useState("Open a local DXF / Kairo file");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
   const [activeSceneName, setActiveSceneName] = useState<string | undefined>();
   const [loadingState, setLoadingState] = useState<ViewerLoadingState | undefined>();
