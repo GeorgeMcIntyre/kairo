@@ -152,7 +152,6 @@ export function SemanticOverlay({
               className={device.selected ? "selected" : ""}
               height={rect.height}
               key={device.id}
-              onClick={clickSelection({ kind: "device", id: device.id }, onSelect)}
               rx={3}
               width={rect.width}
               x={rect.x}
