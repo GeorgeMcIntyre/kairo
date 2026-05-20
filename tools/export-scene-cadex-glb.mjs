@@ -766,7 +766,8 @@ function addBufferView(buffers, accessors, typedBuffer, target, accessor) {
 async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
   const buffers = [];
   const accessors = { bufferViews: [], items: [] };
-  const primitives = [];
+  const meshes = [];
+  const nodes = [{ name: path.basename(outputPath, ".glb"), children: [] }];
 
   for (const group of groups) {
     if (group.positions.length === 0) continue;
@@ -803,7 +804,19 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
       primitive.extras.triangleCount = group.indices.length / 3;
     }
 
-    primitives.push(primitive);
+    const meshIndex = meshes.length;
+    const nodeIndex = nodes.length;
+    meshes.push({ name: group.layerName, primitives: [primitive] });
+    nodes.push({
+      mesh: meshIndex,
+      name: group.layerName,
+      extras: {
+        layerId: group.layerId,
+        layerName: group.layerName,
+        materialIndex: group.materialIndex
+      }
+    });
+    nodes[0].children.push(nodeIndex);
   }
 
   const binary = Buffer.concat(buffers);
@@ -818,8 +831,8 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
     },
     scene: 0,
     scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0, name: path.basename(outputPath, ".glb") }],
-    meshes: [{ name: extras.meshName, primitives }],
+    nodes,
+    meshes,
     materials: makeMaterials(materials),
     accessors: accessors.items,
     bufferViews: accessors.bufferViews,
