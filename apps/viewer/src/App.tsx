@@ -105,6 +105,46 @@ type AdvancedWorkflowPanel =
   | "export"
   | "performance";
 
+type GlbExportPreset = "process-simulate" | "cad-review" | "lightweight";
+type GlbExportGeometryMode = "lines" | "ribbons";
+type GlbExportTextMode = "metadata" | "skip";
+
+type GlbExportSettings = {
+  preset: GlbExportPreset;
+  geometryMode: GlbExportGeometryMode;
+  textMode: GlbExportTextMode;
+  ribbonWidthMm: number;
+  includeOutliers: boolean;
+  layerTree: boolean;
+};
+
+const GLB_EXPORT_PRESETS: Record<GlbExportPreset, GlbExportSettings> = {
+  "process-simulate": {
+    preset: "process-simulate",
+    geometryMode: "ribbons",
+    textMode: "metadata",
+    ribbonWidthMm: 3,
+    includeOutliers: false,
+    layerTree: true
+  },
+  "cad-review": {
+    preset: "cad-review",
+    geometryMode: "ribbons",
+    textMode: "metadata",
+    ribbonWidthMm: 5,
+    includeOutliers: true,
+    layerTree: true
+  },
+  lightweight: {
+    preset: "lightweight",
+    geometryMode: "lines",
+    textMode: "skip",
+    ribbonWidthMm: 1,
+    includeOutliers: false,
+    layerTree: false
+  }
+};
+
 type FitRequest = {
   target: FitTarget;
   serial: number;
@@ -924,6 +964,10 @@ export function App() {
   });
   const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
   const [glbExportStatus, setGlbExportStatus] = useState<string | undefined>();
+  const [glbExportDialogOpen, setGlbExportDialogOpen] = useState(false);
+  const [glbExportSettings, setGlbExportSettings] = useState<GlbExportSettings>(
+    GLB_EXPORT_PRESETS["process-simulate"]
+  );
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
   const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
@@ -1346,17 +1390,33 @@ export function App() {
     downloadTextFile(`kairo-layout-bom.${extension}`, advancedLayoutExportContent(format), mime);
   };
 
-  const downloadCadExchangerGlbExport = async () => {
+  const updateGlbPreset = (preset: GlbExportPreset) => {
+    setGlbExportSettings(GLB_EXPORT_PRESETS[preset]);
+  };
+
+  const patchGlbExportSettings = (patch: Partial<GlbExportSettings>) => {
+    setGlbExportSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const downloadCadExchangerGlbExport = async (settings: GlbExportSettings = glbExportSettings) => {
     const startedAt = performance.now();
     setGlbExportStatus("Preparing GLB...");
     try {
       const { exportScenePackageToCadExchangerGlb } = await import("./cadExchangerGlb");
-      const result = exportScenePackageToCadExchangerGlb(scenePackage);
+      const result = exportScenePackageToCadExchangerGlb(scenePackage, {
+        geometryMode: settings.geometryMode,
+        textMode: settings.textMode,
+        ribbonWidthMm: settings.ribbonWidthMm,
+        layerTree: settings.layerTree,
+        presetName: settings.preset,
+        excludedEntityIds: settings.includeOutliers ? undefined : new Set(robustBounds.outlierEntityIds)
+      });
       downloadBytesFile(result.filename, result.bytes, "model/gltf-binary");
+      setGlbExportDialogOpen(false);
       setGlbExportStatus(
-        `GLB ready: ${result.stats.lineSegments.toLocaleString()} line segments / ${result.stats.outputUnits} / ${formatTimingMs(
-          performance.now() - startedAt
-        )}`
+        `GLB ready: ${result.stats.lineSegments.toLocaleString()} line segments / ${result.stats.primitiveModes.join(
+          "+"
+        )} / ${result.stats.outputUnits} / ${formatTimingMs(performance.now() - startedAt)}`
       );
     } catch (error) {
       setGlbExportStatus(error instanceof Error ? error.message : "GLB export failed");
@@ -1963,8 +2023,8 @@ export function App() {
                 </div>
                 <p>JSON, CSV, and Markdown exports include revision-ready stable keys for future compare.</p>
                 <div className="advanced-export-actions">
-                  <button onClick={downloadCadExchangerGlbExport} type="button">
-                    Download GLB for CAD Exchanger
+                  <button onClick={() => setGlbExportDialogOpen(true)} type="button">
+                    Export GLB / JT Handoff
                   </button>
                   {glbExportStatus ? <span role="status">{glbExportStatus}</span> : null}
                 </div>
@@ -1976,7 +2036,7 @@ export function App() {
                   <dt>BOM rows</dt>
                   <dd>{advancedLayoutModel.bomItems.length}</dd>
                   <dt>GLB path</dt>
-                  <dd>Open downloaded GLB in CAD Exchanger, then export JT from CAD Exchanger.</dd>
+                  <dd>Use Process Simulate settings, open the downloaded GLB in CAD Exchanger, then export JT.</dd>
                 </dl>
               </section>
             </div>
@@ -2541,6 +2601,113 @@ export function App() {
             />
           </div>
         </section>
+      ) : null}
+      {glbExportDialogOpen ? (
+        <div className="export-dialog-backdrop" role="presentation">
+          <section aria-labelledby="glb-export-title" aria-modal="true" className="export-dialog" role="dialog">
+            <div className="export-dialog-heading">
+              <div>
+                <h2 id="glb-export-title">GLB Export Settings</h2>
+                <span>Process Simulate handoff through CAD Exchanger / JT</span>
+              </div>
+              <button aria-label="Close export settings" onClick={() => setGlbExportDialogOpen(false)} type="button">
+                x
+              </button>
+            </div>
+            <div className="export-dialog-grid">
+              <label>
+                <span>Preset</span>
+                <select
+                  onChange={(event) => updateGlbPreset(event.target.value as GlbExportPreset)}
+                  value={glbExportSettings.preset}
+                >
+                  <option value="process-simulate">Process Simulate placement</option>
+                  <option value="cad-review">CAD Exchanger visual review</option>
+                  <option value="lightweight">Lightweight conversion test</option>
+                </select>
+              </label>
+              <label>
+                <span>Curve geometry</span>
+                <select
+                  onChange={(event) =>
+                    patchGlbExportSettings({ geometryMode: event.target.value as GlbExportGeometryMode })
+                  }
+                  value={glbExportSettings.geometryMode}
+                >
+                  <option value="ribbons">Physical ribbons</option>
+                  <option value="lines">Native GLB lines</option>
+                </select>
+              </label>
+              <label>
+                <span>Line width (mm)</span>
+                <input
+                  min="0.1"
+                  onChange={(event) =>
+                    patchGlbExportSettings({ ribbonWidthMm: Math.max(0.1, Number(event.target.value) || 0.1) })
+                  }
+                  step="0.1"
+                  type="number"
+                  value={glbExportSettings.ribbonWidthMm}
+                />
+              </label>
+              <label>
+                <span>Layer tree</span>
+                <select
+                  onChange={(event) => patchGlbExportSettings({ layerTree: event.target.value === "true" })}
+                  value={String(glbExportSettings.layerTree)}
+                >
+                  <option value="true">Create hide/show layer nodes</option>
+                  <option value="false">Single flat GLB mesh</option>
+                </select>
+              </label>
+              <label>
+                <span>Text data</span>
+                <select
+                  onChange={(event) => patchGlbExportSettings({ textMode: event.target.value as GlbExportTextMode })}
+                  value={glbExportSettings.textMode}
+                >
+                  <option value="metadata">Store label data in GLB extras</option>
+                  <option value="skip">Skip label metadata</option>
+                </select>
+              </label>
+              <label className="export-dialog-check">
+                <input
+                  checked={glbExportSettings.includeOutliers}
+                  onChange={(event) => patchGlbExportSettings({ includeOutliers: event.target.checked })}
+                  type="checkbox"
+                />
+                <span>Include outlier entities</span>
+              </label>
+            </div>
+            <dl className="export-dialog-facts">
+              <dt>Source units</dt>
+              <dd>{scenePackage.manifest.units}</dd>
+              <dt>GLB units</dt>
+              <dd>meter</dd>
+              <dt>Scene content</dt>
+              <dd>
+                {sceneStats.layerCount} layers / {sceneStats.curveEntityCount.toLocaleString()} curve entities /{" "}
+                {layoutSemantics.textEntities.length.toLocaleString()} text entities
+              </dd>
+              <dt>Outliers</dt>
+              <dd>{robustBounds.outlierEntityIds.length.toLocaleString()}</dd>
+              <dt>Text</dt>
+              <dd>
+                {glbExportSettings.textMode === "metadata"
+                  ? "Text labels are written into GLB extras for downstream positioning metadata."
+                  : "Text label metadata is not written."}
+              </dd>
+            </dl>
+            <div className="export-dialog-actions">
+              <button onClick={() => setGlbExportDialogOpen(false)} type="button">
+                Cancel
+              </button>
+              <button onClick={() => void downloadCadExchangerGlbExport()} type="button">
+                Download GLB
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
     </main>
   );

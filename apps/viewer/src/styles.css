@@ -1148,6 +1148,149 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+.export-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(5 9 14 / 0.72);
+}
+
+.export-dialog {
+  display: grid;
+  width: min(720px, 100%);
+  max-height: min(86vh, 760px);
+  gap: 14px;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid #26364a;
+  border-radius: 6px;
+  background: #101823;
+  box-shadow: 0 22px 70px rgb(0 0 0 / 0.48);
+}
+
+.export-dialog-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.export-dialog-heading h2 {
+  margin: 0;
+  color: #f4f8fc;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.export-dialog-heading span {
+  display: block;
+  margin-top: 4px;
+  color: #8aa2b6;
+  font-size: 12px;
+}
+
+.export-dialog-heading button {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  color: #c9d4df;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.export-dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.export-dialog-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: #8aa2b6;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.export-dialog-grid select,
+.export-dialog-grid input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid #304057;
+  border-radius: 4px;
+  background: #0c121b;
+  color: #e6eef6;
+  padding: 0 9px;
+  font-size: 13px;
+  text-transform: none;
+}
+
+.export-dialog-check {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 34px;
+  padding: 8px;
+  border: 1px solid #26364a;
+  border-radius: 4px;
+  background: #0c121b;
+}
+
+.export-dialog-check input {
+  width: 16px;
+  height: 16px;
+}
+
+.export-dialog-facts {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #26364a;
+  border-radius: 4px;
+  background: #0c121b;
+  color: #b3c4d4;
+  font-size: 12px;
+}
+
+.export-dialog-facts dt {
+  color: #6a8499;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.export-dialog-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.export-dialog-actions {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+}
+
+.export-dialog-actions button {
+  min-height: 34px;
+  border-radius: 4px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.export-dialog-actions button:last-child {
+  border-color: #1b86c9;
+  background: #0b5c9d;
+  color: #f4f8fc;
+}
+
 .semantic-validation-lists {
   display: grid;
   gap: 12px;
@@ -1552,5 +1695,22 @@ button:hover {
   .semantic-summary-grid,
   .semantic-outlier-grid {
     grid-template-columns: 1fr;
+  }
+
+  .export-dialog-backdrop {
+    padding: 12px;
+  }
+
+  .export-dialog-grid,
+  .export-dialog-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .export-dialog-actions {
+    justify-content: stretch;
+  }
+
+  .export-dialog-actions button {
+    flex: 1;
   }
 }

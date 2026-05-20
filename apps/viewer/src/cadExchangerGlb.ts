@@ -7,10 +7,34 @@ type GlbPrimitive = {
   mode: number;
 };
 
+type GlbMesh = {
+  name: string;
+  primitives: GlbPrimitive[];
+};
+
+type GlbNode = {
+  name: string;
+  mesh?: number;
+  children?: number[];
+  extras?: Record<string, unknown>;
+};
+
 type ColorLike = {
   r?: number;
   g?: number;
   b?: number;
+};
+
+export type CadExchangerGlbGeometryMode = "lines" | "ribbons";
+export type CadExchangerGlbTextMode = "metadata" | "skip";
+
+export type CadExchangerGlbExportOptions = {
+  geometryMode?: CadExchangerGlbGeometryMode;
+  textMode?: CadExchangerGlbTextMode;
+  ribbonWidthMm?: number;
+  layerTree?: boolean;
+  excludedEntityIds?: ReadonlySet<string>;
+  presetName?: string;
 };
 
 export type CadExchangerGlbExportStats = {
@@ -18,10 +42,16 @@ export type CadExchangerGlbExportStats = {
   sourceUnits: string;
   outputUnits: string;
   coordinateScale: number;
+  geometryMode: CadExchangerGlbGeometryMode;
+  textMode: CadExchangerGlbTextMode;
+  ribbonWidthMm: number;
+  layerTree: boolean;
   geometryDocuments: number;
   curveSets: number;
   curveEntities: number;
   skippedTextEntities: number;
+  textMetadataEntities: number;
+  skippedExcludedEntities: number;
   lineSegments: number;
   meshTriangles: number;
   vertices: number;
@@ -43,6 +73,7 @@ const ARRAY_BUFFER_TARGET = 34962;
 const LINES_MODE = 1;
 const TRIANGLES_MODE = 4;
 const DEFAULT_CAD_COLOR: [number, number, number] = [0.22, 0.55, 0.9];
+const DEFAULT_RIBBON_WIDTH_MM = 3;
 
 function colorTuple(color: ColorLike | undefined, fallback: [number, number, number] = DEFAULT_CAD_COLOR): [number, number, number] {
   if (!color) return fallback;
@@ -96,6 +127,47 @@ function transformedPoint(point: THREE.Vector3, matrix: THREE.Matrix4, scale: nu
   return [transformed.x * scale, transformed.y * scale, transformed.z * scale];
 }
 
+function pushVertex(target: number[], point: readonly [number, number, number]) {
+  target.push(point[0], point[1], point[2]);
+}
+
+function pushColor(target: number[], color: readonly [number, number, number], count: number) {
+  for (let index = 0; index < count; index += 1) {
+    target.push(color[0], color[1], color[2]);
+  }
+}
+
+function appendRibbonSegment(
+  positions: number[],
+  colors: number[],
+  start: readonly [number, number, number],
+  end: readonly [number, number, number],
+  widthMeters: number,
+  color: readonly [number, number, number]
+) {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const length = Math.hypot(dx, dy);
+  if (length <= Number.EPSILON) return false;
+
+  const halfWidth = widthMeters / 2;
+  const nx = (-dy / length) * halfWidth;
+  const ny = (dx / length) * halfWidth;
+  const p0: [number, number, number] = [start[0] + nx, start[1] + ny, start[2]];
+  const p1: [number, number, number] = [end[0] + nx, end[1] + ny, end[2]];
+  const p2: [number, number, number] = [end[0] - nx, end[1] - ny, end[2]];
+  const p3: [number, number, number] = [start[0] - nx, start[1] - ny, start[2]];
+
+  pushVertex(positions, p0);
+  pushVertex(positions, p1);
+  pushVertex(positions, p2);
+  pushVertex(positions, p0);
+  pushVertex(positions, p2);
+  pushVertex(positions, p3);
+  pushColor(colors, color, 6);
+  return true;
+}
+
 function matrixFromArray(values: readonly number[]) {
   return new THREE.Matrix4().fromArray([...values]);
 }
@@ -133,27 +205,88 @@ function sceneCoordinateScale(scenePackage: ScenePackage): { scale: number; unit
   return { scale: unitScaleToMeters(scenePackage.manifest.units), units: "meter" };
 }
 
-export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage): CadExchangerGlbExportResult {
+type GeometryBucket = {
+  key: string;
+  layerId?: string;
+  layerName: string;
+  name: string;
+  mode: number;
+  modeName: string;
+  positions: number[];
+  colors: number[];
+};
+
+type TextMetadata = {
+  id: string;
+  text: string;
+  layerId?: string;
+  origin: string;
+  tag?: string;
+  position: [number, number, number];
+  heightMeters: number;
+  rotationDeg: number;
+  sourceRef?: string;
+};
+
+function bucketKey(layerTree: boolean, layerId: string | undefined, modeName: string) {
+  return layerTree ? `${layerId ?? "no-layer"}:${modeName}` : modeName;
+}
+
+function bucketName(layerTree: boolean, layerName: string, modeName: string) {
+  return layerTree ? `${layerName} ${modeName.toLowerCase()}` : modeName === "LINES" ? "DXF curve lines" : "DXF ribbon and mesh triangles";
+}
+
+export function exportScenePackageToCadExchangerGlb(
+  scenePackage: ScenePackage,
+  options: CadExchangerGlbExportOptions = {}
+): CadExchangerGlbExportResult {
   const { scale: coordinateScale, units: outputUnits } = sceneCoordinateScale(scenePackage);
   const geometryMap = geometryById(scenePackage);
   const layersById = new Map(scenePackage.layers.layers.map((layer) => [layer.id, layer]));
-  const linePositions: number[] = [];
-  const lineColors: number[] = [];
-  const meshPositions: number[] = [];
-  const meshColors: number[] = [];
+  const geometryMode = options.geometryMode ?? "lines";
+  const textMode = options.textMode ?? "metadata";
+  const ribbonWidthMm = Math.max(0.01, options.ribbonWidthMm ?? DEFAULT_RIBBON_WIDTH_MM);
+  const ribbonWidthMeters = ribbonWidthMm / 1000;
+  const layerTree = options.layerTree ?? false;
+  const buckets = new Map<string, GeometryBucket>();
+  const textMetadata: TextMetadata[] = [];
   const stats: CadExchangerGlbExportStats = {
     sourcePath: scenePackage.manifest.source.path,
     sourceUnits: scenePackage.manifest.units,
     outputUnits,
     coordinateScale,
+    geometryMode,
+    textMode,
+    ribbonWidthMm,
+    layerTree,
     geometryDocuments: scenePackage.geometry.length,
     curveSets: 0,
     curveEntities: 0,
     skippedTextEntities: 0,
+    textMetadataEntities: 0,
+    skippedExcludedEntities: 0,
     lineSegments: 0,
     meshTriangles: 0,
     vertices: 0,
     primitiveModes: []
+  };
+
+  const getBucket = (layerId: string | undefined, layerName: string, mode: number, modeName: string) => {
+    const key = bucketKey(layerTree, layerId, modeName);
+    const existing = buckets.get(key);
+    if (existing) return existing;
+    const bucket: GeometryBucket = {
+      key,
+      layerId,
+      layerName,
+      name: bucketName(layerTree, layerName, modeName),
+      mode,
+      modeName,
+      positions: [],
+      colors: []
+    };
+    buckets.set(key, bucket);
+    return bucket;
   };
 
   for (const node of scenePackage.scene.nodes) {
@@ -170,23 +303,59 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
         for (const entity of geometry.entities) {
           if (entity.type === "text") {
             stats.skippedTextEntities += 1;
+            if (textMode === "metadata") {
+              textMetadata.push({
+                id: entity.id,
+                text: entity.text,
+                layerId: entity.layerId ?? geometry.layerId ?? node.layerId,
+                origin: entity.origin,
+                tag: entity.tag,
+                position: transformedPoint(
+                  new THREE.Vector3(entity.position[0], entity.position[1], entity.position[2]),
+                  nodeMatrix,
+                  coordinateScale
+                ),
+                heightMeters: entity.height * coordinateScale,
+                rotationDeg: entity.rotationDeg,
+                sourceRef: entity.sourceRef
+              });
+              stats.textMetadataEntities += 1;
+            }
+            continue;
+          }
+          if (options.excludedEntityIds?.has(entity.id)) {
+            stats.skippedExcludedEntities += 1;
             continue;
           }
           const points = pointsForEntity(entity);
           if (points.length < 2) continue;
           const entityLayer = layersById.get(entity.layerId ?? geometry.layerId ?? "");
-          const color = readableCadColor(entityLayer?.name ?? layerName, entity.color ?? entityLayer?.color ?? layer?.color);
+          const entityLayerId = entity.layerId ?? geometry.layerId ?? node.layerId;
+          const entityLayerName = entityLayer?.name ?? layerName;
+          const color = readableCadColor(entityLayerName, entity.color ?? entityLayer?.color ?? layer?.color);
+          const mode = geometryMode === "ribbons" ? TRIANGLES_MODE : LINES_MODE;
+          const modeName = geometryMode === "ribbons" ? "TRIANGLES" : "LINES";
+          const bucket = getBucket(entityLayerId, entityLayerName, mode, modeName);
           stats.curveEntities += 1;
           for (let index = 0; index < points.length - 1; index += 1) {
-            linePositions.push(...transformedPoint(points[index], nodeMatrix, coordinateScale));
-            linePositions.push(...transformedPoint(points[index + 1], nodeMatrix, coordinateScale));
-            lineColors.push(...color, ...color);
+            const start = transformedPoint(points[index], nodeMatrix, coordinateScale);
+            const end = transformedPoint(points[index + 1], nodeMatrix, coordinateScale);
+            if (geometryMode === "ribbons") {
+              if (appendRibbonSegment(bucket.positions, bucket.colors, start, end, ribbonWidthMeters, color)) {
+                stats.meshTriangles += 2;
+              }
+            } else {
+              pushVertex(bucket.positions, start);
+              pushVertex(bucket.positions, end);
+              pushColor(bucket.colors, color, 2);
+            }
             stats.lineSegments += 1;
           }
         }
       } else {
         const material = scenePackage.materials.materials.find((entry) => entry.id === geometry.materialId);
         const color = colorTuple(material?.baseColor ?? layer?.color, fallbackColor);
+        const bucket = getBucket(node.layerId ?? geometry.layerId, layerName, TRIANGLES_MODE, "TRIANGLES");
         for (let index = 0; index < geometry.indices.length; index += 3) {
           const i0 = geometry.indices[index] * 3;
           const i1 = geometry.indices[index + 1] * 3;
@@ -197,8 +366,8 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
             new THREE.Vector3(geometry.vertices[i2], geometry.vertices[i2 + 1], geometry.vertices[i2 + 2])
           ];
           for (const vertex of vertices) {
-            meshPositions.push(...transformedPoint(vertex, nodeMatrix, coordinateScale));
-            meshColors.push(...color);
+            pushVertex(bucket.positions, transformedPoint(vertex, nodeMatrix, coordinateScale));
+            pushColor(bucket.colors, color, 1);
           }
           stats.meshTriangles += 1;
         }
@@ -206,13 +375,12 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
     }
   }
 
-  const primitives: GlbPrimitive[] = [];
   const accessors: unknown[] = [];
   const bufferViews: unknown[] = [];
   const binaryParts: Uint8Array[] = [];
   let binaryOffset = 0;
 
-  const appendAttribute = (positions: readonly number[], colors: readonly number[], mode: number) => {
+  const appendAttribute = (positions: readonly number[], colors: readonly number[], mode: number): GlbPrimitive => {
     const positionBytes = padBytes(floatBytes(positions), 0);
     const colorBytes = padBytes(floatBytes(colors), 0);
     const positionAccessor = accessors.length;
@@ -254,24 +422,65 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
         type: "VEC3"
       }
     );
-    primitives.push({
+    return {
       attributes: {
         POSITION: positionAccessor,
         COLOR_0: colorAccessor
       },
       mode
-    });
+    };
   };
 
-  if (linePositions.length > 0) {
-    appendAttribute(linePositions, lineColors, LINES_MODE);
-    stats.primitiveModes.push("LINES");
+  const exportedBuckets = [...buckets.values()]
+    .filter((bucket) => bucket.positions.length > 0)
+    .sort((left, right) => left.mode - right.mode || left.name.localeCompare(right.name));
+  const meshes: GlbMesh[] = [];
+  const nodes: GlbNode[] = [];
+  const flatPrimitives: GlbPrimitive[] = [];
+
+  for (const bucket of exportedBuckets) {
+    const primitive = appendAttribute(bucket.positions, bucket.colors, bucket.mode);
+    if (!stats.primitiveModes.includes(bucket.modeName)) stats.primitiveModes.push(bucket.modeName);
+    if (layerTree) {
+      const meshIndex = meshes.length;
+      meshes.push({ name: bucket.name, primitives: [primitive] });
+      nodes.push({
+        mesh: meshIndex,
+        name: bucket.layerName,
+        extras: {
+          layerId: bucket.layerId,
+          primitiveMode: bucket.modeName
+        }
+      });
+    } else {
+      flatPrimitives.push(primitive);
+    }
+    stats.vertices += bucket.positions.length / 3;
   }
-  if (meshPositions.length > 0) {
-    appendAttribute(meshPositions, meshColors, TRIANGLES_MODE);
-    stats.primitiveModes.push("TRIANGLES");
+
+  let sceneNodes: number[];
+  if (layerTree) {
+    nodes.unshift({
+      name: "Kairo GLB export layers",
+      children: nodes.map((_, index) => index + 1),
+      extras: {
+        presetName: options.presetName,
+        outputUnits,
+        coordinateScale,
+        geometryMode,
+        ribbonWidthMm
+      }
+    });
+    sceneNodes = [0];
+  } else {
+    meshes.push({
+      name: "DXF curves and simple meshes",
+      primitives: flatPrimitives
+    });
+    nodes.push({ mesh: 0, name: "Kairo CAD Exchanger layout handoff" });
+    sceneNodes = [0];
   }
-  stats.vertices = (linePositions.length + meshPositions.length) / 3;
+
   if (stats.vertices === 0) {
     throw new Error("No GLB geometry was generated. The scene has no exportable curves or meshes.");
   }
@@ -293,22 +502,28 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
         sourceUnits: stats.sourceUnits,
         outputUnits: stats.outputUnits,
         coordinateScale: stats.coordinateScale,
-        sourcePath: stats.sourcePath
+        sourcePath: stats.sourcePath,
+        presetName: options.presetName,
+        geometryMode: stats.geometryMode,
+        textMode: stats.textMode,
+        ribbonWidthMm: stats.ribbonWidthMm,
+        layerTree: stats.layerTree,
+        skippedTextEntities: stats.skippedTextEntities,
+        textMetadataEntities: stats.textMetadataEntities,
+        skippedExcludedEntities: stats.skippedExcludedEntities
       }
     },
     scene: 0,
-    scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0, name: "Kairo CAD Exchanger layout handoff" }],
-    meshes: [
-      {
-        name: "DXF curves and simple meshes",
-        primitives
-      }
-    ],
+    scenes: [{ nodes: sceneNodes }],
+    nodes,
+    meshes,
     accessors,
     bufferViews,
     buffers: [{ byteLength: binaryChunk.byteLength }],
-    extras: stats
+    extras: {
+      ...stats,
+      textMetadata
+    }
   };
   const jsonChunk = padBytes(new TextEncoder().encode(JSON.stringify(gltf)), 0x20);
   const totalLength = 12 + 8 + jsonChunk.byteLength + 8 + binaryChunk.byteLength;

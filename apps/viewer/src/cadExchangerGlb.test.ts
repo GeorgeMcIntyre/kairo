@@ -60,4 +60,37 @@ describe("CAD Exchanger GLB export", () => {
       coordinateScale: 0.0254
     });
   });
+
+  it("can export Process Simulate ribbon geometry with layer nodes and embedded settings", () => {
+    const result = exportScenePackageToCadExchangerGlb(sampleScenePackage, {
+      geometryMode: "ribbons",
+      layerTree: true,
+      presetName: "process-simulate",
+      ribbonWidthMm: 0.1
+    });
+
+    expect(result.stats).toMatchObject({
+      geometryMode: "ribbons",
+      layerTree: true,
+      ribbonWidthMm: 0.1,
+      lineSegments: 92,
+      meshTriangles: 196,
+      primitiveModes: ["TRIANGLES"]
+    });
+
+    const gltf = readGlbJson(result.bytes) as {
+      asset: { extras: { geometryMode: string; layerTree: boolean; presetName: string; ribbonWidthMm: number } };
+      nodes: Array<{ children?: number[]; extras?: { layerId?: string; primitiveMode?: string } }>;
+      meshes: Array<{ primitives: Array<{ mode: number }> }>;
+    };
+    expect(gltf.asset.extras).toMatchObject({
+      geometryMode: "ribbons",
+      layerTree: true,
+      presetName: "process-simulate",
+      ribbonWidthMm: 0.1
+    });
+    expect(gltf.nodes[0]?.children?.length).toBeGreaterThan(0);
+    expect(gltf.nodes.some((node) => node.extras?.primitiveMode === "TRIANGLES")).toBe(true);
+    expect(gltf.meshes.every((mesh) => mesh.primitives.every((primitive) => primitive.mode === 4))).toBe(true);
+  });
 });
