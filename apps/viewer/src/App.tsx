@@ -21,7 +21,8 @@ import {
   loadLocalSceneFilePackage,
   loadPublicScenePackage,
   resolveViewerSceneRequest,
-  sampleScenePackage
+  sampleScenePackage,
+  type SceneLoadProgress
 } from "./sceneLoader";
 import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
 import {
@@ -95,6 +96,15 @@ type ViewerSelection = {
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "main" | "selected" | "raw";
 type AdvancedLayoutExportFormat = "json" | "csv" | "markdown";
+type ViewerLoadingKind = "public-scene" | "local-file";
+
+type ViewerLoadingState = {
+  kind: ViewerLoadingKind;
+  name: string;
+  phase: string;
+  percent: number;
+  startedAt: number;
+};
 type AdvancedWorkflowPanel =
   | "layout"
   | "device"
@@ -942,6 +952,8 @@ export function App() {
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
   const [activeSceneName, setActiveSceneName] = useState<string | undefined>();
+  const [loadingState, setLoadingState] = useState<ViewerLoadingState | undefined>();
+  const [loadingElapsedMs, setLoadingElapsedMs] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("top2d");
   const [fitRequest, setFitRequest] = useState<FitRequest>({ target: "main", serial: 0 });
   const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
@@ -1016,6 +1028,18 @@ export function App() {
       globalThis.clearTimeout(handle);
     };
   }, [scenePackage, robustBounds]);
+
+  useEffect(() => {
+    if (!loadingState) {
+      setLoadingElapsedMs(0);
+      return;
+    }
+
+    const updateElapsed = () => setLoadingElapsedMs(Math.max(0, performance.now() - loadingState.startedAt));
+    updateElapsed();
+    const handle = globalThis.setInterval(updateElapsed, 250);
+    return () => globalThis.clearInterval(handle);
+  }, [loadingState]);
 
   const layoutSemantics = useMemo(
     () => applySemanticDeviceOverrides(detectedLayoutSemantics, semanticDeviceOverrides),
@@ -1099,8 +1123,9 @@ export function App() {
   const stationListCount = showingFirstLabel(visibleSemanticStations.length, semanticValidation.stations.length);
   const deviceListCount = showingFirstLabel(visibleSemanticDevices.length, semanticValidation.devices.length);
   const unknownListCount = showingFirstLabel(visibleUnknownText.length, semanticValidation.unknownTextEntities.length);
-  const sceneIsLoading = sceneStatus.startsWith("Loading ");
-  const landingMode = !activeSceneName && !sceneLoadError;
+  const sceneIsLoading = Boolean(loadingState);
+  const landingMode = !activeSceneName && !sceneLoadError && !sceneIsLoading;
+  const loadingKindLabel = loadingState?.kind === "public-scene" ? "Loading scene" : "Opening drawing";
 
   const requestFit = (target: FitTarget) => {
     setFitRequest((current) => ({ target, serial: current.serial + 1 }));
@@ -1147,6 +1172,30 @@ export function App() {
 
   const isCurrentSceneLoad = useCallback((serial: number) => sceneLoadSerialRef.current === serial, []);
 
+  const beginSceneLoading = useCallback(
+    (serial: number, kind: ViewerLoadingKind, name: string, phase: string, percent = 1) => {
+      if (!isCurrentSceneLoad(serial)) return;
+      setLoadingState({ kind, name, phase, percent, startedAt: performance.now() });
+    },
+    [isCurrentSceneLoad]
+  );
+
+  const updateSceneLoadProgress = useCallback(
+    (serial: number, progress: SceneLoadProgress) => {
+      if (!isCurrentSceneLoad(serial)) return;
+      setLoadingState((current) =>
+        current
+          ? {
+              ...current,
+              phase: progress.label,
+              percent: Math.max(current.percent, progress.percent ?? current.percent)
+            }
+          : current
+      );
+    },
+    [isCurrentSceneLoad]
+  );
+
   const activateScenePackage = useCallback(
     (
       loadedScenePackage: ScenePackage,
@@ -1170,6 +1219,7 @@ export function App() {
       setFitRequest((current) => ({ target: "main", serial: current.serial + 1 }));
       setSceneStatus(options.status);
       setSceneLoadError(undefined);
+      setLoadingState(undefined);
       setActiveSceneName(options.activeName);
       setSceneLoadTiming(options.timing ?? []);
       if (options.semanticOverlayEnabled !== undefined) {
@@ -1184,14 +1234,17 @@ export function App() {
 
   const loadPublicScene = useCallback(async (sceneName: string, options?: { updateUrl?: boolean }) => {
     const loadSerial = startSceneLoad();
+    beginSceneLoading(loadSerial, "public-scene", sceneName, "Loading scene manifest");
     setSceneStatus(`Loading ${sceneName}`);
     setSceneLoadError(undefined);
     setSceneLoadTiming([]);
-    setActiveSceneName(sceneName);
 
     try {
-      const loadedScenePackage = await loadPublicScenePackage(`/scenes/${sceneName}`);
+      const loadedScenePackage = await loadPublicScenePackage(`/scenes/${sceneName}`, fetch, {
+        onProgress: (progress) => updateSceneLoadProgress(loadSerial, progress)
+      });
       if (!isCurrentSceneLoad(loadSerial)) return;
+      updateSceneLoadProgress(loadSerial, { phase: "public-scene-read", label: "Activating scene", percent: 95 });
       activateScenePackage(loadedScenePackage, {
         activeName: sceneName,
         status: `Loaded ${sceneName}`
@@ -1204,7 +1257,7 @@ export function App() {
       }
     } catch (error) {
       if (!isCurrentSceneLoad(loadSerial)) return;
-      setActiveSceneName(undefined);
+      setLoadingState(undefined);
       setSceneLoadTiming([]);
       if (isPublicSceneAssetLoadError(error)) {
         setSceneStatus("Open a local DXF / Kairo file");
@@ -1218,20 +1271,27 @@ export function App() {
           : `Could not load ${sceneName}. ${String(error)}`
       );
     }
-  }, [activateScenePackage, isCurrentSceneLoad, startSceneLoad]);
+  }, [activateScenePackage, beginSceneLoading, isCurrentSceneLoad, startSceneLoad, updateSceneLoadProgress]);
 
   const loadLocalSceneFile = useCallback(
     async (file: File) => {
       const loadSerial = startSceneLoad();
       const fileName = file.name || "uploaded.kairo";
+      beginSceneLoading(loadSerial, "local-file", fileName, "Preparing file");
       setSceneStatus(`Loading ${fileName}`);
       setSceneLoadError(undefined);
       setSceneLoadTiming([]);
-      setActiveSceneName(fileName);
 
       try {
-        const result = await loadLocalSceneFilePackage(file);
+        const result = await loadLocalSceneFilePackage(file, {
+          onProgress: (progress) => updateSceneLoadProgress(loadSerial, progress)
+        });
         if (!isCurrentSceneLoad(loadSerial)) return;
+        updateSceneLoadProgress(loadSerial, {
+          phase: result.kind === "dxf" ? "dxf-import" : "kairo-package-read",
+          label: "Activating scene",
+          percent: 95
+        });
         const warningSuffix = result.warningCount === 0 ? "" : ` (${result.warningCount} warnings)`;
         const loadedVerb = result.kind === "dxf" ? "Imported" : "Opened";
         activateScenePackage(result.scenePackage, {
@@ -1247,6 +1307,7 @@ export function App() {
         window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
       } catch (error) {
         if (!isCurrentSceneLoad(loadSerial)) return;
+        setLoadingState(undefined);
         setActiveSceneName(undefined);
         setSceneStatus("File open failed");
         setSceneLoadTiming([]);
@@ -1257,7 +1318,7 @@ export function App() {
         );
       }
     },
-    [activateScenePackage, isCurrentSceneLoad, startSceneLoad]
+    [activateScenePackage, beginSceneLoading, isCurrentSceneLoad, startSceneLoad, updateSceneLoadProgress]
   );
 
   const openLocalFilePicker = () => {
@@ -1648,8 +1709,22 @@ export function App() {
 
       {sceneIsLoading ? (
         <section className="scene-loading" role="status">
-          <span>Opening drawing</span>
-          <strong>{activeSceneName}</strong>
+          <span>{loadingKindLabel}</span>
+          <strong>{loadingState?.name}</strong>
+          <p>
+            {loadingState?.phase ?? "Preparing"} / {Math.round(loadingState?.percent ?? 0)}% /{" "}
+            {formatTimingMs(loadingElapsedMs)}
+          </p>
+          <div
+            aria-label={`Loading progress ${Math.round(loadingState?.percent ?? 0)} percent`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={Math.round(loadingState?.percent ?? 0)}
+            className="scene-loading-bar"
+            role="progressbar"
+          >
+            <i style={{ width: `${Math.max(2, Math.min(100, loadingState?.percent ?? 0))}%` }} />
+          </div>
         </section>
       ) : null}
 

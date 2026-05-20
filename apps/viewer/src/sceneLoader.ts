@@ -1,6 +1,7 @@
 import { scenePackageSchema, type GeometryDocument, type SceneDocument, type ScenePackage } from "@kairo/schema";
 import { readKairoPackage } from "@kairo/core";
 import type { DxfImportResult, DxfImportTimingStage } from "@kairo/importer-dxf/browser";
+import type { DxfImportWorkerResponse } from "./dxfImport.worker";
 import manifest from "../../../examples/example-scene/manifest.json";
 import scene from "../../../examples/example-scene/scene.json";
 import meshGeometry from "../../../examples/example-scene/geometry/bracket.mesh.json";
@@ -49,8 +50,28 @@ type FetchLike = (input: string) => Promise<{
   json: () => Promise<unknown>;
 }>;
 
+export type SceneLoadProgressPhase =
+  | "file-read"
+  | "importer-module-load"
+  | "dxf-import"
+  | "kairo-package-read"
+  | "public-scene-read";
+
+export type SceneLoadProgress = {
+  phase: SceneLoadProgressPhase;
+  label: string;
+  percent?: number;
+};
+
+export type SceneLoadOptions = {
+  onProgress?: (progress: SceneLoadProgress) => void;
+  useWorker?: boolean;
+};
+
 const dxfFilePattern = /\.dxf$/i;
 const kairoFilePattern = /\.kairo$/i;
+const browserWorkerAvailable = () => typeof Worker !== "undefined";
+let dxfImportRequestId = 0;
 
 export const sampleScenePackage = scenePackageSchema.parse({
   manifest,
@@ -100,7 +121,12 @@ function geometryRefsFromScene(sceneDocument: SceneDocument) {
   ].sort((a, b) => a.localeCompare(b));
 }
 
-export async function loadPublicScenePackage(basePath: string, fetcher: FetchLike = fetch): Promise<ScenePackage> {
+export async function loadPublicScenePackage(
+  basePath: string,
+  fetcher: FetchLike = fetch,
+  options: SceneLoadOptions = {}
+): Promise<ScenePackage> {
+  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene manifest", percent: 20 });
   const [manifestDocument, sceneDocument, layersDocument, materialsDocument, sourceMapDocument] = await Promise.all([
     fetchJson(fetcher, `${basePath}/manifest.json`),
     fetchJson(fetcher, `${basePath}/scene.json`),
@@ -110,6 +136,7 @@ export async function loadPublicScenePackage(basePath: string, fetcher: FetchLik
   ]);
 
   const sceneData = sceneDocument as SceneDocument;
+  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene geometry", percent: 70 });
   const geometry = await Promise.all(
     geometryRefsFromScene(sceneData).map((geometryRef) => fetchJson(fetcher, `${basePath}/geometry/${encodeURIComponent(geometryRef)}.json`) as Promise<GeometryDocument>)
   );
@@ -124,7 +151,7 @@ export async function loadPublicScenePackage(basePath: string, fetcher: FetchLik
   });
 }
 
-export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResult> {
+export async function loadDxfFileScenePackage(file: File, options: SceneLoadOptions = {}): Promise<DxfImportResult> {
   const totalStartedAt = performance.now();
   const timing: DxfImportTimingStage[] = [];
   const recordStage = (stage: string, startedAt: number) => {
@@ -137,15 +164,29 @@ export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResu
   }
 
   const fileReadStartedAt = performance.now();
+  options.onProgress?.({ phase: "file-read", label: "Reading file", percent: 10 });
   const text = await file.text();
   recordStage("file-read", fileReadStartedAt);
 
+  const useWorker = options.useWorker ?? browserWorkerAvailable();
   const moduleLoadStartedAt = performance.now();
-  const { importDxfTextToKairo } = await import("@kairo/importer-dxf/browser");
+  options.onProgress?.({
+    phase: "importer-module-load",
+    label: useWorker ? "Starting DXF worker" : "Loading DXF importer",
+    percent: 30
+  });
+  const importer = useWorker ? undefined : await import("@kairo/importer-dxf/browser");
   recordStage("importer-module-load", moduleLoadStartedAt);
 
   const importStartedAt = performance.now();
-  const result = await importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
+  options.onProgress?.({
+    phase: "dxf-import",
+    label: useWorker ? "Importing DXF in worker" : "Importing DXF",
+    percent: 75
+  });
+  const result = useWorker
+    ? await importDxfTextWithWorker(fileName, text)
+    : await importer!.importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
   recordStage("dxf-import", importStartedAt);
 
   return {
@@ -158,12 +199,13 @@ export async function loadDxfFileScenePackage(file: File): Promise<DxfImportResu
   };
 }
 
-export async function loadKairoPackageFileScenePackage(file: File): Promise<ScenePackage> {
+export async function loadKairoPackageFileScenePackage(file: File, options: SceneLoadOptions = {}): Promise<ScenePackage> {
   const fileName = file.name.trim() || "uploaded.kairo";
   if (!kairoFilePattern.test(fileName)) {
     throw new Error("Only .kairo files can be opened as Kairo packages.");
   }
 
+  options.onProgress?.({ phase: "kairo-package-read", label: "Opening Kairo package", percent: 75 });
   const bytes = new Uint8Array(await file.arrayBuffer());
   return readKairoPackage(bytes).scenePackage;
 }
@@ -182,10 +224,10 @@ export type LocalSceneFileLoadResult =
       timing?: DxfImportTimingStage[];
     };
 
-export async function loadLocalSceneFilePackage(file: File): Promise<LocalSceneFileLoadResult> {
+export async function loadLocalSceneFilePackage(file: File, options: SceneLoadOptions = {}): Promise<LocalSceneFileLoadResult> {
   const fileName = file.name.trim();
   if (dxfFilePattern.test(fileName)) {
-    const result = await loadDxfFileScenePackage(file);
+    const result = await loadDxfFileScenePackage(file, options);
     return {
       kind: "dxf",
       scenePackage: result.scenePackage,
@@ -198,11 +240,39 @@ export async function loadLocalSceneFilePackage(file: File): Promise<LocalSceneF
     const startedAt = performance.now();
     return {
       kind: "kairo-package",
-      scenePackage: await loadKairoPackageFileScenePackage(file),
+      scenePackage: await loadKairoPackageFileScenePackage(file, options),
       warningCount: 0,
       timing: [{ stage: "kairo-package-read", ms: Math.max(0, performance.now() - startedAt) }]
     };
   }
 
   throw new Error("Only .dxf and .kairo files can be opened.");
+}
+
+function importDxfTextWithWorker(fileName: string, text: string): Promise<DxfImportResult> {
+  const id = ++dxfImportRequestId;
+  const worker = new Worker(new URL("./dxfImport.worker.ts", import.meta.url), { type: "module" });
+
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (event: MessageEvent<DxfImportWorkerResponse>) => {
+      if (event.data.id !== id) return;
+      worker.terminate();
+      if (event.data.ok) {
+        resolve(event.data.result);
+        return;
+      }
+
+      const error = new Error(event.data.error.message);
+      error.name = event.data.error.name ?? "DxfImportWorkerError";
+      if (event.data.error.stack) error.stack = event.data.error.stack;
+      reject(error);
+    };
+
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "DXF import worker failed."));
+    };
+
+    worker.postMessage({ id, fileName, text });
+  });
 }

@@ -144,7 +144,11 @@ describe("viewer scene loader", () => {
   });
 
   it("loads a local DXF file through the browser importer", async () => {
-    const loaded = await loadDxfFileScenePackage(new File([oneLineDxf], "uploaded.dxf"));
+    const progress: string[] = [];
+    const loaded = await loadDxfFileScenePackage(new File([oneLineDxf], "uploaded.dxf"), {
+      onProgress: (entry) => progress.push(`${entry.phase}:${entry.label}:${entry.percent}`),
+      useWorker: false
+    });
 
     expect(loaded.scenePackage.scene.nodes[0].displayName).toBe("uploaded.dxf");
     expect(loaded.scenePackage.manifest.source.path).toBe("uploaded.dxf");
@@ -162,6 +166,11 @@ describe("viewer scene loader", () => {
       "browser-dxf-load-total"
     ]);
     expect(loaded.timing?.every((entry) => Number.isFinite(entry.ms) && entry.ms >= 0)).toBe(true);
+    expect(progress).toEqual([
+      "file-read:Reading file:10",
+      "importer-module-load:Loading DXF importer:30",
+      "dxf-import:Importing DXF:75"
+    ]);
   });
 
   it("rejects non-DXF local files", async () => {
@@ -170,16 +179,28 @@ describe("viewer scene loader", () => {
 
   it("loads a local .kairo scene package", async () => {
     const archive = createKairoPackage(sampleScenePackage, { createdBy: "viewer-test" });
-    const loaded = await loadKairoPackageFileScenePackage(new File([filePart(archive)], "sample.kairo"));
+    const progress: string[] = [];
+    const loaded = await loadKairoPackageFileScenePackage(new File([filePart(archive)], "sample.kairo"), {
+      onProgress: (entry) => progress.push(`${entry.phase}:${entry.label}:${entry.percent}`)
+    });
 
     expect(loaded.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
     expect(loaded.geometry.map((document) => document.geometries[0].id)).toEqual(["geom-bracket-body", "geom-reference-outline"]);
+    expect(progress).toEqual(["kairo-package-read:Opening Kairo package:75"]);
   });
 
   it("loads local .dxf and .kairo files through the shared local-file loader", async () => {
-    const dxfLoaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "uploaded.dxf"));
+    const dxfProgress: string[] = [];
+    const kairoProgress: string[] = [];
+    const dxfLoaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "uploaded.dxf"), {
+      onProgress: (entry) => dxfProgress.push(entry.phase),
+      useWorker: false
+    });
     const kairoLoaded = await loadLocalSceneFilePackage(
-      new File([filePart(createKairoPackage(sampleScenePackage))], "sample.kairo")
+      new File([filePart(createKairoPackage(sampleScenePackage))], "sample.kairo"),
+      {
+        onProgress: (entry) => kairoProgress.push(entry.phase)
+      }
     );
 
     expect(dxfLoaded.kind).toBe("dxf");
@@ -188,6 +209,8 @@ describe("viewer scene loader", () => {
     expect(kairoLoaded.kind).toBe("kairo-package");
     expect(kairoLoaded.scenePackage.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
     expect(kairoLoaded.timing?.map((entry) => entry.stage)).toEqual(["kairo-package-read"]);
+    expect(dxfProgress).toEqual(["file-read", "importer-module-load", "dxf-import"]);
+    expect(kairoProgress).toEqual(["kairo-package-read"]);
   });
 
   it("rejects unsupported local package extensions", async () => {

@@ -185,6 +185,12 @@ button:hover {
   opacity: 0;
 }
 
+.loading-mode .viewport canvas,
+.loading-mode .text-overlay,
+.loading-mode .text-overlay-diagnostics {
+  opacity: 0;
+}
+
 .landing-mode .viewport::before,
 .landing-mode .viewport::after {
   position: absolute;
@@ -205,6 +211,18 @@ button:hover {
     repeating-linear-gradient(90deg, rgba(82, 174, 218, 0.12) 0 1px, transparent 1px 88px),
     repeating-linear-gradient(0deg, rgba(82, 174, 218, 0.1) 0 1px, transparent 1px 88px);
   mask-image: linear-gradient(90deg, transparent 0%, #000 28%, #000 100%);
+}
+
+.loading-mode .viewport::after {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(82, 174, 218, 0.12) 0 1px, transparent 1px 88px),
+    repeating-linear-gradient(0deg, rgba(82, 174, 218, 0.1) 0 1px, transparent 1px 88px),
+    #111927;
 }
 
 .viewport-toolbar {
@@ -487,6 +505,31 @@ button:hover {
   overflow-wrap: anywhere;
   color: #f4f8fc;
   font-size: 18px;
+}
+
+.scene-loading p {
+  margin: 0;
+  color: #8aa2b6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scene-loading-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #253650;
+}
+
+.scene-loading-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  min-width: 2%;
+  border-radius: inherit;
+  background: #66c9ff;
+  box-shadow: 0 0 18px rgba(102, 201, 255, 0.42);
+  transition: width 180ms ease;
 }
 
 .scene-error {
