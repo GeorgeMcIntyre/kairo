@@ -7,6 +7,8 @@ import { FontLoader } from "../apps/viewer/node_modules/three/examples/jsm/loade
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
 const ELLIPSE_SEGMENTS = 48;
+const MAX_CURVE_SEGMENT_MM = 75;
+const MAX_CURVE_SEGMENTS = 512;
 const DEFAULT_RIBBON_WIDTH_MM = 18;
 const MAX_TEXT_CHARS = 24;
 const LONG_TEXT_WORD_LIMIT = 8;
@@ -109,7 +111,7 @@ const FONT_5X7 = {
 
 function usage() {
   console.error(
-    "Usage: node tools/export-scene-cadex-glb.mjs <scene-dir> <output-base> [--ribbon-width-mm N] [--scale N] [--scale-to-meters] [--text-mode filled|stroke|none] [--exclude-sheet-layers] [--focus-main-layout] [--focus-margin-m N]"
+    "Usage: node tools/export-scene-cadex-glb.mjs <scene-dir> <output-base> [--ribbon-width-mm N] [--scale N] [--scale-to-meters] [--text-mode filled|stroke|none] [--text-scope key|all] [--text-height-scale N] [--exclude-sheet-layers] [--focus-main-layout] [--focus-margin-m N]"
   );
 }
 
@@ -120,6 +122,8 @@ function parseArgs(argv) {
   let outputUnits = "source";
   let scaleToMeters = false;
   let textMode = "filled";
+  let textScope = "key";
+  let textHeightScale = 1;
   let excludeSheetLayers = false;
   let focusMainLayout = false;
   let focusMarginMeters = 25;
@@ -136,6 +140,12 @@ function parseArgs(argv) {
       scaleToMeters = true;
     } else if (rest[index] === "--text-mode") {
       textMode = rest[index + 1];
+      index += 1;
+    } else if (rest[index] === "--text-scope") {
+      textScope = rest[index + 1];
+      index += 1;
+    } else if (rest[index] === "--text-height-scale") {
+      textHeightScale = Number(rest[index + 1]);
       index += 1;
     } else if (rest[index] === "--exclude-sheet-layers") {
       excludeSheetLayers = true;
@@ -154,6 +164,8 @@ function parseArgs(argv) {
     outputUnits,
     scaleToMeters,
     textMode,
+    textScope,
+    textHeightScale,
     excludeSheetLayers,
     focusMainLayout,
     focusMarginMeters
@@ -181,7 +193,7 @@ function readableCadColor(layerName, color) {
   const min = Math.min(...source);
   const isWhiteOrVeryLight = min > 0.82;
   const isBlackOrVeryDark = max < 0.12;
-  if (normalized.includes("TEXT") || normalized.includes("ANNO") || normalized.includes("TTL")) return [0.72, 0.48, 0.04];
+  if (isWhiteOrVeryLight && normalized.includes("ANNO")) return [0.04, 0.04, 0.04];
   if (isWhiteOrVeryLight) return [0.42, 0.42, 0.42];
   if (isBlackOrVeryDark) return [0.18, 0.18, 0.18];
   return source;
@@ -194,8 +206,9 @@ function materialKey(layerId, layerName, color) {
 
 function pointsForCircle(entity) {
   const points = [];
-  for (let i = 0; i <= CIRCLE_SEGMENTS; i += 1) {
-    const angle = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+  const segmentCount = adaptiveCurveSegments(Math.PI * 2 * entity.radius, CIRCLE_SEGMENTS);
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const angle = (i / segmentCount) * Math.PI * 2;
     points.push([
       entity.center[0] + Math.cos(angle) * entity.radius,
       entity.center[1] + Math.sin(angle) * entity.radius,
@@ -209,8 +222,10 @@ function pointsForArc(entity) {
   const points = [];
   const start = (entity.startAngleDeg * Math.PI) / 180;
   const end = (entity.endAngleDeg * Math.PI) / 180;
-  for (let i = 0; i <= ARC_SEGMENTS; i += 1) {
-    const angle = start + ((end - start) * i) / ARC_SEGMENTS;
+  const sweep = end - start;
+  const segmentCount = adaptiveCurveSegments(Math.abs(sweep) * entity.radius, ARC_SEGMENTS);
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const angle = start + (sweep * i) / segmentCount;
     points.push([
       entity.center[0] + Math.cos(angle) * entity.radius,
       entity.center[1] + Math.sin(angle) * entity.radius,
@@ -229,8 +244,12 @@ function pointsForEllipse(entity) {
   const points = [];
   const major = entity.majorAxis;
   const minor = [-major[1] * entity.minorToMajorRatio, major[0] * entity.minorToMajorRatio, major[2] * entity.minorToMajorRatio];
-  for (let i = 0; i <= ELLIPSE_SEGMENTS; i += 1) {
-    const t = entity.startParameter + ((entity.endParameter - entity.startParameter) * i) / ELLIPSE_SEGMENTS;
+  const majorLength = Math.hypot(major[0], major[1], major[2]);
+  const minorLength = Math.hypot(minor[0], minor[1], minor[2]);
+  const sweep = entity.endParameter - entity.startParameter;
+  const segmentCount = adaptiveCurveSegments(Math.max(majorLength, minorLength) * Math.abs(sweep), ELLIPSE_SEGMENTS);
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const t = entity.startParameter + (sweep * i) / segmentCount;
     points.push([
       entity.center[0] + Math.cos(t) * major[0] + Math.sin(t) * minor[0],
       entity.center[1] + Math.cos(t) * major[1] + Math.sin(t) * minor[1],
@@ -238,6 +257,11 @@ function pointsForEllipse(entity) {
     ]);
   }
   return points;
+}
+
+function adaptiveCurveSegments(arcLength, fallback) {
+  if (!Number.isFinite(arcLength) || arcLength <= 0) return fallback;
+  return Math.max(fallback, Math.min(MAX_CURVE_SEGMENTS, Math.ceil(arcLength / MAX_CURVE_SEGMENT_MM)));
 }
 
 function pointsForSpline(entity) {
@@ -258,7 +282,7 @@ function pointsForBulgedSegment(start, end, bulge) {
   const center = [midpoint[0] + normal[0] * centerOffset, midpoint[1] + normal[1] * centerOffset, midpoint[2]];
   const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
   const startAngle = Math.atan2(start[1] - center[1], start[0] - center[0]);
-  const segmentCount = Math.max(8, Math.ceil(Math.abs(sweep) / (Math.PI / 12)));
+  const segmentCount = Math.max(8, adaptiveCurveSegments(Math.abs(sweep) * radius, Math.ceil(Math.abs(sweep) / (Math.PI / 12))));
   const points = [];
 
   for (let i = 0; i <= segmentCount; i += 1) {
@@ -376,6 +400,18 @@ async function loadTextFont() {
 
 function normalizeText(text) {
   return String(text ?? "").replace(/\\P/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeRenderText(text) {
+  return String(text ?? "")
+    .replace(/\\P/gi, "\n")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .trim();
 }
 
 function exportTextLabel(text) {
@@ -563,48 +599,75 @@ function addTextStrokes(lineGroup, meshGroup, entity, coordinateScale = 1) {
   return count;
 }
 
-function addFilledTextMesh(group, entity, font, coordinateScale = 1) {
-  const text = exportTextLabel(entity.text);
-  if (!text) return 0;
+function shouldExportText(entity, textScope) {
+  if (!normalizeText(entity.text)) return false;
+  return textScope === "all" || shouldExportMainText(entity.text);
+}
 
-  const minCapHeight = 12 * coordinateScale;
-  const maxCapHeight = 150 * coordinateScale;
-  const capHeight = Math.max(minCapHeight, Math.min(entity.height * 0.42, maxCapHeight));
+function textLinesForEntity(entity, textScope) {
+  const text = textScope === "all" ? normalizeRenderText(entity.text) : exportTextLabel(entity.text);
+  return text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function fontSafeLine(line, font) {
+  const glyphs = font.data?.glyphs ?? {};
+  const fallback = glyphs["?"] ? "?" : " ";
+  return [...line].map((char) => (glyphs[char] ? char : fallback)).join("");
+}
+
+function addFilledTextMesh(group, entity, font, options) {
+  const lines = textLinesForEntity(entity, options.textScope);
+  if (lines.length === 0) return 0;
+
+  const capHeight = Math.max(0.001, (entity.height ?? 0) * options.textHeightScale);
   const rotation = ((entity.rotationDeg ?? 0) * Math.PI) / 180;
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
   const origin = entity.position;
-  const zLift = 3 * coordinateScale;
-  const depth = Math.max(0.6 * coordinateScale, capHeight * 0.012);
-  const geometry = new TextGeometry(text, {
-    font,
-    size: capHeight,
-    depth,
-    curveSegments: 3,
-    bevelEnabled: false
-  });
-  const positions = geometry.getAttribute("position");
-  if (!positions || positions.count === 0) return 0;
+  const zLift = Math.max(0.001, 3 * options.coordinateScale);
+  const depth = Math.max(0.0003, capHeight * 0.012);
+  const lineHeight = capHeight * 1.18;
+  let triangleCount = 0;
 
-  const base = group.positions.length / 3;
-  for (let index = 0; index < positions.count; index += 1) {
-    const localX = positions.getX(index);
-    const localY = positions.getY(index);
-    group.positions.push(
-      origin[0] + localX * cos - localY * sin,
-      origin[1] + localX * sin + localY * cos,
-      (origin[2] ?? 0) + zLift + positions.getZ(index)
-    );
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = fontSafeLine(lines[lineIndex], font);
+    if (!line.trim()) continue;
+    const geometry = new TextGeometry(line, {
+      font,
+      size: capHeight,
+      depth,
+      curveSegments: 4,
+      bevelEnabled: false
+    });
+    const positions = geometry.getAttribute("position");
+    if (!positions || positions.count === 0) continue;
+
+    const base = group.positions.length / 3;
+    const lineYOffset = -lineIndex * lineHeight;
+    for (let index = 0; index < positions.count; index += 1) {
+      const localX = positions.getX(index);
+      const localY = positions.getY(index) + lineYOffset;
+      group.positions.push(
+        origin[0] + localX * cos - localY * sin,
+        origin[1] + localX * sin + localY * cos,
+        (origin[2] ?? 0) + zLift + positions.getZ(index)
+      );
+    }
+
+    if (geometry.index) {
+      const indices = geometry.index.array;
+      for (let index = 0; index < indices.length; index += 1) group.indices.push(base + indices[index]);
+      triangleCount += Math.floor(geometry.index.count / 3);
+    } else {
+      for (let index = 0; index < positions.count; index += 1) group.indices.push(base + index);
+      triangleCount += Math.floor(positions.count / 3);
+    }
   }
 
-  if (geometry.index) {
-    const indices = geometry.index.array;
-    for (let index = 0; index < indices.length; index += 1) group.indices.push(base + indices[index]);
-  } else {
-    for (let index = 0; index < positions.count; index += 1) group.indices.push(base + index);
-  }
-
-  return geometry.index ? Math.floor(geometry.index.count / 3) : Math.floor(positions.count / 3);
+  return triangleCount;
 }
 
 function padBuffer(buffer, padByte) {
@@ -784,6 +847,9 @@ async function main() {
     !Number.isFinite(ribbonWidth) ||
     ribbonWidth <= 0 ||
     !["filled", "stroke", "none"].includes(parsedArgs.textMode) ||
+    !["key", "all"].includes(parsedArgs.textScope) ||
+    !Number.isFinite(parsedArgs.textHeightScale) ||
+    parsedArgs.textHeightScale <= 0 ||
     !Number.isFinite(parsedArgs.focusMarginMeters) ||
     parsedArgs.focusMarginMeters < 0
   ) {
@@ -819,25 +885,8 @@ async function main() {
 
   const lineGroups = new Map();
   const meshGroups = new Map();
-  const textMaterialIndex = materials.push({
-    name: "Kairo text labels",
-    layerId: "kairo-text",
-    layerName: "Kairo text labels",
-    color: [0.08, 0.08, 0.08]
-  }) - 1;
-  const textLineGroup = {
-    materialIndex: textMaterialIndex,
-    layerId: "kairo-text",
-    layerName: "Kairo text labels",
-    positions: []
-  };
-  const textRibbonGroup = {
-    materialIndex: textMaterialIndex,
-    layerId: "kairo-text",
-    layerName: "Kairo text labels",
-    positions: [],
-    indices: []
-  };
+  const textLineGroups = new Map();
+  const textMeshGroups = new Map();
   const stats = {
     source: scene.manifest.source?.path,
     units: scene.manifest.units,
@@ -856,6 +905,8 @@ async function main() {
     sourceUnits: scene.manifest.units,
     outputUnits,
     textMode: parsedArgs.textMode,
+    textScope: parsedArgs.textScope,
+    textHeightScale: parsedArgs.textHeightScale,
     excludeSheetLayers: parsedArgs.excludeSheetLayers,
     skippedSheetEntities: 0,
     focusMainLayout: parsedArgs.focusMainLayout,
@@ -887,17 +938,36 @@ async function main() {
         }
         if (entity.type === "text") {
           stats.textEntities += 1;
-          if (parsedArgs.textMode !== "none" && shouldExportMainText(entity.text)) {
+          if (parsedArgs.textMode !== "none" && shouldExportText(entity, parsedArgs.textScope)) {
+            const materialIndex = resolveMaterial(layerId);
+            const textKey = `text:${materialIndex}:${layerId}`;
+            const textLineGroup = groupFor(textLineGroups, textKey, () => ({
+              materialIndex,
+              layerId,
+              layerName: layer.name,
+              positions: []
+            }));
+            const textMeshGroup = groupFor(textMeshGroups, textKey, () => ({
+              materialIndex,
+              layerId,
+              layerName: layer.name,
+              positions: [],
+              indices: []
+            }));
             const scaledEntity = scaleEntityForExport(entity, coordinateScale);
             const strokeCount = addTextStrokes(
               textLineGroup,
-              parsedArgs.textMode === "stroke" ? textRibbonGroup : undefined,
+              parsedArgs.textMode === "stroke" ? textMeshGroup : undefined,
               scaledEntity,
               coordinateScale
             );
             const textMeshTriangles =
               parsedArgs.textMode === "filled" && textFont
-                ? addFilledTextMesh(textRibbonGroup, scaledEntity, textFont, coordinateScale)
+                ? addFilledTextMesh(textMeshGroup, scaledEntity, textFont, {
+                    coordinateScale,
+                    textScope: parsedArgs.textScope,
+                    textHeightScale: parsedArgs.textHeightScale
+                  })
                 : 0;
             if (strokeCount > 0 || textMeshTriangles > 0) {
               stats.exportedTextEntities += 1;
@@ -952,7 +1022,7 @@ async function main() {
     textIncluded: false
   });
 
-  await writeGlb(linesTextPath, 1, [...Array.from(lineGroups.values()), textLineGroup], materials, {
+  await writeGlb(linesTextPath, 1, [...Array.from(lineGroups.values()), ...Array.from(textLineGroups.values())], materials, {
     ...stats,
     meshName: "DXF material-colored line primitives with key stroke text",
     primitiveMode: "LINES",
@@ -960,7 +1030,7 @@ async function main() {
     textStyle: "filtered stroke text"
   });
 
-  await writeGlb(meshPath, 4, [...Array.from(meshGroups.values()), textRibbonGroup], materials, {
+  await writeGlb(meshPath, 4, [...Array.from(meshGroups.values()), ...Array.from(textMeshGroups.values())], materials, {
     ...stats,
     meshName: parsedArgs.textMode === "filled" ? "DXF ribbon mesh with filled key text" : "DXF ribbon mesh with key stroke text",
     primitiveMode: "TRIANGLES",
