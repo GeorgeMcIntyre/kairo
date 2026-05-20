@@ -224,10 +224,12 @@ async function validateCommand(args: string[], io: CliIo): Promise<number> {
 }
 
 async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
-  const [inputPath, outputDir] = args;
+  const quietWarnings = args.includes("--quiet-warnings");
+  const positional = args.filter((arg) => arg !== "--quiet-warnings");
+  const [inputPath, outputDir] = positional;
 
   if (!inputPath || !outputDir) {
-    io.stderr("Kairo DXF import failed\n- ERROR MISSING_IMPORT_ARGS: Usage: kairo import-dxf <input.dxf> <output-dir>\n");
+    io.stderr("Kairo DXF import failed\n- ERROR MISSING_IMPORT_ARGS: Usage: kairo import-dxf <input.dxf> <output-dir> [--quiet-warnings]\n");
     return 1;
   }
 
@@ -248,17 +250,20 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
         `Output: ${path.resolve(outputDir)}`,
         `Supported entities: ${result.summary.supportedEntityCount}`,
         `Unsupported entities: ${result.summary.unsupportedEntityCount}`,
+        `Conversion: ${result.coverage.conversionPercent.toFixed(4)}%`,
         `Layers: ${result.summary.layerCount}`,
         `Warnings: ${result.summary.warningCount}`,
         `Pre-clean ACAD_REACTORS removed: ${result.preCleanReport.removedAcadReactorsCount}`,
         `Pre-clean missing EOF appended: ${result.preCleanReport.appendedMissingEof}`
       ].join("\n") + "\n"
     );
-    for (const warning of result.preCleanReport.warnings) {
-      io.stderr(`- WARNING ${warning.code}${warning.line ? ` line ${warning.line}` : ""}: ${warning.message}\n`);
-    }
-    for (const warning of result.warnings) {
-      io.stderr(`- WARNING ${warning.code}${warning.entityType ? ` ${warning.entityType}` : ""}${warning.handle ? ` ${warning.handle}` : ""}: ${warning.message}\n`);
+    if (!quietWarnings) {
+      for (const warning of result.preCleanReport.warnings) {
+        io.stderr(`- WARNING ${warning.code}${warning.line ? ` line ${warning.line}` : ""}: ${warning.message}\n`);
+      }
+      for (const warning of result.warnings) {
+        io.stderr(`- WARNING ${warning.code}${warning.entityType ? ` ${warning.entityType}` : ""}${warning.handle ? ` ${warning.handle}` : ""}: ${warning.message}\n`);
+      }
     }
     return 0;
   } catch (error) {
@@ -308,6 +313,63 @@ async function packSceneCommand(args: string[], io: CliIo): Promise<number> {
   } catch (error) {
     const normalized = normalizeError(error);
     io.stderr(`Kairo scene package failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
+async function dxfCoverageCommand(args: string[], io: CliIo): Promise<number> {
+  const json = args.includes("--json");
+  const inputs = args.filter((arg) => arg !== "--json");
+
+  if (inputs.length === 0) {
+    const error = {
+      code: "MISSING_DXF_COVERAGE_ARGS",
+      message: "Usage: kairo dxf-coverage <input.dxf> [...input.dxf] [--json]"
+    };
+    if (json) io.stdout(stableJson(jsonErrorOutput(error)));
+    else io.stderr(`Kairo DXF coverage failed\n- ERROR ${error.code}: ${error.message}\n`);
+    return 1;
+  }
+
+  try {
+    const results = [];
+    for (const inputPath of inputs) {
+      const result = await importDxfToKairo(inputPath, { createdBy: "kairo dxf-coverage" });
+      results.push({
+        input: path.resolve(inputPath),
+        coverage: result.coverage,
+        summary: result.summary,
+        warnings: result.warnings.length,
+        timing: result.timing
+      });
+    }
+
+    const failed = results.filter((result) => result.coverage.failedInstances > 0);
+    if (json) {
+      io.stdout(stableJson({ ok: failed.length === 0, files: results }));
+    } else {
+      const lines = ["Kairo DXF coverage", ""];
+      for (const result of results) {
+        lines.push(
+          `${result.coverage.failedInstances === 0 ? "PASS" : "FAIL"} ${result.coverage.conversionPercent.toFixed(4)}% ${result.input}`,
+          `  Covered: ${result.coverage.coveredInstances}/${result.coverage.totalSourceInstances}`,
+          `  Failed: ${result.coverage.failedInstances}`,
+          `  Warnings: ${result.warnings}`
+        );
+        const topFailures = Object.entries(result.coverage.byFailureCode)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .slice(0, 5);
+        if (topFailures.length > 0) {
+          lines.push(`  Failure codes: ${topFailures.map(([code, count]) => `${code}=${count}`).join(", ")}`);
+        }
+      }
+      io.stdout(`${lines.join("\n")}\n`);
+    }
+    return failed.length === 0 ? 0 : 1;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    if (json) io.stdout(stableJson(jsonErrorOutput(normalized)));
+    else io.stderr(`Kairo DXF coverage failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
     return 1;
   }
 }
@@ -547,6 +609,10 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return importDxfCommand(args, io);
   }
 
+  if (command === "dxf-coverage") {
+    return dxfCoverageCommand(args, io);
+  }
+
   if (command === "pack-scene") {
     return packSceneCommand(args, io);
   }
@@ -564,7 +630,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   }
 
   const message =
-    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
+    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> [--quiet-warnings] | kairo dxf-coverage <input.dxf> [...input.dxf] [--json] | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

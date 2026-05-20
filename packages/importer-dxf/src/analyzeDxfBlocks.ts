@@ -160,8 +160,24 @@ type ParsedBlock = {
   entities?: ParsedEntities;
 };
 
-const supportedNow = new Set(["LINE", "ARC", "CIRCLE", "LWPOLYLINE"]);
-const supportedAfterPolyline = new Set([...supportedNow, "POLYLINE"]);
+const supportedNow = new Set([
+  "LINE",
+  "ARC",
+  "CIRCLE",
+  "LWPOLYLINE",
+  "POLYLINE",
+  "TEXT",
+  "MTEXT",
+  "ATTDEF",
+  "ATTRIB",
+  "POINT",
+  "SPLINE",
+  "ELLIPSE",
+  "SOLID",
+  "3DFACE",
+  "INSERT"
+]);
+const supportedAfterPolyline = new Set(supportedNow);
 const textLikeTypes = new Set(["ATTDEF", "ATTRIB", "TEXT", "MTEXT"]);
 
 const entityTypeKeys = [
@@ -275,7 +291,7 @@ function addTransformComplexity(total: DxfBlockTransformComplexity, insert: Pars
 
 function hasTransformComplexity(insert: ParsedEntity) {
   const complexity = transformComplexityForInsert(insert);
-  return complexity.nonUniformScale || complexity.negativeScale || complexity.zOffset;
+  return complexity.nonUniformScale;
 }
 
 function classifyInsert(insert: ParsedEntity, block: ParsedBlock | undefined): DxfBlockExpansionClassification {
@@ -284,10 +300,6 @@ function classifyInsert(insert: ParsedEntity, block: ParsedBlock | undefined): D
   }
 
   const counts = entityCountMap(block.entities);
-  if ((counts.INSERT ?? 0) > 0) {
-    return "blocked by nested INSERT";
-  }
-
   if (hasTransformComplexity(insert)) {
     return "blocked by transform complexity";
   }
@@ -312,15 +324,7 @@ function classificationForBlock(
     return hasUnsupportedEntityTypes(counts, supportedNow) ? "blocked by unsupported entity types" : "safe now";
   }
 
-  if ((counts.INSERT ?? 0) > 0) {
-    return "blocked by nested INSERT";
-  }
-
-  if (
-    transformComplexity.nonUniformScale > 0 ||
-    transformComplexity.negativeScale > 0 ||
-    transformComplexity.zOffset > 0
-  ) {
+  if (transformComplexity.nonUniformScale > 0) {
     return "blocked by transform complexity";
   }
 
@@ -438,7 +442,6 @@ function summarizeBlockDefinitions(blocks: ParsedBlock[], usage: Map<string, Par
 }
 
 const EQUIPMENT_PATTERNS = ["FANUC", "ROBOT", "CONTROLLER", "RBT", "HENROB", "PV-R", "PDP", "LIFT", "TILT", "SPAC", "RESPOT"];
-const supportedGeometryForPartialExpand = new Set(["LINE", "LWPOLYLINE", "CIRCLE", "ARC", "POLYLINE"]);
 
 const emptyTransformAudit = (): DxfTransformAuditSummary => ({
   totalHardBlocked: 0,
@@ -480,7 +483,7 @@ function computeTransformAudit(inserts: ParsedEntity[]): DxfTransformAuditSummar
     const isNonUniform = Math.abs(sx - sy) > 1e-9 || Math.abs(sx - sz) > 1e-9;
     const isNegative = sx < 0 || sy < 0 || sz < 0;
 
-    if (!isNonUniform && !isNegative) continue;
+    if (!isNonUniform) continue;
 
     if (sx < 0) flagCounts.negativeX++;
     if (sy < 0) flagCounts.negativeY++;
@@ -658,23 +661,8 @@ function computeTextAudit(
     }
   }
 
-  // Partial-expand blocks where text was skipped (has text AND has supported geometry AND used)
+  // Text and attributes are now converted, so partial geometric expansion does not imply skipped text.
   const partialExpandTextSkipped: DxfTextAuditSummary["partialExpandTextSkipped"] = [];
-  for (const [blockName, summary] of Object.entries(blockDefinitionsByName)) {
-    if (!summary.hasAttdefAttribTextMtext || summary.usageCount === 0) {
-      continue;
-    }
-    const c = summary.containedEntityTypeCounts;
-    const hasSupportedGeometry = Object.keys(c).some((t) => supportedGeometryForPartialExpand.has(t) && (c[t] ?? 0) > 0);
-    if (hasSupportedGeometry) {
-      partialExpandTextSkipped.push({
-        blockName,
-        insertCount: summary.usageCount,
-        textCount: (c.TEXT ?? 0) + (c.MTEXT ?? 0),
-        attdefCount: c.ATTDEF ?? 0
-      });
-    }
-  }
 
   return {
     totalTextCount: directText.length + blockTotalText,

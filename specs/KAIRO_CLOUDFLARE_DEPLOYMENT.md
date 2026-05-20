@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-10
 
-This is the canonical deployment checklist for the Kairo viewer on Cloudflare Pages. The deployment target is the static Vite app in `apps/viewer`; exporter code, CAD Exchanger probe tools, importer code, and schema code are not part of the cloud runtime.
+This is the canonical deployment checklist for the Kairo viewer on Cloudflare Pages. The deployment target is the static Vite app in `apps/viewer`; CAD Exchanger desktop tooling, CLI probe tools, importer code, and schema code are not part of the cloud runtime. The viewer does include a small browser-side GLB handoff writer for user-triggered CAD Exchanger export.
 
 ## Target
 
@@ -147,6 +147,7 @@ The Pages runtime is static assets only:
 
 - No production exporter dependency.
 - No CAD Exchanger dependency.
+- Browser GLB handoff export is allowed because it is local, user-triggered, and has no CAD Exchanger runtime dependency.
 - No `packages/exporter-glb` dependency.
 - No `tools/glb-probes` dependency.
 - No local absolute DXF path required during Cloudflare build.
@@ -205,4 +206,4 @@ Cloudflare will build the reverted `main` commit.
 - No auth exists; deploy only scenes intended for public/demo access.
 - Cloudflare will not deploy local commits until pushed.
 - Scene assets under `apps/viewer/public/scenes` are bundled into the Pages deploy.
-- Future exporter/CAD Exchanger probe work is unrelated to this deployment path and must stay out of runtime dependencies.
+- CAD Exchanger desktop conversion remains outside the deployment path and must stay out of runtime dependencies.

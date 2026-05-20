@@ -11,7 +11,7 @@ import {
   type SemanticGeometryGroupSource
 } from "./semanticDevices";
 
-export type SemanticTextSourceKind = "TEXT" | "MTEXT" | "ATTDEF";
+export type SemanticTextSourceKind = "TEXT" | "MTEXT" | "ATTDEF" | "ATTRIB";
 
 export type SemanticTextEntity = {
   entityId: string;

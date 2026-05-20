@@ -112,6 +112,7 @@ const polylineEntitySchema = z.object({
   type: z.literal("polyline"),
   points: z.array(vector3Schema).min(2),
   closed: z.boolean().default(false),
+  bulges: z.array(z.number().finite()).optional(),
   layerId: z.string().optional(),
   color: colorSchema.optional(),
   sourceRef: z.string().optional()
@@ -139,6 +140,70 @@ const arcEntitySchema = z.object({
   sourceRef: z.string().optional()
 });
 
+const pointEntitySchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("point"),
+  position: vector3Schema,
+  thickness: z.number().finite().optional(),
+  xAxisAngle: z.number().finite().optional(),
+  layerId: z.string().optional(),
+  color: colorSchema.optional(),
+  sourceRef: z.string().optional()
+});
+
+const ellipseEntitySchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("ellipse"),
+  center: vector3Schema,
+  majorAxis: vector3Schema,
+  minorToMajorRatio: z.number().positive(),
+  startParameter: z.number().finite(),
+  endParameter: z.number().finite(),
+  layerId: z.string().optional(),
+  color: colorSchema.optional(),
+  sourceRef: z.string().optional()
+});
+
+const splineEntitySchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("spline"),
+  degree: z.number().int().nonnegative(),
+  flags: z.number().int().optional(),
+  normal: vector3Schema.optional(),
+  knots: z.array(z.number().finite()).default([]),
+  weights: z.array(z.number().finite()).default([]),
+  controlPoints: z.array(vector3Schema).default([]),
+  fitPoints: z.array(vector3Schema).default([]),
+  startTangent: vector3Schema.optional(),
+  endTangent: vector3Schema.optional(),
+  knotTolerance: z.number().finite().optional(),
+  controlPointTolerance: z.number().finite().optional(),
+  fitTolerance: z.number().finite().optional(),
+  layerId: z.string().optional(),
+  color: colorSchema.optional(),
+  sourceRef: z.string().optional()
+});
+
+const face3dEntitySchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("face3d"),
+  vertices: z.array(vector3Schema).min(3).max(4),
+  invisibleEdgeFlag: z.number().int().optional(),
+  layerId: z.string().optional(),
+  color: colorSchema.optional(),
+  sourceRef: z.string().optional()
+});
+
+const solidEntitySchema = z.object({
+  id: z.string().min(1),
+  type: z.literal("solid"),
+  vertices: z.array(vector3Schema).min(3).max(4),
+  thickness: z.number().finite().optional(),
+  layerId: z.string().optional(),
+  color: colorSchema.optional(),
+  sourceRef: z.string().optional()
+});
+
 const textEntitySchema = z.object({
   id: z.string().min(1),
   type: z.literal("text"),
@@ -146,7 +211,7 @@ const textEntitySchema = z.object({
   position: vector3Schema,
   rotationDeg: z.number().finite(),
   height: z.number().positive(),
-  origin: z.enum(["TEXT", "ATTDEF"]),
+  origin: z.enum(["TEXT", "MTEXT", "ATTDEF", "ATTRIB"]),
   tag: z.string().optional(),
   hAlign: z.number().int().optional(),
   vAlign: z.number().int().optional(),
@@ -162,6 +227,11 @@ export const drawingEntitySchema = z.discriminatedUnion("type", [
   polylineEntitySchema,
   circleEntitySchema,
   arcEntitySchema,
+  pointEntitySchema,
+  ellipseEntitySchema,
+  splineEntitySchema,
+  face3dEntitySchema,
+  solidEntitySchema,
   textEntitySchema
 ]);
 

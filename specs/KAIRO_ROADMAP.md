@@ -61,7 +61,7 @@ HEAD: c1241f1 feat: extract MTEXT entities and keep big labels visible at fit-sc
 | ISSUE-007 | Nested INSERT investigation (depth-3+) | Later |
 | ISSUE-008 | Complex POLYLINE / spline-fit policy | Later |
 | ISSUE-009 | Render performance / batching baseline | Later |
-| 11 | GLB export | Parked |
+| 11 | GLB export | CAD Exchanger handoff implemented; production exporter still later |
 | 12 | JT export | Parked — requires licensed Siemens toolkit |
 
 ## What Demo-Ready Means
@@ -83,7 +83,7 @@ Current estimate for demo-ready: **After ISSUE-002 (selection) + ISSUE-004 (draw
 | Area | Reason |
 |---|---|
 | JT export | Requires Siemens JT Open Toolkit; not started; do not begin without re-authorization |
-| GLB export | Parked until DXF geometry coverage is stable |
+| GLB export | Browser CAD Exchanger handoff exists for line/triangle geometry; richer production exporter remains later |
 | DWG direct parsing | Convert to DXF first (ODA or AutoCAD) |
 | Full MTEXT rich formatting | Color, font, bold, italic, tables — not needed for current POC |
 | Non-uniform scale INSERT expansion | 0 instances in Scott DXF2013; not worth implementing yet |

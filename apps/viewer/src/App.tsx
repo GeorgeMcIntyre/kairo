@@ -95,6 +95,15 @@ type ViewerSelection = {
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "main" | "selected" | "raw";
 type AdvancedLayoutExportFormat = "json" | "csv" | "markdown";
+type AdvancedWorkflowPanel =
+  | "layout"
+  | "device"
+  | "issues"
+  | "station-cell"
+  | "bom"
+  | "foundation"
+  | "export"
+  | "performance";
 
 type FitRequest = {
   target: FitTarget;
@@ -128,6 +137,17 @@ const EMPTY_SEMANTIC_OVERLAY_MODEL: SemanticOverlayModel = {
   associationLines: [],
   selectedSourceMarkers: []
 };
+
+const ADVANCED_WORKFLOW_PANELS: readonly { id: AdvancedWorkflowPanel; label: string }[] = [
+  { id: "layout", label: "Layout Explorer" },
+  { id: "device", label: "Device Inspector" },
+  { id: "issues", label: "Semantic Issues" },
+  { id: "station-cell", label: "Station/Cell Builder" },
+  { id: "bom", label: "Layout BOM" },
+  { id: "foundation", label: "Foundation Plan" },
+  { id: "export", label: "Export Review" },
+  { id: "performance", label: "Performance" }
+];
 
 const selectedColor = new THREE.Color("#ffb020");
 const hoverColor = new THREE.Color("#7ec8e3");
@@ -358,6 +378,18 @@ function semanticReasonPreview(reasons: readonly string[]): string {
 
 function downloadTextFile(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadBytesFile(filename: string, content: Uint8Array, type: string) {
+  const buffer = new ArrayBuffer(content.byteLength);
+  new Uint8Array(buffer).set(content);
+  const blob = new Blob([buffer], { type });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -882,6 +914,7 @@ export function App() {
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
   const [semanticPanelOpen, setSemanticPanelOpen] = useState(false);
   const [inspectorPanelOpen, setInspectorPanelOpen] = useState(true);
+  const [advancedWorkflowPanel, setAdvancedWorkflowPanel] = useState<AdvancedWorkflowPanel>("issues");
   const [showOutliers, setShowOutliers] = useState(false);
   const [semanticOverlayEnabled, setSemanticOverlayEnabled] = useState(false);
   const [selectedSemantic, setSelectedSemantic] = useState<SemanticSelection | undefined>();
@@ -890,6 +923,7 @@ export function App() {
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
   const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
+  const [glbExportStatus, setGlbExportStatus] = useState<string | undefined>();
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
   const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
@@ -982,6 +1016,12 @@ export function App() {
     () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
     [scenePackage, layoutSemantics]
   );
+  const visibleLayoutLines = advancedLayoutModel.lines.slice(0, 16);
+  const visibleLayoutAreas = advancedLayoutModel.areas.slice(0, 24);
+  const visibleLayoutCells = advancedLayoutModel.cells.slice(0, 24);
+  const visibleLayoutBomItems = advancedLayoutModel.bomItems.slice(0, 48);
+  const visibleFoundationPoints = advancedLayoutModel.foundationPoints.slice(0, 24);
+  const visibleServiceZones = advancedLayoutModel.serviceZones.slice(0, 24);
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
     () => (showOutliers ? new Set<string>() : new Set(robustBounds.outlierEntityIds)),
@@ -1294,14 +1334,33 @@ export function App() {
       return;
     }
     void writeText.call(navigator.clipboard, advancedLayoutExportContent(format))
-      .then(() => setSemanticCopyStatus(format === "json" ? "Copied AE JSON" : format === "csv" ? "Copied AE CSV" : "Copied AE Markdown"))
+      .then(() =>
+        setSemanticCopyStatus(format === "json" ? "Copied BOM JSON" : format === "csv" ? "Copied BOM CSV" : "Copied BOM Markdown")
+      )
       .catch(() => setSemanticCopyStatus("Copy failed"));
   };
 
   const downloadAdvancedLayoutExport = (format: AdvancedLayoutExportFormat) => {
     const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
     const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
-    downloadTextFile(`kairo-advanced-layout.${extension}`, advancedLayoutExportContent(format), mime);
+    downloadTextFile(`kairo-layout-bom.${extension}`, advancedLayoutExportContent(format), mime);
+  };
+
+  const downloadCadExchangerGlbExport = async () => {
+    const startedAt = performance.now();
+    setGlbExportStatus("Preparing GLB...");
+    try {
+      const { exportScenePackageToCadExchangerGlb } = await import("./cadExchangerGlb");
+      const result = exportScenePackageToCadExchangerGlb(scenePackage);
+      downloadBytesFile(result.filename, result.bytes, "model/gltf-binary");
+      setGlbExportStatus(
+        `GLB ready: ${result.stats.lineSegments.toLocaleString()} line segments / ${result.stats.outputUnits} / ${formatTimingMs(
+          performance.now() - startedAt
+        )}`
+      );
+    } catch (error) {
+      setGlbExportStatus(error instanceof Error ? error.message : "GLB export failed");
+    }
   };
 
   return (
@@ -1703,22 +1762,22 @@ export function App() {
             </button>
             <span className="semantic-action-divider" aria-hidden="true" />
             <button onClick={() => copyAdvancedLayoutExport("json")} type="button">
-              Copy AE JSON
+              Copy BOM JSON
             </button>
             <button onClick={() => copyAdvancedLayoutExport("csv")} type="button">
-              Copy AE CSV
+              Copy BOM CSV
             </button>
             <button onClick={() => copyAdvancedLayoutExport("markdown")} type="button">
-              Copy AE MD
+              Copy BOM MD
             </button>
             <button onClick={() => downloadAdvancedLayoutExport("json")} type="button">
-              Download AE JSON
+              Download BOM JSON
             </button>
             <button onClick={() => downloadAdvancedLayoutExport("csv")} type="button">
-              Download AE CSV
+              Download BOM CSV
             </button>
             <button onClick={() => downloadAdvancedLayoutExport("markdown")} type="button">
-              Download AE MD
+              Download BOM MD
             </button>
             {semanticCopyStatus ? (
               <span className="semantic-copy-status" role="status">
@@ -1726,6 +1785,233 @@ export function App() {
               </span>
             ) : null}
           </div>
+          <div className="advanced-workflow-tabs" role="tablist" aria-label="Advanced engineering workflow">
+            {ADVANCED_WORKFLOW_PANELS.map((panel) => (
+              <button
+                aria-selected={advancedWorkflowPanel === panel.id}
+                className={advancedWorkflowPanel === panel.id ? "active" : ""}
+                key={panel.id}
+                onClick={() => setAdvancedWorkflowPanel(panel.id)}
+                role="tab"
+                type="button"
+              >
+                {panel.label}
+              </button>
+            ))}
+          </div>
+          {advancedWorkflowPanel === "layout" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Layout Explorer</h3>
+                  <span>
+                    {advancedLayoutModel.lines.length} lines / {advancedLayoutModel.areas.length} areas
+                  </span>
+                </div>
+                <ol>
+                  {visibleLayoutLines.map((line) => (
+                    <li key={line.id}>
+                      <strong>{line.name}</strong>
+                      <span>
+                        {line.stationIds.length} stations / {line.cellIds.length} cells / conf {line.confidence.toFixed(2)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Areas</h3>
+                  <span>showing first {visibleLayoutAreas.length} of {advancedLayoutModel.areas.length}</span>
+                </div>
+                <ol>
+                  {visibleLayoutAreas.map((area) => (
+                    <li key={area.id}>
+                      <strong>{area.name}</strong>
+                      <span>
+                        {area.kind} / {area.stationIds.length} stations / {area.deviceIds.length} devices
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "device" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Device Inspector</h3>
+                  <span>
+                    {advancedLayoutModel.robots.length} robots/devices / {advancedLayoutModel.nests.length} nests /{" "}
+                    {advancedLayoutModel.dunnage.length} dunnage
+                  </span>
+                </div>
+                <ol>
+                  {visibleSemanticDevices.map((device) => (
+                    <li key={device.id}>
+                      <button
+                        className={selectedSemantic?.kind === "device" && selectedSemantic.id === device.id ? "selected" : ""}
+                        onClick={() => selectSemantic({ kind: "device", id: device.id })}
+                        type="button"
+                        title={device.rawText ?? device.normalizedText}
+                      >
+                        <strong>{device.displayText ?? safeDisplayText(device.labelText)}</strong>
+                        <span>
+                          {deviceKindLabel(device.kind)} / {device.stationId ?? "unassigned"} / {device.associationStatus}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "station-cell" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Station/Cell Builder</h3>
+                  <span>{advancedLayoutModel.cells.length} candidate cells</span>
+                </div>
+                <ol>
+                  {visibleLayoutCells.map((cell) => (
+                    <li key={cell.id}>
+                      <strong>{cell.name}</strong>
+                      <span>
+                        {cell.stationIds.join(", ")} / {cell.deviceIds.length} devices / conf {cell.confidence.toFixed(2)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "bom" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Layout BOM Summary</h3>
+                  <span>{advancedLayoutModel.bomItems.length} rows</span>
+                </div>
+                <div className="advanced-summary-strip">
+                  {Object.entries(advancedLayoutModel.summary.bomByCategory).map(([category, count]) => (
+                    <span key={category}>
+                      <strong>{count}</strong>
+                      {deviceKindLabel(category)}
+                    </span>
+                  ))}
+                </div>
+                <ol>
+                  {visibleLayoutBomItems.map((item) => (
+                    <li key={item.id}>
+                      <strong>{item.label}</strong>
+                      <span>
+                        {item.category} / qty {item.quantity} / {item.stationId ?? item.cellId ?? "unassigned"} / {item.reviewStatus}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "foundation" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Foundation Plan</h3>
+                  <span>
+                    {advancedLayoutModel.foundationPoints.length} points / {advancedLayoutModel.serviceZones.length} service zones
+                  </span>
+                </div>
+                {visibleFoundationPoints.length === 0 ? <p>No foundation points inferred yet.</p> : null}
+                <ol>
+                  {visibleFoundationPoints.map((point) => (
+                    <li key={point.id}>
+                      <strong>{point.label}</strong>
+                      <span>
+                        {point.category} / {point.stationId ?? "unassigned"} / risk {point.installRisk}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Service Zones</h3>
+                  <span>{advancedLayoutModel.serviceZones.length}</span>
+                </div>
+                <ol>
+                  {visibleServiceZones.map((zone) => (
+                    <li key={zone.id}>
+                      <strong>{zone.label}</strong>
+                      <span>
+                        {zone.zoneType} / {zone.stationId ?? "unassigned"} / conf {zone.confidence.toFixed(2)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "export" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Export Review</h3>
+                  <span>{advancedLayoutModel.modelVersion}</span>
+                </div>
+                <p>JSON, CSV, and Markdown exports include revision-ready stable keys for future compare.</p>
+                <div className="advanced-export-actions">
+                  <button onClick={downloadCadExchangerGlbExport} type="button">
+                    Download GLB for CAD Exchanger
+                  </button>
+                  {glbExportStatus ? <span role="status">{glbExportStatus}</span> : null}
+                </div>
+                <dl className="advanced-export-facts">
+                  <dt>Source</dt>
+                  <dd>{advancedLayoutModel.sourcePath ?? "current viewer scene"}</dd>
+                  <dt>Revision key</dt>
+                  <dd>{advancedLayoutModel.revisionIdentity.sourceFingerprint}</dd>
+                  <dt>BOM rows</dt>
+                  <dd>{advancedLayoutModel.bomItems.length}</dd>
+                  <dt>GLB path</dt>
+                  <dd>Open downloaded GLB in CAD Exchanger, then export JT from CAD Exchanger.</dd>
+                </dl>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "performance" ? (
+            <div className="advanced-workflow-panel">
+              <section>
+                <div className="semantic-list-heading">
+                  <h3>Performance Diagnostics</h3>
+                  <span>{semanticAnalysisTiming ? formatTimingMs(semanticAnalysisTiming.ms) : "pending"}</span>
+                </div>
+                <ol>
+                  {sceneLoadTiming.map((entry) => (
+                    <li key={entry.stage}>
+                      <strong>{entry.stage}</strong>
+                      <span>{formatTimingMs(entry.ms)}</span>
+                    </li>
+                  ))}
+                  {viewportDiagnostics?.timing?.map((entry) => (
+                    <li key={`viewport-${entry.stage}`}>
+                      <strong>{entry.stage}</strong>
+                      <span>{formatTimingMs(entry.ms)}</span>
+                    </li>
+                  ))}
+                  {semanticAnalysisTiming ? (
+                    <li>
+                      <strong>{semanticAnalysisTiming.stage}</strong>
+                      <span>{formatTimingMs(semanticAnalysisTiming.ms)}</span>
+                    </li>
+                  ) : null}
+                </ol>
+              </section>
+            </div>
+          ) : null}
+          {advancedWorkflowPanel === "issues" ? (
           <div className="semantic-validation-lists">
             <section>
               <div className="semantic-list-heading">
@@ -1850,6 +2136,7 @@ export function App() {
               </div>
             </section>
           </div>
+          ) : null}
         </section>
       ) : null}
 

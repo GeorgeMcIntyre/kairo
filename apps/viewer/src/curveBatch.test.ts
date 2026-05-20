@@ -60,6 +60,26 @@ describe("createCurveBatchData", () => {
     expect(batch.pickEntriesBySegment[1]?.startVertexIndex).toBe(2);
   });
 
+  it("samples bulged polylines while preserving picking metadata", () => {
+    const batch = createCurveBatchData(
+      curveSet([
+        {
+          id: "bulged-poly-1",
+          type: "polyline",
+          points: [
+            [0, 0, 0],
+            [10, 0, 0]
+          ],
+          bulges: [1],
+          closed: false
+        }
+      ])
+    );
+
+    expect(batch.pickEntriesBySegment.length).toBeGreaterThan(1);
+    expect(new Set(batch.pickEntriesBySegment.map((entry) => entry.entityId))).toEqual(new Set(["bulged-poly-1"]));
+  });
+
   it("uses deterministic tessellation counts for circle and arc picking", () => {
     const batch = createCurveBatchData(
       curveSet([
@@ -84,6 +104,65 @@ describe("createCurveBatchData", () => {
 
     expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "circle-1")).toHaveLength(32);
     expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "arc-1")).toHaveLength(24);
+  });
+
+  it("renders preserved DXF point, ellipse, spline, face, and solid entities for picking", () => {
+    const batch = createCurveBatchData(
+      curveSet([
+        {
+          id: "point-1",
+          type: "point",
+          position: [1, 2, 0]
+        },
+        {
+          id: "ellipse-1",
+          type: "ellipse",
+          center: [0, 0, 0],
+          majorAxis: [10, 0, 0],
+          minorToMajorRatio: 0.5,
+          startParameter: 0,
+          endParameter: Math.PI * 2
+        },
+        {
+          id: "spline-1",
+          type: "spline",
+          degree: 2,
+          knots: [],
+          weights: [],
+          controlPoints: [],
+          fitPoints: [
+            [0, 0, 0],
+            [5, 5, 0],
+            [10, 0, 0]
+          ]
+        },
+        {
+          id: "face-1",
+          type: "face3d",
+          vertices: [
+            [0, 0, 0],
+            [10, 0, 0],
+            [10, 10, 0],
+            [0, 10, 0]
+          ]
+        },
+        {
+          id: "solid-1",
+          type: "solid",
+          vertices: [
+            [20, 0, 0],
+            [25, 0, 0],
+            [20, 5, 0]
+          ]
+        }
+      ])
+    );
+
+    expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "point-1")).toHaveLength(1);
+    expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "ellipse-1")).toHaveLength(48);
+    expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "spline-1")).toHaveLength(2);
+    expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "face-1")).toHaveLength(4);
+    expect(batch.pickEntriesBySegment.filter((entry) => entry.entityId === "solid-1")).toHaveLength(3);
   });
 
   it("can omit hidden entities while preserving segment metadata for visible entities", () => {

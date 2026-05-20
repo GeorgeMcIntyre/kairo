@@ -61,6 +61,25 @@ export type ParsedSourceRef =
   | { kind: "block-child"; insertHandle: string; blockName: string; childHandle: string }
   | { kind: "unknown" };
 
+function finitePoints(points: readonly (readonly number[])[]): Vec3[] {
+  return points.map(vec3From).filter((point) => point.every(Number.isFinite));
+}
+
+function splineReferencePoints(entity: Extract<DrawingEntity, { type: "spline" }>): Vec3[] {
+  return finitePoints([...(entity.fitPoints ?? []), ...(entity.controlPoints ?? [])]);
+}
+
+function ellipsePoint(entity: Extract<DrawingEntity, { type: "ellipse" }>, parameter: number): Vec3 {
+  const major = entity.majorAxis;
+  const minorScale = entity.minorToMajorRatio;
+  const minor: Vec3 = [-major[1] * minorScale, major[0] * minorScale, major[2] * minorScale];
+  return [
+    entity.center[0] + Math.cos(parameter) * major[0] + Math.sin(parameter) * minor[0],
+    entity.center[1] + Math.cos(parameter) * major[1] + Math.sin(parameter) * minor[1],
+    entity.center[2] + Math.cos(parameter) * major[2] + Math.sin(parameter) * minor[2]
+  ];
+}
+
 export function parseSourceRef(sourceRef: string): ParsedSourceRef {
   if (sourceRef === "src-dxf-file") return { kind: "file" };
   const blockChildMatch = sourceRef.match(/^src-dxf-insert-(.+?)-block-(.+?)-child-(.+)$/);
@@ -107,6 +126,17 @@ export function computeEntityCentroid(entity: DrawingEntity): Vec3 {
     case "circle":
     case "arc":
       return [entity.center[0], entity.center[1], entity.center[2]];
+    case "point":
+      return [entity.position[0], entity.position[1], entity.position[2]];
+    case "ellipse":
+      return [entity.center[0], entity.center[1], entity.center[2]];
+    case "spline": {
+      const points = splineReferencePoints(entity);
+      return points.length > 0 ? boundsCenter(boundsFromPoints(points)) : [0, 0, 0];
+    }
+    case "face3d":
+    case "solid":
+      return boundsCenter(boundsFromPoints(finitePoints(entity.vertices)));
     case "text":
       return [entity.position[0], entity.position[1], entity.position[2]];
   }
@@ -130,6 +160,12 @@ function expandBoundsByPoint(bounds: { min: [number, number, number]; max: [numb
   bounds.max[0] = Math.max(bounds.max[0], point[0]);
   bounds.max[1] = Math.max(bounds.max[1], point[1]);
   bounds.max[2] = Math.max(bounds.max[2], point[2]);
+}
+
+function boundsFromPoints(points: readonly Vec3[]): Bounds3 {
+  const bounds = emptyBounds();
+  for (const point of points) expandBoundsByPoint(bounds, point);
+  return boundsIsEmpty(bounds) ? { min: [0, 0, 0], max: [0, 0, 0] } : bounds;
 }
 
 function vec3From(values: readonly number[]): Vec3 {
@@ -198,6 +234,17 @@ export function computeEntityBounds(entity: DrawingEntity): Bounds3 {
         entity.center[2]
       ]);
     }
+  } else if (entity.type === "point") {
+    expandBoundsByPoint(bounds, vec3From(entity.position));
+  } else if (entity.type === "ellipse") {
+    for (let i = 0; i < 32; i += 1) {
+      const parameter = entity.startParameter + ((entity.endParameter - entity.startParameter) * i) / 31;
+      expandBoundsByPoint(bounds, ellipsePoint(entity, parameter));
+    }
+  } else if (entity.type === "spline") {
+    for (const point of splineReferencePoints(entity)) expandBoundsByPoint(bounds, point);
+  } else if (entity.type === "face3d" || entity.type === "solid") {
+    for (const point of entity.vertices) expandBoundsByPoint(bounds, vec3From(point));
   } else {
     const halfHeight = entity.height / 2;
     expandBoundsByPoint(bounds, [entity.position[0] - halfHeight, entity.position[1] - halfHeight, entity.position[2]]);

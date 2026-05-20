@@ -494,7 +494,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("partially expands block with SPLINE+CIRCLE: CIRCLE expanded, SPLINE skipped", async () => {
+  it("expands block with SPLINE+CIRCLE: both source entities covered", async () => {
     const blockSplineCircle = [
       "0", "SPLINE", "5", "SP1", "8", "0",
       "0", "CIRCLE", "5", "C1", "8", "0", "10", "1", "20", "1", "30", "0", "40", "2"
@@ -504,17 +504,14 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(1);
-      const partialWarn = result.warnings.find((w) => w.code === "DXF_BLOCK_PARTIAL_EXPAND");
-      expect(partialWarn).toMatchObject({
-        message: 'DXF BLOCK "SPLINEBLOCK" was partially expanded; unsupported children skipped: SPLINE×1.',
-        entityType: "INSERT",
-        handle: "I1"
-      });
+      expect(result.summary.supportedEntityCount).toBe(2);
+      expect(result.coverage.conversionPercent).toBe(100);
+      expect(result.warnings.find((w) => w.code === "DXF_BLOCK_PARTIAL_EXPAND")).toBeUndefined();
       const geometry = result.scenePackage.geometry[0].geometries[0];
       expect(geometry.kind).toBe("curve-set");
       if (geometry.kind === "curve-set") {
         expect(geometry.entities[0]).toMatchObject({ type: "circle", radius: 2 });
+        expect(geometry.entities[1]).toMatchObject({ type: "spline" });
       }
     });
   });
@@ -540,7 +537,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("skips non-uniform-scale INSERTs; expands uniform-negative-scale and z-offset INSERTs", async () => {
+  it("expands line-only non-uniform, uniform-negative, and z-offset INSERTs", async () => {
     const content = blockScene(
       [...blockHeader("TRANSFORMS"), ...blockLine("L1"), ...blockFooter],
       [
@@ -553,14 +550,8 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(2);
+      expect(result.summary.supportedEntityCount).toBe(3);
       expect(result.warnings).toEqual([
-        {
-          code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-          message: "DXF INSERT transform is not supported by the simple expander (non-uniform scale); entity was skipped.",
-          entityType: "INSERT",
-          handle: "I1"
-        },
         {
           code: "DXF_INSERT_MIRROR_FLATTENED",
           message: "DXF INSERT mirror scale was expanded by flipping output coordinates for 2D layout import.",
@@ -635,10 +626,10 @@ describe("importDxfToKairo", () => {
 
     expect(validateScenePackage(result.scenePackage).valid).toBe(true);
     expect(result.summary).toEqual({
-      supportedEntityCount: 0,
-      unsupportedEntityCount: 1,
+      supportedEntityCount: 1,
+      unsupportedEntityCount: 0,
       layerCount: 1,
-      warningCount: 1
+      warningCount: 0
     });
     expect(result.preCleanReport).toMatchObject({
       enabled: true,
@@ -646,14 +637,12 @@ describe("importDxfToKairo", () => {
       removedAcadReactorsLineRanges: [{ startLine: 49, endLine: 54 }],
       appendedMissingEof: false
     });
-    expect(result.warnings).toEqual([
-      {
-        code: "DXF_ENTITY_UNSUPPORTED",
-        message: "DXF entity type ATTDEF is not supported by the minimal importer.",
-        entityType: "ATTDEF",
-        handle: "103E"
-      }
-    ]);
+    expect(result.warnings).toEqual([]);
+    const geometry = result.scenePackage.geometry[0].geometries[0];
+    expect(geometry.kind).toBe("curve-set");
+    if (geometry.kind === "curve-set") {
+      expect(geometry.entities[0]).toMatchObject({ type: "text", origin: "ATTDEF" });
+    }
   });
 
   it("imports insert-rotation-basic.dxf fixture: LINE at (100,200) rotated 90 degrees", async () => {
@@ -770,7 +759,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("still skips INSERT with z-offset AND non-uniform scale", async () => {
+  it("expands line-only INSERT with z-offset AND non-uniform scale", async () => {
     const content = blockScene(
       [...blockHeader("ZNONUNI"), ...blockLine("L1"), ...blockFooter],
       blockInsert("ZNONUNI", "I1", "CUT", ["30", "5", "41", "2", "42", "3", "43", "2"])
@@ -779,13 +768,12 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
+      expect(result.summary.supportedEntityCount).toBe(1);
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
+        code: "DXF_INSERT_Z_FLATTENED",
         handle: "I1"
       });
-      expect(result.warnings[0].message).toContain("non-uniform scale");
     });
   });
 
@@ -961,7 +949,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("child INSERT with non-uniform scale still skips that child INSERT", async () => {
+  it("child INSERT with line-only non-uniform scale expands grandchild geometry", async () => {
     const content = blockScene(
       [
         ...blockHeader("PARENT"),
@@ -977,13 +965,8 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(0);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_INSERT_TRANSFORM_UNSUPPORTED",
-        handle: "BI1"
-      });
-      expect(result.warnings[0].message).toContain("non-uniform scale");
+      expect(result.summary.supportedEntityCount).toBe(1);
+      expect(result.warnings).toHaveLength(0);
     });
   });
 
@@ -1109,7 +1092,7 @@ describe("importDxfToKairo", () => {
 
   it("still skips non-uniform positive INSERT (magnitudes differ)", async () => {
     const content = blockScene(
-      [...blockHeader("NONUNI"), ...blockLine("L1"), ...blockFooter],
+      [...blockHeader("NONUNI"), ...blockCircle("C1"), ...blockFooter],
       blockInsert("NONUNI", "I1", "CUT", ["41", "2", "42", "3", "43", "2"])
     );
 
@@ -1125,7 +1108,7 @@ describe("importDxfToKairo", () => {
 
   it("still skips non-uniform negative INSERT (magnitudes differ)", async () => {
     const content = blockScene(
-      [...blockHeader("NONUNINEG"), ...blockLine("L1"), ...blockFooter],
+      [...blockHeader("NONUNINEG"), ...blockCircle("C1"), ...blockFooter],
       blockInsert("NONUNINEG", "I1", "CUT", ["41", "-2", "42", "3", "43", "1"])
     );
 
@@ -1179,7 +1162,7 @@ describe("importDxfToKairo", () => {
     });
   });
 
-  it("depth guard: grandchild nested INSERT emits DXF_BLOCK_INSERT_NESTED_UNSUPPORTED", async () => {
+  it("recursively expands grandchild nested INSERTs", async () => {
     const content = blockScene(
       [
         ...blockHeader("PARENT"),
@@ -1199,12 +1182,9 @@ describe("importDxfToKairo", () => {
     await withTempDxf(content, async (filePath) => {
       const result = await importDxfToKairo(filePath);
 
-      expect(result.summary.supportedEntityCount).toBe(1);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toMatchObject({
-        code: "DXF_BLOCK_INSERT_NESTED_UNSUPPORTED",
-        handle: "BI2"
-      });
+      expect(result.summary.supportedEntityCount).toBe(2);
+      expect(result.coverage.conversionPercent).toBe(100);
+      expect(result.warnings).toHaveLength(0);
     });
   });
 

@@ -146,7 +146,7 @@ describe("analyzeDxfBlocks", () => {
     });
   });
 
-  it("detects nested INSERTs inside block definitions", async () => {
+  it("records nested INSERTs inside block definitions without treating them as blocked", async () => {
     const block = [...blockHeader("NESTED"), ...insertEntity("CHILD", "BI1"), ...blockFooter];
     await withDxf(scene(block, insertEntity("NESTED", "I1")), async (filePath) => {
       const inventory = await analyzeDxfBlocks(filePath);
@@ -154,22 +154,22 @@ describe("analyzeDxfBlocks", () => {
       expect(inventory.nestedInsertCountInsideBlocks).toBe(1);
       expect(inventory.blockDefinitionsByName.NESTED).toMatchObject({
         hasNestedInsert: true,
-        classification: "blocked by nested INSERT"
+        classification: "safe now"
       });
-      expect(inventory.safeExpansionClassificationCounts["blocked by nested INSERT"]).toBe(1);
+      expect(inventory.safeExpansionClassificationCounts["safe now"]).toBe(1);
     });
   });
 
-  it("classifies unsupported child entity types", async () => {
+  it("classifies covered text child entity types as safe now", async () => {
     await withDxf(scene([...blockHeader("TEXTBLOCK"), ...textEntity, ...blockFooter], insertEntity("TEXTBLOCK", "I1")), async (filePath) => {
       const inventory = await analyzeDxfBlocks(filePath);
 
       expect(inventory.blockDefinitionsByName.TEXTBLOCK).toMatchObject({
         hasAttdefAttribTextMtext: true,
-        hasUnsupportedEntityTypes: true,
-        classification: "blocked by unsupported entity types"
+        hasUnsupportedEntityTypes: false,
+        classification: "safe now"
       });
-      expect(inventory.safeExpansionClassificationCounts["blocked by unsupported entity types"]).toBe(1);
+      expect(inventory.safeExpansionClassificationCounts["safe now"]).toBe(1);
     });
   });
 
@@ -227,9 +227,7 @@ describe("analyzeDxfBlocks", () => {
       });
       expect(inventory.textAudit.sampleTextStrings.length).toBeGreaterThan(0);
       expect(inventory.textAudit.sampleTextStrings[0].source).toContain("LABELED");
-      // LABELED has LINE + TEXT + ATTDEF → partial-expand skips text
-      expect(inventory.textAudit.partialExpandTextSkipped).toHaveLength(1);
-      expect(inventory.textAudit.partialExpandTextSkipped[0].blockName).toBe("LABELED");
+      expect(inventory.textAudit.partialExpandTextSkipped).toHaveLength(0);
     });
   });
 
@@ -248,7 +246,7 @@ describe("analyzeDxfBlocks", () => {
     });
   });
 
-  it("transformAudit counts pure negative uniform inserts", async () => {
+  it("transformAudit treats pure negative uniform inserts as covered mirror transforms", async () => {
     const content = scene(
       [...blockHeader("NEGBLOCK"), ...lineEntity("L1"), ...blockFooter],
       insertEntity("NEGBLOCK", "I1", ["41", "-1", "42", "-1", "43", "-1"])
@@ -256,17 +254,16 @@ describe("analyzeDxfBlocks", () => {
     await withDxf(content, async (filePath) => {
       const inventory = await analyzeDxfBlocks(filePath);
 
-      expect(inventory.transformAudit.totalHardBlocked).toBe(1);
-      expect(inventory.transformAudit.flagCounts.negativeX).toBe(1);
-      expect(inventory.transformAudit.flagCounts.negativeY).toBe(1);
-      expect(inventory.transformAudit.flagCounts.negativeZ).toBe(1);
+      expect(inventory.transformAudit.totalHardBlocked).toBe(0);
+      expect(inventory.transformAudit.flagCounts.negativeX).toBe(0);
+      expect(inventory.transformAudit.flagCounts.negativeY).toBe(0);
+      expect(inventory.transformAudit.flagCounts.negativeZ).toBe(0);
       expect(inventory.transformAudit.flagCounts.nonUniform).toBe(0);
-      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(1);
+      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(0);
       expect(inventory.transformAudit.categoryCounts.pureNonUniformPositive).toBe(0);
-      expect(inventory.transformAudit.optionUnlocks.optionA).toBe(1);
+      expect(inventory.transformAudit.optionUnlocks.optionA).toBe(0);
       expect(inventory.transformAudit.optionUnlocks.optionB).toBe(0);
-      expect(inventory.transformAudit.topBlockedBlocks).toHaveLength(1);
-      expect(inventory.transformAudit.topBlockedBlocks[0]).toMatchObject({ blockName: "NEGBLOCK", insertCount: 1, category: "pureNegativeUniform" });
+      expect(inventory.transformAudit.topBlockedBlocks).toHaveLength(0);
     });
   });
 
@@ -319,7 +316,7 @@ describe("analyzeDxfBlocks", () => {
     });
   });
 
-  it("transformAudit notes z-offset also present on hard-blocked inserts", async () => {
+  it("transformAudit ignores z-offset also present on covered mirror transforms", async () => {
     const content = scene(
       [...blockHeader("ZNEG"), ...lineEntity("L1"), ...blockFooter],
       insertEntity("ZNEG", "I1", ["30", "5", "41", "-1", "42", "-1", "43", "-1"])
@@ -327,13 +324,13 @@ describe("analyzeDxfBlocks", () => {
     await withDxf(content, async (filePath) => {
       const inventory = await analyzeDxfBlocks(filePath);
 
-      expect(inventory.transformAudit.totalHardBlocked).toBe(1);
-      expect(inventory.transformAudit.flagCounts.zOffsetAlso).toBe(1);
-      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(1);
+      expect(inventory.transformAudit.totalHardBlocked).toBe(0);
+      expect(inventory.transformAudit.flagCounts.zOffsetAlso).toBe(0);
+      expect(inventory.transformAudit.categoryCounts.pureNegativeUniform).toBe(0);
     });
   });
 
-  it("transformAudit identifies blocked equipment blocks", async () => {
+  it("transformAudit does not block equipment blocks for covered mirror transforms", async () => {
     const content = scene(
       [...blockHeader("FANUC_ARM"), ...lineEntity("L1"), ...blockFooter],
       insertEntity("FANUC_ARM", "I1", ["41", "-1", "42", "-1", "43", "-1"])
@@ -341,8 +338,7 @@ describe("analyzeDxfBlocks", () => {
     await withDxf(content, async (filePath) => {
       const inventory = await analyzeDxfBlocks(filePath);
 
-      expect(inventory.transformAudit.blockedEquipmentBlocks).toHaveLength(1);
-      expect(inventory.transformAudit.blockedEquipmentBlocks[0]).toMatchObject({ blockName: "FANUC_ARM", matchedPattern: "FANUC", insertCount: 1, category: "pureNegativeUniform" });
+      expect(inventory.transformAudit.blockedEquipmentBlocks).toHaveLength(0);
     });
   });
 

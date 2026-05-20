@@ -173,6 +173,27 @@ describe("kairo validate", () => {
     expect(validateResult.stdout).toContain("Scene: one-line.dxf\n");
   });
 
+  it("can suppress detailed DXF import warnings for operator handoff scripts", async () => {
+    const outputDir = path.join(tempRoot, "imported-scene-quiet");
+    const importResult = await captureCli(["import-dxf", dxfFixturePath, outputDir, "--quiet-warnings"]);
+
+    expect(importResult.code).toBe(0);
+    expect(importResult.stderr).toBe("");
+    expect(importResult.stdout).toContain("Kairo DXF import passed\n");
+    expect(importResult.stdout).toContain("Warnings: 0\n");
+  });
+
+  it("reports exact DXF conversion coverage without writing a scene", async () => {
+    const result = await captureCli(["dxf-coverage", dxfFixturePath]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo DXF coverage\n");
+    expect(result.stdout).toContain("PASS 100.0000%");
+    expect(result.stdout).toContain("Covered: 1/1\n");
+    expect(result.stdout).toContain("Failed: 0\n");
+  });
+
   it("inspects a DXF fixture and writes block inventory reports", async () => {
     const outputBasePath = path.join(tempRoot, "one-line-inventory");
     const result = await captureCli(["inspect-dxf", dxfFixturePath, outputBasePath]);

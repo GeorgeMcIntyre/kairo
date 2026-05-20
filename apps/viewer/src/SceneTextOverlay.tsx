@@ -10,7 +10,7 @@ export type TextOverlayItem = {
   position: [number, number, number];
   rotationDeg: number;
   height: number;
-  origin: "TEXT" | "ATTDEF";
+  origin: "TEXT" | "MTEXT" | "ATTDEF" | "ATTRIB";
   layerId?: string;
   hAlign?: number;
   vAlign?: number;

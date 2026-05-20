@@ -7,15 +7,39 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## NOW
 
+### Manual QA: Layout BOM workflow panels (P1)
+
+**Goal:** Open the primary Scott DXF or `.kairo` package and verify the new Layout Explorer, Device Inspector, Semantic Issues, Station/Cell Builder, Layout BOM Summary, Foundation Plan, Export Review, and Performance Diagnostics panels are readable and useful without covering the drawing.
+
+**Not allowed:** Redesign the whole viewer, remove batching, or treat automatic station/cell/device grouping as final engineering truth.
+
 ### CAD Exchanger JT bridge probe (P1)
 
 **Goal:** Use CAD Exchanger as the temporary JT path after viewer performance is stable. Probe one simple named colored part and verify in JT2Go / Process Simulate before any product export claim.
 
 **Not allowed:** Treat raw JT 8.1 as solved, add production JT export, or introduce CAD Exchanger into the Cloudflare/browser runtime.
 
+**Current bridge:** Viewer Export Review can download a CAD Exchanger handoff `.glb`. Open that GLB in CAD Exchanger and export JT there. Validate the resulting JT in JT2Go / Process Simulate before any customer claim.
+
 ---
 
 ## DONE
+
+### ISSUE-022: Advanced Engineering Layout BOM workflow slice (P1)
+
+**Goal:** Start product roadmap items 1-8 with a practical thin slice: intake metadata, device intelligence, station/cell grouping, Layout BOM Summary, live review panels, foundation/service-zone placeholders, JSON/CSV/Markdown export review, and revision-ready stable keys.
+
+**Completed:** The advanced layout model is v0.2 and now emits lines, areas, stations, cells, devices, robots/devices, nests, dunnage, foundation points, service zones, annotations, BOM rows, review items, and revision identity fields. Viewer semantic overlay mode has compact workflow tabs for the eight roadmap panels. Quote wording was replaced with Layout BOM wording.
+
+**Verification:** `pnpm test` passes 277/277. `pnpm typecheck` and `pnpm build` pass; viewer chunk-size warning remains expected.
+
+### ISSUE-023: DXF load performance review and CAD Exchanger GLB handoff (P1)
+
+**Goal:** Review the full DXF loading pipeline for performance regressions and add a browser export button that writes a GLB for CAD Exchanger JT conversion.
+
+**Completed:** Added `specs/KAIRO_DXF_LOAD_PERFORMANCE_REVIEW.md`. Added a deterministic browser-side GLB writer for CAD Exchanger handoff and a Download GLB button in Export Review. The exporter is user-triggered only and does not run during DXF load, semantic analysis, picking, or render setup.
+
+**Verification:** `pnpm test` passes 277/277. `pnpm typecheck` and `pnpm build` pass; viewer chunk-size warning remains expected.
 
 ### ISSUE-021: Large DXF performance diagnostics and semantic deferral QA (P1)
 
@@ -24,6 +48,8 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 **Not allowed:** Remove batched `THREE.LineSegments`, return to one object per DXF entity, or make semantic classification authoritative without review.
 
 **Completed:** Browser DXF imports now expose stage timings, semantic analysis timing is visible in Diagnostics, viewport batch/render timings are captured, semantic overlay lists are capped with selected item preservation, and local DXF opens with the semantic panel collapsed by default.
+
+**Follow-up fix:** Primary Scott DXF importer benchmark identified `scene-package-build` as the real hot path, not parser time. Replacing quadratic layer grouping with append-in-place reduced importer load from `62.4 s` to `4.6 s` in the local benchmark.
 
 ---
 
@@ -81,11 +107,11 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ---
 
-### ISSUE-017: CAD Exchanger GLB primitive probe (P2 - research only)
+### ISSUE-017: CAD Exchanger GLB primitive probe (P2 - validation only)
 
-**Goal:** Create or plan only a small GLB compatibility probe for CAD Exchanger covering LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback, material/layer metadata, and coordinate precision.
+**Goal:** Validate the new browser-exported GLB in CAD Exchanger, then export JT and verify in JT2Go / Process Simulate.
 
-**Not allowed:** Do not implement a production GLB/JT exporter.
+**Not allowed:** Do not implement a native JT exporter or claim JT compatibility until the CAD Exchanger output is verified.
 
 ---
 

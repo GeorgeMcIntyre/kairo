@@ -237,6 +237,78 @@ pnpm build
 
 ---
 
+## ISSUE-022 — Advanced Engineering Layout BOM workflow slice
+
+- **Status:** DONE
+- **Priority:** P1
+
+**Goal:**
+Start the Advanced Engineering product roadmap with a practical full-slice through layout intake, device intelligence, station/cell grouping, Layout BOM Summary, live review, foundation/site planning placeholders, export review, and revision-ready stable IDs.
+
+**Why it matters:**
+Kairo needs to move from DXF viewing into BIW layout intelligence without losing performance or claiming unsupported CAD/export fidelity. This slice gives users the first product workflow while keeping automated semantics reviewable.
+
+**Completed scope:**
+- Advanced layout model v0.2
+- Lines, areas, stations, cells, devices, robots/devices, nests, dunnage, foundation points, service zones, annotations, BOM rows, review items
+- Revision-ready stable keys and source fingerprint
+- JSON/CSV/Markdown Layout BOM exports
+- Viewer workflow tabs for Layout Explorer, Device Inspector, Semantic Issues, Station/Cell Builder, Layout BOM Summary, Foundation Plan, Export Review, and Performance Diagnostics
+
+**Not done:**
+- No production JT exporter
+- No cost/quote estimate
+- No revision compare UI yet
+- No persistence of reviewed overrides yet
+
+**Verification commands:**
+```
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+**Suggested commit:** `feat: add layout bom workflow slice`
+
+---
+
+## ISSUE-023 — DXF load performance review and CAD Exchanger GLB handoff
+
+- **Status:** DONE
+- **Priority:** P1
+
+**Goal:**
+Review the DXF loading pipeline for performance regressions and add a viewer export button that downloads GLB for CAD Exchanger JT conversion.
+
+**Completed scope:**
+- `specs/KAIRO_DXF_LOAD_PERFORMANCE_REVIEW.md`
+- Browser-side GLB writer for CAD Exchanger handoff
+- Export Review button: `Download GLB for CAD Exchanger`
+- GLB includes curve line primitives, simple mesh triangle primitives, source path, source units, output units, coordinate scale, and export stats
+- Millimeter scenes export to meter coordinates for GLB/CAD Exchanger interoperability
+
+**Not done:**
+- No native JT export
+- No CAD Exchanger automation
+- No rich text GLB export
+- No GLB export during initial DXF load
+
+**2026-05-12 performance follow-up:**
+- Primary Scott DXF local importer benchmark before fix: `62.4 s` total, `59.1 s` in `scene-package-build`
+- After replacing quadratic layer grouping with in-place append: `4.6 s` total, `1.0 s` in `scene-package-build`
+- Batching and exact source/pick metadata are unchanged
+
+**Verification commands:**
+```
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+**Suggested commit:** `feat: add cad exchanger glb handoff`
+
+---
+
 ## ISSUE-006 — Layer controls and isolate workflow
 
 - **Status:** LATER
@@ -644,11 +716,13 @@ Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB pro
 | ISSUE-002 | Selection and inspection usability | DONE | P0 |
 | ISSUE-003 | Text placement and alignment correctness | DONE | P0 |
 | ISSUE-004 | Viewer UI drawing-first review mode | NEXT | P1 |
+| ISSUE-022 | Advanced Engineering Layout BOM workflow slice | DONE | P1 |
 | ISSUE-005 | Mouse wheel zoom toward cursor | DONE | P1 |
 | ISSUE-014 | Text visual QA / alignment polish | NEXT | P1 |
 | ISSUE-015 | Coordinate precision audit | NEXT | P2 |
 | ISSUE-016 | Cloudflare deploy check | NEXT | P1 |
-| ISSUE-017 | CAD Exchanger GLB primitive probe | NEXT | P2 |
+| ISSUE-017 | CAD Exchanger GLB handoff validation | NEXT | P2 |
+| ISSUE-023 | DXF load performance review and CAD Exchanger GLB handoff | DONE | P1 |
 | ISSUE-006 | Layer controls and isolate workflow | LATER | P1 |
 | ISSUE-010 | Fast viewer QA workflow documentation | LATER | P1 |
 | ISSUE-012 | Claude skills for Kairo | LATER | P2 |

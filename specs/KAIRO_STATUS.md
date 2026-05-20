@@ -5,17 +5,17 @@ Last updated: 2026-05-12
 ## Git
 
 - Branch: `codex/kairo-viewer-semantics`
-- HEAD: `b34d5ad feat: add advanced layout exports`
-- Working tree is dirty with the `.kairo` package implementation and viewer performance/UI follow-up fixes.
+- HEAD: `5a4ebb2 Add Kairo package support and viewer diagnostics`
+- Working tree is dirty with the Advanced Engineering Layout BOM workflow slice.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 275/275 passed |
+| `pnpm test` | 277 passed / 1 benchmark skipped |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
+| `pnpm build` | Clean (viewer main bundle ~880 kB plus lazy GLB chunk ~4.8 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -59,11 +59,15 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Semantic device association MVP: labels are linked to nearby geometry groups using block-insert provenance first and fallback geometry clusters second. Each semantic device records linked entity IDs, label entity IDs, bounds, centroid, association status (`linked`, `ambiguous`, `unlinked`), association confidence, candidates, and reason strings.
 - Viewer semantic workflow: semantic overlays show station/device outlines, label markers, and label-to-geometry link lines. Selecting a label/device shows class, confidence, evidence, association candidates, linked entity IDs, and bounds. Selecting linked geometry shows the assigned semantic device.
 - Viewer performance diagnostics follow-up: DXF browser loads now carry lightweight stage timings for file read, importer module load, parse/import stages, semantic analysis, viewport batch build, render setup, and first render. Timings are shown only in the collapsed Diagnostics panel.
+- DXF importer hot-path fix: primary Scott DXF importer benchmark dropped from `62.4 s` to `4.6 s` by replacing quadratic layer grouping with in-place append while preserving 246,045 supported entities and exact source refs.
 - Viewer semantic performance follow-up: semantic analysis is deferred after scene activation so geometry can become visible before the semantic pass completes. Semantic overlay rendering is capped for broad station/device/unknown lists while preserving the selected item.
 - Drawing-first panel controls: Layers, Semantics, and Inspector panels can be hidden independently from the toolbar and from each panel header without changing layer visibility, selection, or semantic overlay state. Local DXF opens with Layers/Inspector visible and Semantics collapsed by default.
 - Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
 - Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
+- Advanced Engineering Layout BOM slice: the viewer builds a deterministic v0.2 model for lines, areas, stations, cells, devices, robots/devices, nests, dunnage, foundation points, service zones, annotations, BOM rows, review items, and revision-ready stable keys. JSON/CSV/Markdown exports now use Layout BOM language instead of quote language.
+- Advanced Engineering workflow panels: Semantic overlay mode now includes compact panels for Layout Explorer, Device Inspector, Semantic Issues, Station/Cell Builder, Layout BOM Summary, Foundation Plan, Export Review, and Performance Diagnostics without changing the batched renderer.
+- CAD Exchanger GLB handoff export: Export Review panel can download a binary `.glb` containing line primitives for DXF curves and triangle primitives for simple meshes. Millimeter scenes export scaled to meters with source/unit metadata in GLB extras. This is a CAD Exchanger bridge for JT conversion, not a native JT exporter.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
@@ -88,7 +92,7 @@ Known visual issues still requiring work:
 - Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
 - Manual semantic overrides are session-only and are not persisted to a project file yet.
 - Hatches, dimensions, splines are not imported.
-- DXF export, GLB export, JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable; CAD Exchanger is the temporary JT bridge direction only.
+- DXF export and native JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable. GLB export exists only as a CAD Exchanger handoff path for JT conversion.
 - No CI pipeline; tests run locally only.
 - No automated visual regression.
 
@@ -97,9 +101,10 @@ Known visual issues still requiring work:
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
 1. `.kairo` package QA with the primary Scott DXF and internal sharing workflow
 2. Semantic association QA on the Scott DXF and persistence format for reviewed overrides
-3. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
-4. Text visual QA / alignment polish
-5. Coordinate precision audit
+3. Manual QA of the new Layout BOM workflow panels against the Scott DXF
+4. **ISSUE-004** - Drawing-first viewer UI polish after panel QA
+5. Text visual QA / alignment polish
+6. Coordinate precision audit
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 
