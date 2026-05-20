@@ -427,18 +427,22 @@ function addGlyphStrokeRuns(lineGroup, meshGroup, glyph, origin, cos, sin, offse
   return strokeCount;
 }
 
-function addTextStrokes(lineGroup, meshGroup, entity) {
+function addTextStrokes(lineGroup, meshGroup, entity, coordinateScale = 1) {
   const text = exportTextLabel(entity.text);
   if (!text) return 0;
-  const capHeight = Math.max(12, Math.min(entity.height * 0.42, 150));
+  const minCapHeight = 12 * coordinateScale;
+  const maxCapHeight = 150 * coordinateScale;
+  const minStrokeWidth = 0.6 * coordinateScale;
+  const maxStrokeWidth = 3.2 * coordinateScale;
+  const capHeight = Math.max(minCapHeight, Math.min(entity.height * 0.42, maxCapHeight));
   const widthFactor = 0.62;
   const spacing = capHeight * 0.22;
   const rotation = ((entity.rotationDeg ?? 0) * Math.PI) / 180;
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
   const origin = entity.position;
-  const z = (origin[2] ?? 0) + 3;
-  const width = Math.max(0.6, Math.min(capHeight * 0.035, 3.2));
+  const z = (origin[2] ?? 0) + 3 * coordinateScale;
+  const width = Math.max(minStrokeWidth, Math.min(capHeight * 0.035, maxStrokeWidth));
   let count = 0;
   let cursor = 0;
 
@@ -697,7 +701,12 @@ async function main() {
         if (entity.type === "text") {
           stats.textEntities += 1;
           if (shouldExportMainText(entity.text)) {
-            const strokeCount = addTextStrokes(textLineGroup, textRibbonGroup, scaleEntityForExport(entity, coordinateScale));
+            const strokeCount = addTextStrokes(
+              textLineGroup,
+              textRibbonGroup,
+              scaleEntityForExport(entity, coordinateScale),
+              coordinateScale
+            );
             if (strokeCount > 0) {
               stats.exportedTextEntities += 1;
               stats.textStrokeSegments += strokeCount;
