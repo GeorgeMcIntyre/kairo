@@ -120,9 +120,17 @@ function safeFilename(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "kairo-layout";
 }
 
+function unitScaleToMeters(units: ScenePackage["manifest"]["units"]) {
+  if (units === "millimeter") return 0.001;
+  if (units === "centimeter") return 0.01;
+  if (units === "meter") return 1;
+  if (units === "inch") return 0.0254;
+  if (units === "foot") return 0.3048;
+  return 1;
+}
+
 function sceneCoordinateScale(scenePackage: ScenePackage): { scale: number; units: string } {
-  if (scenePackage.manifest.units === "millimeter") return { scale: 0.001, units: "meter" };
-  return { scale: 1, units: scenePackage.manifest.units };
+  return { scale: unitScaleToMeters(scenePackage.manifest.units), units: "meter" };
 }
 
 export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage): CadExchangerGlbExportResult {

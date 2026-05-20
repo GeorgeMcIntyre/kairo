@@ -3,6 +3,7 @@ import path from "node:path";
 
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
+const ELLIPSE_SEGMENTS = 48;
 const DEFAULT_RIBBON_WIDTH_MM = 18;
 const MAX_TEXT_CHARS = 24;
 const LONG_TEXT_WORD_LIMIT = 8;
@@ -109,6 +110,7 @@ function parseArgs(argv) {
   let ribbonWidth = DEFAULT_RIBBON_WIDTH_MM;
   let coordinateScale = 1;
   let outputUnits = "source";
+  let scaleToMeters = false;
   for (let index = 0; index < rest.length; index += 1) {
     if (rest[index] === "--ribbon-width-mm") {
       ribbonWidth = Number(rest[index + 1]);
@@ -116,13 +118,22 @@ function parseArgs(argv) {
     } else if (rest[index] === "--scale") {
       coordinateScale = Number(rest[index + 1]);
       outputUnits = `source*${coordinateScale}`;
+      scaleToMeters = false;
       index += 1;
     } else if (rest[index] === "--scale-to-meters") {
-      coordinateScale = 0.001;
-      outputUnits = "meter";
+      scaleToMeters = true;
     }
   }
-  return { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits };
+  return { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits, scaleToMeters };
+}
+
+function unitScaleToMeters(units) {
+  if (units === "millimeter") return 0.001;
+  if (units === "centimeter") return 0.01;
+  if (units === "meter") return 1;
+  if (units === "inch") return 0.0254;
+  if (units === "foot") return 0.3048;
+  return 1;
 }
 
 function colorTuple(color, fallback = [0.22, 0.55, 0.9]) {
@@ -176,11 +187,84 @@ function pointsForArc(entity) {
   return points;
 }
 
+function pointsForEllipse(entity) {
+  const points = [];
+  const major = entity.majorAxis;
+  const minor = [-major[1] * entity.minorToMajorRatio, major[0] * entity.minorToMajorRatio, major[2] * entity.minorToMajorRatio];
+  for (let i = 0; i <= ELLIPSE_SEGMENTS; i += 1) {
+    const t = entity.startParameter + ((entity.endParameter - entity.startParameter) * i) / ELLIPSE_SEGMENTS;
+    points.push([
+      entity.center[0] + Math.cos(t) * major[0] + Math.sin(t) * minor[0],
+      entity.center[1] + Math.cos(t) * major[1] + Math.sin(t) * minor[1],
+      entity.center[2] + Math.cos(t) * major[2] + Math.sin(t) * minor[2]
+    ]);
+  }
+  return points;
+}
+
+function pointsForSpline(entity) {
+  return entity.fitPoints?.length > 1 ? entity.fitPoints : entity.controlPoints ?? [];
+}
+
+function pointsForBulgedSegment(start, end, bulge) {
+  if (Math.abs(bulge) < 1e-12) return [start, end];
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const chordLength = Math.hypot(dx, dy);
+  if (chordLength < 1e-9) return [start, end];
+
+  const sweep = 4 * Math.atan(bulge);
+  const midpoint = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2, (start[2] + end[2]) / 2];
+  const normal = [-dy / chordLength, dx / chordLength, 0];
+  const centerOffset = (chordLength * (1 - bulge * bulge)) / (4 * bulge);
+  const center = [midpoint[0] + normal[0] * centerOffset, midpoint[1] + normal[1] * centerOffset, midpoint[2]];
+  const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+  const startAngle = Math.atan2(start[1] - center[1], start[0] - center[0]);
+  const segmentCount = Math.max(8, Math.ceil(Math.abs(sweep) / (Math.PI / 12)));
+  const points = [];
+
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const t = i / segmentCount;
+    const angle = startAngle + sweep * t;
+    points.push([
+      center[0] + Math.cos(angle) * radius,
+      center[1] + Math.sin(angle) * radius,
+      start[2] + (end[2] - start[2]) * t
+    ]);
+  }
+
+  return points;
+}
+
+function pointsForPolyline(entity) {
+  const vertices = entity.points ?? [];
+  if (vertices.length < 2) return vertices;
+  const points = [];
+  const segmentCount = entity.closed ? vertices.length : vertices.length - 1;
+
+  for (let i = 0; i < segmentCount; i += 1) {
+    const segmentPoints = pointsForBulgedSegment(vertices[i], vertices[(i + 1) % vertices.length], entity.bulges?.[i] ?? 0);
+    if (points.length > 0) segmentPoints.shift();
+    points.push(...segmentPoints);
+  }
+
+  return points;
+}
+
+function pointsForFaceOrSolid(entity) {
+  const points = entity.vertices ?? [];
+  return points.length > 0 ? [...points, points[0]] : points;
+}
+
 function pointsForEntity(entity) {
   if (entity.type === "line") return [entity.start, entity.end];
-  if (entity.type === "polyline") return entity.closed ? [...entity.points, entity.points[0]] : entity.points;
+  if (entity.type === "polyline") return pointsForPolyline(entity);
   if (entity.type === "circle") return pointsForCircle(entity);
   if (entity.type === "arc") return pointsForArc(entity);
+  if (entity.type === "point") return [[entity.position[0] - 1, entity.position[1], entity.position[2]], [entity.position[0] + 1, entity.position[1], entity.position[2]]];
+  if (entity.type === "ellipse") return pointsForEllipse(entity);
+  if (entity.type === "spline") return pointsForSpline(entity);
+  if (entity.type === "face3d" || entity.type === "solid") return pointsForFaceOrSolid(entity);
   return [];
 }
 
@@ -526,14 +610,13 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
 }
 
 async function main() {
-  const { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits } = parseArgs(process.argv.slice(2));
+  const parsedArgs = parseArgs(process.argv.slice(2));
+  const { sceneDir, outputBase, ribbonWidth } = parsedArgs;
   if (
     !sceneDir ||
     !outputBase ||
     !Number.isFinite(ribbonWidth) ||
-    ribbonWidth <= 0 ||
-    !Number.isFinite(coordinateScale) ||
-    coordinateScale <= 0
+    ribbonWidth <= 0
   ) {
     usage();
     process.exitCode = 2;
@@ -541,6 +624,13 @@ async function main() {
   }
 
   const scene = await loadScene(path.resolve(sceneDir));
+  const coordinateScale = parsedArgs.scaleToMeters ? unitScaleToMeters(scene.manifest.units) : parsedArgs.coordinateScale;
+  const outputUnits = parsedArgs.scaleToMeters ? "meter" : parsedArgs.outputUnits;
+  if (!Number.isFinite(coordinateScale) || coordinateScale <= 0) {
+    usage();
+    process.exitCode = 2;
+    return;
+  }
   const layerById = new Map(scene.layers.layers.map((layer) => [layer.id, layer]));
   const materials = [];
   const materialIndexByKey = new Map();

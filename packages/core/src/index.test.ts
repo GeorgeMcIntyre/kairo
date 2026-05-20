@@ -82,6 +82,23 @@ describe("computeEntityBounds", () => {
       })
     ).toEqual({ min: [5, 15, 0], max: [15, 25, 0] });
   });
+
+  it("includes bulged polyline arc extents in bounds", () => {
+    const bounds = computeEntityBounds({
+      id: "bulged-polyline",
+      type: "polyline",
+      points: [
+        [0, 0, 0],
+        [10, 0, 0]
+      ],
+      bulges: [1],
+      closed: false
+    });
+
+    expect(bounds.min[0]).toBeCloseTo(0, 6);
+    expect(bounds.max[0]).toBeCloseTo(10, 6);
+    expect(Math.max(Math.abs(bounds.min[1]), Math.abs(bounds.max[1]))).toBeGreaterThan(4.9);
+  });
 });
 
 describe("computeRobustSceneBounds", () => {

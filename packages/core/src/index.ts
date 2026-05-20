@@ -69,6 +69,51 @@ function splineReferencePoints(entity: Extract<DrawingEntity, { type: "spline" }
   return finitePoints([...(entity.fitPoints ?? []), ...(entity.controlPoints ?? [])]);
 }
 
+function bulgedSegmentPoints(start: Vec3, end: Vec3, bulge: number): Vec3[] {
+  if (Math.abs(bulge) < 1e-12) return [start, end];
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const chordLength = Math.hypot(dx, dy);
+  if (chordLength < 1e-9) return [start, end];
+
+  const sweep = 4 * Math.atan(bulge);
+  const midpoint: Vec3 = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2, (start[2] + end[2]) / 2];
+  const normal: Vec3 = [-dy / chordLength, dx / chordLength, 0];
+  const centerOffset = (chordLength * (1 - bulge * bulge)) / (4 * bulge);
+  const center: Vec3 = [midpoint[0] + normal[0] * centerOffset, midpoint[1] + normal[1] * centerOffset, midpoint[2]];
+  const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+  const startAngle = Math.atan2(start[1] - center[1], start[0] - center[0]);
+  const segmentCount = Math.max(8, Math.ceil(Math.abs(sweep) / (Math.PI / 12)));
+  const points: Vec3[] = [];
+
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const t = i / segmentCount;
+    const angle = startAngle + sweep * t;
+    points.push([
+      center[0] + Math.cos(angle) * radius,
+      center[1] + Math.sin(angle) * radius,
+      start[2] + (end[2] - start[2]) * t
+    ]);
+  }
+
+  return points;
+}
+
+function polylineReferencePoints(entity: Extract<DrawingEntity, { type: "polyline" }>): Vec3[] {
+  const vertices = finitePoints(entity.points);
+  if (vertices.length < 2) return vertices;
+  const points: Vec3[] = [];
+  const segmentCount = entity.closed ? vertices.length : vertices.length - 1;
+
+  for (let i = 0; i < segmentCount; i += 1) {
+    const segmentPoints = bulgedSegmentPoints(vertices[i], vertices[(i + 1) % vertices.length], entity.bulges?.[i] ?? 0);
+    if (points.length > 0) segmentPoints.shift();
+    points.push(...segmentPoints);
+  }
+
+  return points;
+}
+
 function ellipsePoint(entity: Extract<DrawingEntity, { type: "ellipse" }>, parameter: number): Vec3 {
   const major = entity.majorAxis;
   const minorScale = entity.minorToMajorRatio;
@@ -107,21 +152,7 @@ export function computeEntityCentroid(entity: DrawingEntity): Vec3 {
         (entity.start[2] + entity.end[2]) / 2
       ];
     case "polyline": {
-      let minX = Infinity;
-      let minY = Infinity;
-      let minZ = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      let maxZ = -Infinity;
-      for (const p of entity.points) {
-        if (p[0] < minX) minX = p[0];
-        if (p[1] < minY) minY = p[1];
-        if (p[2] < minZ) minZ = p[2];
-        if (p[0] > maxX) maxX = p[0];
-        if (p[1] > maxY) maxY = p[1];
-        if (p[2] > maxZ) maxZ = p[2];
-      }
-      return [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+      return boundsCenter(boundsFromPoints(polylineReferencePoints(entity)));
     }
     case "circle":
     case "arc":
@@ -215,7 +246,7 @@ export function computeEntityBounds(entity: DrawingEntity): Bounds3 {
     expandBoundsByPoint(bounds, vec3From(entity.start));
     expandBoundsByPoint(bounds, vec3From(entity.end));
   } else if (entity.type === "polyline") {
-    for (const point of entity.points) expandBoundsByPoint(bounds, vec3From(point));
+    for (const point of polylineReferencePoints(entity)) expandBoundsByPoint(bounds, point);
   } else if (entity.type === "circle") {
     const [x, y, z] = entity.center;
     expandBoundsByPoint(bounds, [x - entity.radius, y - entity.radius, z]);

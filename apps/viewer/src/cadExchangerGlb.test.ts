@@ -42,4 +42,22 @@ describe("CAD Exchanger GLB export", () => {
     expect(gltf.meshes[0]?.primitives.map((primitive) => primitive.mode)).toEqual([1, 4]);
     expect(gltf.extras.lineSegments).toBe(92);
   });
+
+  it("exports all supported source units to meter-scaled GLB coordinates", () => {
+    const inchScene = {
+      ...sampleScenePackage,
+      manifest: {
+        ...sampleScenePackage.manifest,
+        units: "inch" as const
+      }
+    };
+
+    const result = exportScenePackageToCadExchangerGlb(inchScene);
+
+    expect(result.stats).toMatchObject({
+      sourceUnits: "inch",
+      outputUnits: "meter",
+      coordinateScale: 0.0254
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1349,6 +1349,48 @@ describe("importDxfToKairo", () => {
 
       const validationReport = JSON.parse(await readFile(path.join(outputDir, "validation-report.json"), "utf8")) as { valid: boolean };
       expect(validationReport.valid).toBe(true);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("splits oversized curve geometry when writing exploded scene folders", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "kairo-dxf-import-large-"));
+    try {
+      const outputDir = path.join(tempDir, "scene");
+      const result = await importDxfToKairo(path.join(fixturesDir, "one-line.dxf"));
+      const geometry = result.scenePackage.geometry[0].geometries[0];
+      expect(geometry.kind).toBe("curve-set");
+      if (geometry.kind !== "curve-set") return;
+
+      const entities = Array.from({ length: 50_001 }, (_, index) => ({
+        ...geometry.entities[0],
+        id: `line-${index}`,
+        sourceRef: `src-line-${index}`
+      }));
+      const largePackage = {
+        ...result.scenePackage,
+        geometry: [
+          {
+            geometries: [
+              {
+                ...geometry,
+                entities
+              }
+            ]
+          }
+        ]
+      };
+
+      await writeScenePackage(outputDir, largePackage);
+
+      const geometryFiles = (await readdir(path.join(outputDir, "geometry"))).filter((fileName) => fileName.endsWith(".json"));
+      const scene = JSON.parse(await readFile(path.join(outputDir, "scene.json"), "utf8")) as { nodes: Array<{ geometryRefs?: string[] }> };
+      expect(geometryFiles.length).toBe(2);
+      expect(scene.nodes.flatMap((node) => node.geometryRefs ?? [])).toEqual([
+        `${geometry.id}-part-001`,
+        `${geometry.id}-part-002`
+      ]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
