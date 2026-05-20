@@ -1,5 +1,8 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { TextGeometry } from "../apps/viewer/node_modules/three/examples/jsm/geometries/TextGeometry.js";
+import { FontLoader } from "../apps/viewer/node_modules/three/examples/jsm/loaders/FontLoader.js";
 
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
@@ -8,6 +11,11 @@ const DEFAULT_RIBBON_WIDTH_MM = 18;
 const MAX_TEXT_CHARS = 24;
 const LONG_TEXT_WORD_LIMIT = 8;
 const LONG_TEXT_CHAR_LIMIT = 72;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEXT_FONT_PATH = path.resolve(
+  __dirname,
+  "../apps/viewer/node_modules/three/examples/fonts/helvetiker_regular.typeface.json"
+);
 
 const STROKE_FONT = {
   "0": { w: 1, s: [[0.15, 0, 0.85, 0], [0.85, 0, 0.85, 1], [0.85, 1, 0.15, 1], [0.15, 1, 0.15, 0], [0.25, 0.15, 0.75, 0.85]] },
@@ -101,7 +109,7 @@ const FONT_5X7 = {
 
 function usage() {
   console.error(
-    "Usage: node tools/export-scene-cadex-glb.mjs <scene-dir> <output-base> [--ribbon-width-mm N] [--scale N] [--scale-to-meters]"
+    "Usage: node tools/export-scene-cadex-glb.mjs <scene-dir> <output-base> [--ribbon-width-mm N] [--scale N] [--scale-to-meters] [--text-mode filled|stroke|none] [--exclude-sheet-layers] [--focus-main-layout] [--focus-margin-m N]"
   );
 }
 
@@ -111,6 +119,10 @@ function parseArgs(argv) {
   let coordinateScale = 1;
   let outputUnits = "source";
   let scaleToMeters = false;
+  let textMode = "filled";
+  let excludeSheetLayers = false;
+  let focusMainLayout = false;
+  let focusMarginMeters = 25;
   for (let index = 0; index < rest.length; index += 1) {
     if (rest[index] === "--ribbon-width-mm") {
       ribbonWidth = Number(rest[index + 1]);
@@ -122,9 +134,30 @@ function parseArgs(argv) {
       index += 1;
     } else if (rest[index] === "--scale-to-meters") {
       scaleToMeters = true;
+    } else if (rest[index] === "--text-mode") {
+      textMode = rest[index + 1];
+      index += 1;
+    } else if (rest[index] === "--exclude-sheet-layers") {
+      excludeSheetLayers = true;
+    } else if (rest[index] === "--focus-main-layout") {
+      focusMainLayout = true;
+    } else if (rest[index] === "--focus-margin-m") {
+      focusMarginMeters = Number(rest[index + 1]);
+      index += 1;
     }
   }
-  return { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits, scaleToMeters };
+  return {
+    sceneDir,
+    outputBase,
+    ribbonWidth,
+    coordinateScale,
+    outputUnits,
+    scaleToMeters,
+    textMode,
+    excludeSheetLayers,
+    focusMainLayout,
+    focusMarginMeters
+  };
 }
 
 function unitScaleToMeters(units) {
@@ -185,6 +218,11 @@ function pointsForArc(entity) {
     ]);
   }
   return points;
+}
+
+function isSheetLayer(layerName) {
+  const normalized = String(layerName ?? "").toUpperCase();
+  return normalized === "G-ANNO-TEXT" || normalized.startsWith("G-ANNO-TTLB");
 }
 
 function pointsForEllipse(entity) {
@@ -279,6 +317,61 @@ function scaleEntityForExport(entity, scale) {
     position: entity.position ? scalePoint(entity.position, scale) : entity.position,
     height: entity.height ? entity.height * scale : entity.height
   };
+}
+
+function emptyBounds() {
+  return {
+    min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY],
+    max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
+  };
+}
+
+function expandBounds(bounds, point) {
+  bounds.min[0] = Math.min(bounds.min[0], point[0] ?? 0);
+  bounds.min[1] = Math.min(bounds.min[1], point[1] ?? 0);
+  bounds.min[2] = Math.min(bounds.min[2], point[2] ?? 0);
+  bounds.max[0] = Math.max(bounds.max[0], point[0] ?? 0);
+  bounds.max[1] = Math.max(bounds.max[1], point[1] ?? 0);
+  bounds.max[2] = Math.max(bounds.max[2], point[2] ?? 0);
+}
+
+function boundsIsEmpty(bounds) {
+  return bounds.min[0] > bounds.max[0] || bounds.min[1] > bounds.max[1] || bounds.min[2] > bounds.max[2];
+}
+
+function paddedBoundsXY(bounds, padding) {
+  return {
+    min: [bounds.min[0] - padding, bounds.min[1] - padding, bounds.min[2]],
+    max: [bounds.max[0] + padding, bounds.max[1] + padding, bounds.max[2]]
+  };
+}
+
+function boundsOverlapXY(a, b) {
+  return a.min[0] <= b.max[0] && a.max[0] >= b.min[0] && a.min[1] <= b.max[1] && a.max[1] >= b.min[1];
+}
+
+function entityReferencePoints(entity) {
+  if (entity.type === "text") {
+    const height = entity.height ?? 0;
+    return [
+      [entity.position[0] - height, entity.position[1] - height, entity.position[2] ?? 0],
+      [entity.position[0] + height, entity.position[1] + height, entity.position[2] ?? 0]
+    ];
+  }
+  return pointsForEntity(entity);
+}
+
+function entityBounds(entity) {
+  const bounds = emptyBounds();
+  for (const point of entityReferencePoints(entity)) expandBounds(bounds, point);
+  return boundsIsEmpty(bounds) ? undefined : bounds;
+}
+
+let textFontPromise;
+
+async function loadTextFont() {
+  textFontPromise ??= readFile(TEXT_FONT_PATH, "utf8").then((fontJson) => new FontLoader().parse(JSON.parse(fontJson)));
+  return textFontPromise;
 }
 
 function normalizeText(text) {
@@ -470,6 +563,50 @@ function addTextStrokes(lineGroup, meshGroup, entity, coordinateScale = 1) {
   return count;
 }
 
+function addFilledTextMesh(group, entity, font, coordinateScale = 1) {
+  const text = exportTextLabel(entity.text);
+  if (!text) return 0;
+
+  const minCapHeight = 12 * coordinateScale;
+  const maxCapHeight = 150 * coordinateScale;
+  const capHeight = Math.max(minCapHeight, Math.min(entity.height * 0.42, maxCapHeight));
+  const rotation = ((entity.rotationDeg ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const origin = entity.position;
+  const zLift = 3 * coordinateScale;
+  const depth = Math.max(0.6 * coordinateScale, capHeight * 0.012);
+  const geometry = new TextGeometry(text, {
+    font,
+    size: capHeight,
+    depth,
+    curveSegments: 3,
+    bevelEnabled: false
+  });
+  const positions = geometry.getAttribute("position");
+  if (!positions || positions.count === 0) return 0;
+
+  const base = group.positions.length / 3;
+  for (let index = 0; index < positions.count; index += 1) {
+    const localX = positions.getX(index);
+    const localY = positions.getY(index);
+    group.positions.push(
+      origin[0] + localX * cos - localY * sin,
+      origin[1] + localX * sin + localY * cos,
+      (origin[2] ?? 0) + zLift + positions.getZ(index)
+    );
+  }
+
+  if (geometry.index) {
+    const indices = geometry.index.array;
+    for (let index = 0; index < indices.length; index += 1) group.indices.push(base + indices[index]);
+  } else {
+    for (let index = 0; index < positions.count; index += 1) group.indices.push(base + index);
+  }
+
+  return geometry.index ? Math.floor(geometry.index.count / 3) : Math.floor(positions.count / 3);
+}
+
 function padBuffer(buffer, padByte) {
   const paddedLength = Math.ceil(buffer.length / 4) * 4;
   if (paddedLength === buffer.length) return buffer;
@@ -505,6 +642,31 @@ async function loadScene(sceneDir) {
     .filter((entry) => entry.endsWith(".json"))
     .sort((a, b) => a.localeCompare(b));
   return { manifest, layers, geometryDir, geometryFiles };
+}
+
+async function computeMainLayoutFocusBounds(scene, layerById, options, coordinateScale) {
+  if (!options.focusMainLayout) return undefined;
+
+  const focusBounds = emptyBounds();
+  for (const fileName of scene.geometryFiles) {
+    const document = JSON.parse(await readFile(path.join(scene.geometryDir, fileName), "utf8"));
+    for (const geometry of document.geometries ?? []) {
+      const fallbackLayerId = geometry.layerId;
+      for (const entity of geometry.entities ?? []) {
+        if (entity.type !== "text" || !shouldExportMainText(entity.text)) continue;
+        const layerId = entity.layerId ?? fallbackLayerId ?? "unknown";
+        const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
+        if (options.excludeSheetLayers && isSheetLayer(layer.name)) continue;
+        const bounds = entityBounds(entity);
+        if (!bounds) continue;
+        expandBounds(focusBounds, bounds.min);
+        expandBounds(focusBounds, bounds.max);
+      }
+    }
+  }
+
+  if (boundsIsEmpty(focusBounds)) return undefined;
+  return paddedBoundsXY(focusBounds, options.focusMarginMeters / coordinateScale);
 }
 
 function makeMaterials(materials) {
@@ -620,7 +782,10 @@ async function main() {
     !sceneDir ||
     !outputBase ||
     !Number.isFinite(ribbonWidth) ||
-    ribbonWidth <= 0
+    ribbonWidth <= 0 ||
+    !["filled", "stroke", "none"].includes(parsedArgs.textMode) ||
+    !Number.isFinite(parsedArgs.focusMarginMeters) ||
+    parsedArgs.focusMarginMeters < 0
   ) {
     usage();
     process.exitCode = 2;
@@ -636,6 +801,8 @@ async function main() {
     return;
   }
   const layerById = new Map(scene.layers.layers.map((layer) => [layer.id, layer]));
+  const textFont = parsedArgs.textMode === "filled" ? await loadTextFont() : undefined;
+  const focusBounds = await computeMainLayoutFocusBounds(scene, layerById, parsedArgs, coordinateScale);
   const materials = [];
   const materialIndexByKey = new Map();
 
@@ -681,12 +848,20 @@ async function main() {
     exportedTextEntities: 0,
     skippedTextEntities: 0,
     textStrokeSegments: 0,
+    textMeshTriangles: 0,
     lineSegments: 0,
     ribbonWidthMm: ribbonWidth,
     exportedRibbonWidth: ribbonWidth * coordinateScale,
     coordinateScale,
     sourceUnits: scene.manifest.units,
     outputUnits,
+    textMode: parsedArgs.textMode,
+    excludeSheetLayers: parsedArgs.excludeSheetLayers,
+    skippedSheetEntities: 0,
+    focusMainLayout: parsedArgs.focusMainLayout,
+    focusMarginMeters: parsedArgs.focusMarginMeters,
+    focusBounds,
+    skippedFocusOutlierEntities: 0,
     materialCount: 0
   };
 
@@ -698,18 +873,36 @@ async function main() {
       const fallbackLayerId = geometry.layerId;
       for (const entity of geometry.entities ?? []) {
         const layerId = entity.layerId ?? fallbackLayerId ?? "unknown";
+        const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
+        if (parsedArgs.excludeSheetLayers && isSheetLayer(layer.name)) {
+          stats.skippedSheetEntities += 1;
+          continue;
+        }
+        if (focusBounds) {
+          const bounds = entityBounds(entity);
+          if (bounds && !boundsOverlapXY(bounds, focusBounds)) {
+            stats.skippedFocusOutlierEntities += 1;
+            continue;
+          }
+        }
         if (entity.type === "text") {
           stats.textEntities += 1;
-          if (shouldExportMainText(entity.text)) {
+          if (parsedArgs.textMode !== "none" && shouldExportMainText(entity.text)) {
+            const scaledEntity = scaleEntityForExport(entity, coordinateScale);
             const strokeCount = addTextStrokes(
               textLineGroup,
-              textRibbonGroup,
-              scaleEntityForExport(entity, coordinateScale),
+              parsedArgs.textMode === "stroke" ? textRibbonGroup : undefined,
+              scaledEntity,
               coordinateScale
             );
-            if (strokeCount > 0) {
+            const textMeshTriangles =
+              parsedArgs.textMode === "filled" && textFont
+                ? addFilledTextMesh(textRibbonGroup, scaledEntity, textFont, coordinateScale)
+                : 0;
+            if (strokeCount > 0 || textMeshTriangles > 0) {
               stats.exportedTextEntities += 1;
               stats.textStrokeSegments += strokeCount;
+              stats.textMeshTriangles += textMeshTriangles;
             }
           } else {
             stats.skippedTextEntities += 1;
@@ -721,7 +914,6 @@ async function main() {
         if (points.length < 2) continue;
         stats.curveEntities += 1;
         const materialIndex = resolveMaterial(layerId);
-        const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
         const key = `${materialIndex}:${layerId}`;
         const lineGroup = groupFor(lineGroups, key, () => ({
           materialIndex,
@@ -770,10 +962,10 @@ async function main() {
 
   await writeGlb(meshPath, 4, [...Array.from(meshGroups.values()), textRibbonGroup], materials, {
     ...stats,
-    meshName: "DXF ribbon mesh with key stroke text",
+    meshName: parsedArgs.textMode === "filled" ? "DXF ribbon mesh with filled key text" : "DXF ribbon mesh with key stroke text",
     primitiveMode: "TRIANGLES",
     textIncluded: true,
-    textStyle: "filtered ribbon stroke text"
+    textStyle: parsedArgs.textMode === "filled" ? "filtered filled typeface mesh text" : "filtered ribbon stroke text"
   });
 
   await writeFile(
