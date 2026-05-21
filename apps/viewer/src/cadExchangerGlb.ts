@@ -151,6 +151,12 @@ export type CadExchangerGlbExport = {
   report: CadExchangerGlbReport;
 };
 
+export type CadExchangerGlbExportOptions = {
+  presetName?: string;
+  ribbonWidthMm?: number;
+  includeText?: boolean;
+};
+
 function sourceBaseName(sourcePath?: string) {
   return sourcePath?.split(/[\\/]/).filter(Boolean).at(-1);
 }
@@ -530,13 +536,19 @@ function reportMarkdown(report: CadExchangerGlbReport) {
   ].join("\n") + "\n";
 }
 
-export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage): CadExchangerGlbExport {
+export function exportScenePackageToCadExchangerGlb(
+  scenePackage: ScenePackage,
+  options: CadExchangerGlbExportOptions = {}
+): CadExchangerGlbExport {
   const sourceUnits = scenePackage.manifest.units;
   const coordinateScale = UNIT_TO_METER[sourceUnits];
   const sourceFile = sourceBaseName(scenePackage.manifest.source.path);
   const baseName = withoutExtension(sourceFile ?? scenePackage.scene.nodes[0]?.displayName ?? "kairo-scene");
   const filename = `${baseName}.pro.ribbons-keytext.glb`;
   const reportFilename = `${baseName}.cadex-report.md`;
+  const ribbonWidthMm = Math.max(0.1, options.ribbonWidthMm ?? DEFAULT_RIBBON_WIDTH_SOURCE);
+  const ribbonWidthMeters = ribbonWidthMm / 1000;
+  const includeText = options.includeText ?? true;
   const layerById = new Map(scenePackage.layers.layers.map((layer) => [layer.id, layer]));
   const materials: ExportMaterial[] = [];
   const materialIndexByKey = new Map<string, number>();
@@ -606,7 +618,7 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
         if (entity.type === "text") {
           textEntities += 1;
           includePoint(layerReport.bounds, scalePoint(entity.position, coordinateScale));
-          if (shouldExportMainText(entity.text)) {
+          if (includeText && shouldExportMainText(entity.text)) {
             const result = addTextStrokes(textGroup, entity, coordinateScale);
             if (result.strokeCount > 0) {
               exportedTextEntities += 1;
@@ -633,7 +645,7 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
           indices: []
         }));
         for (let index = 0; index < points.length - 1; index += 1) {
-          if (addRibbon(group, points[index], points[index + 1], DEFAULT_RIBBON_WIDTH_SOURCE * coordinateScale)) {
+          if (addRibbon(group, points[index], points[index + 1], ribbonWidthMeters)) {
             lineSegments += 1;
           }
         }
@@ -702,9 +714,10 @@ export function exportScenePackageToCadExchangerGlb(scenePackage: ScenePackage):
     sourceUnits,
     outputUnits: "meter",
     coordinateScale,
-    ribbonWidthSource: DEFAULT_RIBBON_WIDTH_SOURCE,
-    exportedRibbonWidth: DEFAULT_RIBBON_WIDTH_SOURCE * coordinateScale,
-    textIncluded: true,
+    presetName: options.presetName,
+    ribbonWidthMm,
+    exportedRibbonWidth: ribbonWidthMeters,
+    textIncluded: includeText,
     textStyle: "filtered 5x7 ribbon stroke text",
     curveEntities,
     lineSegments,

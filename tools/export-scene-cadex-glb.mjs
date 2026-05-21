@@ -1,17 +1,23 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { TextGeometry } from "../apps/viewer/node_modules/three/examples/jsm/geometries/TextGeometry.js";
+import { FontLoader } from "../apps/viewer/node_modules/three/examples/jsm/loaders/FontLoader.js";
 
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
+const ELLIPSE_SEGMENTS = 48;
+const MAX_CURVE_SEGMENT_MM = 75;
+const MAX_CURVE_SEGMENTS = 512;
 const DEFAULT_RIBBON_WIDTH_MM = 18;
 const MAX_TEXT_CHARS = 24;
 const LONG_TEXT_WORD_LIMIT = 8;
 const LONG_TEXT_CHAR_LIMIT = 72;
-const TEXT_MIN_CAP_HEIGHT_SOURCE = 12;
-const TEXT_MAX_CAP_HEIGHT_SOURCE = 150;
-const TEXT_Z_LIFT_SOURCE = 3;
-const TEXT_MIN_STROKE_WIDTH_SOURCE = 0.6;
-const TEXT_MAX_STROKE_WIDTH_SOURCE = 3.2;
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEXT_FONT_PATH = path.resolve(
+  __dirname,
+  "../apps/viewer/node_modules/three/examples/fonts/helvetiker_regular.typeface.json"
+);
 
 const STROKE_FONT = {
   "0": { w: 1, s: [[0.15, 0, 0.85, 0], [0.85, 0, 0.85, 1], [0.85, 1, 0.15, 1], [0.15, 1, 0.15, 0], [0.25, 0.15, 0.75, 0.85]] },
@@ -105,7 +111,7 @@ const FONT_5X7 = {
 
 function usage() {
   console.error(
-    "Usage: node tools/export-scene-cadex-glb.mjs <scene-dir> <output-base> [--ribbon-width-mm N] [--scale N] [--scale-to-meters]"
+    "Usage: node tools/export-scene-cadex-glb.mjs <scene-dir> <output-base> [--ribbon-width-mm N] [--scale N] [--scale-to-meters] [--text-mode filled|stroke|none] [--text-scope key|all] [--text-height-scale N] [--exclude-sheet-layers] [--focus-main-layout] [--focus-margin-m N]"
   );
 }
 
@@ -114,6 +120,13 @@ function parseArgs(argv) {
   let ribbonWidth = DEFAULT_RIBBON_WIDTH_MM;
   let coordinateScale = 1;
   let outputUnits = "source";
+  let scaleToMeters = false;
+  let textMode = "filled";
+  let textScope = "key";
+  let textHeightScale = 1;
+  let excludeSheetLayers = false;
+  let focusMainLayout = false;
+  let focusMarginMeters = 25;
   for (let index = 0; index < rest.length; index += 1) {
     if (rest[index] === "--ribbon-width-mm") {
       ribbonWidth = Number(rest[index + 1]);
@@ -121,13 +134,51 @@ function parseArgs(argv) {
     } else if (rest[index] === "--scale") {
       coordinateScale = Number(rest[index + 1]);
       outputUnits = `source*${coordinateScale}`;
+      scaleToMeters = false;
       index += 1;
     } else if (rest[index] === "--scale-to-meters") {
-      coordinateScale = 0.001;
-      outputUnits = "meter";
+      scaleToMeters = true;
+    } else if (rest[index] === "--text-mode") {
+      textMode = rest[index + 1];
+      index += 1;
+    } else if (rest[index] === "--text-scope") {
+      textScope = rest[index + 1];
+      index += 1;
+    } else if (rest[index] === "--text-height-scale") {
+      textHeightScale = Number(rest[index + 1]);
+      index += 1;
+    } else if (rest[index] === "--exclude-sheet-layers") {
+      excludeSheetLayers = true;
+    } else if (rest[index] === "--focus-main-layout") {
+      focusMainLayout = true;
+    } else if (rest[index] === "--focus-margin-m") {
+      focusMarginMeters = Number(rest[index + 1]);
+      index += 1;
     }
   }
-  return { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits };
+  return {
+    sceneDir,
+    outputBase,
+    ribbonWidth,
+    coordinateScale,
+    outputUnits,
+    scaleToMeters,
+    textMode,
+    textScope,
+    textHeightScale,
+    excludeSheetLayers,
+    focusMainLayout,
+    focusMarginMeters
+  };
+}
+
+function unitScaleToMeters(units) {
+  if (units === "millimeter") return 0.001;
+  if (units === "centimeter") return 0.01;
+  if (units === "meter") return 1;
+  if (units === "inch") return 0.0254;
+  if (units === "foot") return 0.3048;
+  return 1;
 }
 
 function colorTuple(color, fallback = [0.22, 0.55, 0.9]) {
@@ -142,7 +193,7 @@ function readableCadColor(layerName, color) {
   const min = Math.min(...source);
   const isWhiteOrVeryLight = min > 0.82;
   const isBlackOrVeryDark = max < 0.12;
-  if (normalized.includes("TEXT") || normalized.includes("ANNO") || normalized.includes("TTL")) return [0.72, 0.48, 0.04];
+  if (isWhiteOrVeryLight && normalized.includes("ANNO")) return [0.04, 0.04, 0.04];
   if (isWhiteOrVeryLight) return [0.42, 0.42, 0.42];
   if (isBlackOrVeryDark) return [0.18, 0.18, 0.18];
   return source;
@@ -155,8 +206,9 @@ function materialKey(layerId, layerName, color) {
 
 function pointsForCircle(entity) {
   const points = [];
-  for (let i = 0; i <= CIRCLE_SEGMENTS; i += 1) {
-    const angle = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+  const segmentCount = adaptiveCurveSegments(Math.PI * 2 * entity.radius, CIRCLE_SEGMENTS);
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const angle = (i / segmentCount) * Math.PI * 2;
     points.push([
       entity.center[0] + Math.cos(angle) * entity.radius,
       entity.center[1] + Math.sin(angle) * entity.radius,
@@ -170,8 +222,10 @@ function pointsForArc(entity) {
   const points = [];
   const start = (entity.startAngleDeg * Math.PI) / 180;
   const end = (entity.endAngleDeg * Math.PI) / 180;
-  for (let i = 0; i <= ARC_SEGMENTS; i += 1) {
-    const angle = start + ((end - start) * i) / ARC_SEGMENTS;
+  const sweep = end - start;
+  const segmentCount = adaptiveCurveSegments(Math.abs(sweep) * entity.radius, ARC_SEGMENTS);
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const angle = start + (sweep * i) / segmentCount;
     points.push([
       entity.center[0] + Math.cos(angle) * entity.radius,
       entity.center[1] + Math.sin(angle) * entity.radius,
@@ -181,11 +235,98 @@ function pointsForArc(entity) {
   return points;
 }
 
+function isSheetLayer(layerName) {
+  const normalized = String(layerName ?? "").toUpperCase();
+  return normalized === "G-ANNO-TEXT" || normalized.startsWith("G-ANNO-TTLB");
+}
+
+function pointsForEllipse(entity) {
+  const points = [];
+  const major = entity.majorAxis;
+  const minor = [-major[1] * entity.minorToMajorRatio, major[0] * entity.minorToMajorRatio, major[2] * entity.minorToMajorRatio];
+  const majorLength = Math.hypot(major[0], major[1], major[2]);
+  const minorLength = Math.hypot(minor[0], minor[1], minor[2]);
+  const sweep = entity.endParameter - entity.startParameter;
+  const segmentCount = adaptiveCurveSegments(Math.max(majorLength, minorLength) * Math.abs(sweep), ELLIPSE_SEGMENTS);
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const t = entity.startParameter + (sweep * i) / segmentCount;
+    points.push([
+      entity.center[0] + Math.cos(t) * major[0] + Math.sin(t) * minor[0],
+      entity.center[1] + Math.cos(t) * major[1] + Math.sin(t) * minor[1],
+      entity.center[2] + Math.cos(t) * major[2] + Math.sin(t) * minor[2]
+    ]);
+  }
+  return points;
+}
+
+function adaptiveCurveSegments(arcLength, fallback) {
+  if (!Number.isFinite(arcLength) || arcLength <= 0) return fallback;
+  return Math.max(fallback, Math.min(MAX_CURVE_SEGMENTS, Math.ceil(arcLength / MAX_CURVE_SEGMENT_MM)));
+}
+
+function pointsForSpline(entity) {
+  return entity.fitPoints?.length > 1 ? entity.fitPoints : entity.controlPoints ?? [];
+}
+
+function pointsForBulgedSegment(start, end, bulge) {
+  if (Math.abs(bulge) < 1e-12) return [start, end];
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const chordLength = Math.hypot(dx, dy);
+  if (chordLength < 1e-9) return [start, end];
+
+  const sweep = 4 * Math.atan(bulge);
+  const midpoint = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2, (start[2] + end[2]) / 2];
+  const normal = [-dy / chordLength, dx / chordLength, 0];
+  const centerOffset = (chordLength * (1 - bulge * bulge)) / (4 * bulge);
+  const center = [midpoint[0] + normal[0] * centerOffset, midpoint[1] + normal[1] * centerOffset, midpoint[2]];
+  const radius = Math.hypot(start[0] - center[0], start[1] - center[1]);
+  const startAngle = Math.atan2(start[1] - center[1], start[0] - center[0]);
+  const segmentCount = Math.max(8, adaptiveCurveSegments(Math.abs(sweep) * radius, Math.ceil(Math.abs(sweep) / (Math.PI / 12))));
+  const points = [];
+
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const t = i / segmentCount;
+    const angle = startAngle + sweep * t;
+    points.push([
+      center[0] + Math.cos(angle) * radius,
+      center[1] + Math.sin(angle) * radius,
+      start[2] + (end[2] - start[2]) * t
+    ]);
+  }
+
+  return points;
+}
+
+function pointsForPolyline(entity) {
+  const vertices = entity.points ?? [];
+  if (vertices.length < 2) return vertices;
+  const points = [];
+  const segmentCount = entity.closed ? vertices.length : vertices.length - 1;
+
+  for (let i = 0; i < segmentCount; i += 1) {
+    const segmentPoints = pointsForBulgedSegment(vertices[i], vertices[(i + 1) % vertices.length], entity.bulges?.[i] ?? 0);
+    if (points.length > 0) segmentPoints.shift();
+    points.push(...segmentPoints);
+  }
+
+  return points;
+}
+
+function pointsForFaceOrSolid(entity) {
+  const points = entity.vertices ?? [];
+  return points.length > 0 ? [...points, points[0]] : points;
+}
+
 function pointsForEntity(entity) {
   if (entity.type === "line") return [entity.start, entity.end];
-  if (entity.type === "polyline") return entity.closed ? [...entity.points, entity.points[0]] : entity.points;
+  if (entity.type === "polyline") return pointsForPolyline(entity);
   if (entity.type === "circle") return pointsForCircle(entity);
   if (entity.type === "arc") return pointsForArc(entity);
+  if (entity.type === "point") return [[entity.position[0] - 1, entity.position[1], entity.position[2]], [entity.position[0] + 1, entity.position[1], entity.position[2]]];
+  if (entity.type === "ellipse") return pointsForEllipse(entity);
+  if (entity.type === "spline") return pointsForSpline(entity);
+  if (entity.type === "face3d" || entity.type === "solid") return pointsForFaceOrSolid(entity);
   return [];
 }
 
@@ -202,12 +343,75 @@ function scaleEntityForExport(entity, scale) {
   };
 }
 
-function sourceBaseName(sourcePath) {
-  return sourcePath ? path.basename(String(sourcePath)) : undefined;
+function emptyBounds() {
+  return {
+    min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY],
+    max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
+  };
+}
+
+function expandBounds(bounds, point) {
+  bounds.min[0] = Math.min(bounds.min[0], point[0] ?? 0);
+  bounds.min[1] = Math.min(bounds.min[1], point[1] ?? 0);
+  bounds.min[2] = Math.min(bounds.min[2], point[2] ?? 0);
+  bounds.max[0] = Math.max(bounds.max[0], point[0] ?? 0);
+  bounds.max[1] = Math.max(bounds.max[1], point[1] ?? 0);
+  bounds.max[2] = Math.max(bounds.max[2], point[2] ?? 0);
+}
+
+function boundsIsEmpty(bounds) {
+  return bounds.min[0] > bounds.max[0] || bounds.min[1] > bounds.max[1] || bounds.min[2] > bounds.max[2];
+}
+
+function paddedBoundsXY(bounds, padding) {
+  return {
+    min: [bounds.min[0] - padding, bounds.min[1] - padding, bounds.min[2]],
+    max: [bounds.max[0] + padding, bounds.max[1] + padding, bounds.max[2]]
+  };
+}
+
+function boundsOverlapXY(a, b) {
+  return a.min[0] <= b.max[0] && a.max[0] >= b.min[0] && a.min[1] <= b.max[1] && a.max[1] >= b.min[1];
+}
+
+function entityReferencePoints(entity) {
+  if (entity.type === "text") {
+    const height = entity.height ?? 0;
+    return [
+      [entity.position[0] - height, entity.position[1] - height, entity.position[2] ?? 0],
+      [entity.position[0] + height, entity.position[1] + height, entity.position[2] ?? 0]
+    ];
+  }
+  return pointsForEntity(entity);
+}
+
+function entityBounds(entity) {
+  const bounds = emptyBounds();
+  for (const point of entityReferencePoints(entity)) expandBounds(bounds, point);
+  return boundsIsEmpty(bounds) ? undefined : bounds;
+}
+
+let textFontPromise;
+
+async function loadTextFont() {
+  textFontPromise ??= readFile(TEXT_FONT_PATH, "utf8").then((fontJson) => new FontLoader().parse(JSON.parse(fontJson)));
+  return textFontPromise;
 }
 
 function normalizeText(text) {
   return String(text ?? "").replace(/\\P/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeRenderText(text) {
+  return String(text ?? "")
+    .replace(/\\P/gi, "\n")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .trim();
 }
 
 function exportTextLabel(text) {
@@ -352,15 +556,13 @@ function addGlyphStrokeRuns(lineGroup, meshGroup, glyph, origin, cos, sin, offse
   return strokeCount;
 }
 
-function addTextStrokes(lineGroup, meshGroup, entity, options) {
+function addTextStrokes(lineGroup, meshGroup, entity, coordinateScale = 1) {
   const text = exportTextLabel(entity.text);
-  if (!text) {
-    return { strokeCount: 0 };
-  }
-
-  const scale = options.coordinateScale;
-  const minCapHeight = TEXT_MIN_CAP_HEIGHT_SOURCE * scale;
-  const maxCapHeight = TEXT_MAX_CAP_HEIGHT_SOURCE * scale;
+  if (!text) return 0;
+  const minCapHeight = 12 * coordinateScale;
+  const maxCapHeight = 150 * coordinateScale;
+  const minStrokeWidth = 0.6 * coordinateScale;
+  const maxStrokeWidth = 3.2 * coordinateScale;
   const capHeight = Math.max(minCapHeight, Math.min(entity.height * 0.42, maxCapHeight));
   const widthFactor = 0.62;
   const spacing = capHeight * 0.22;
@@ -368,8 +570,8 @@ function addTextStrokes(lineGroup, meshGroup, entity, options) {
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);
   const origin = entity.position;
-  const z = (origin[2] ?? 0) + TEXT_Z_LIFT_SOURCE * scale;
-  const width = Math.max(TEXT_MIN_STROKE_WIDTH_SOURCE * scale, Math.min(capHeight * 0.035, TEXT_MAX_STROKE_WIDTH_SOURCE * scale));
+  const z = (origin[2] ?? 0) + 3 * coordinateScale;
+  const width = Math.max(minStrokeWidth, Math.min(capHeight * 0.035, maxStrokeWidth));
   let count = 0;
   let cursor = 0;
 
@@ -394,17 +596,78 @@ function addTextStrokes(lineGroup, meshGroup, entity, options) {
     cursor += glyph.w * capHeight * widthFactor + spacing;
   }
 
-  return {
-    strokeCount: count,
-    label: text,
-    sourceHeight: options.sourceHeight,
-    exportedTextHeight: entity.height,
-    capHeight,
-    zLift: TEXT_Z_LIFT_SOURCE * scale,
-    z,
-    sourceRef: entity.sourceRef,
-    layerId: entity.layerId
-  };
+  return count;
+}
+
+function shouldExportText(entity, textScope) {
+  if (!normalizeText(entity.text)) return false;
+  return textScope === "all" || shouldExportMainText(entity.text);
+}
+
+function textLinesForEntity(entity, textScope) {
+  const text = textScope === "all" ? normalizeRenderText(entity.text) : exportTextLabel(entity.text);
+  return text
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function fontSafeLine(line, font) {
+  const glyphs = font.data?.glyphs ?? {};
+  const fallback = glyphs["?"] ? "?" : " ";
+  return [...line].map((char) => (glyphs[char] ? char : fallback)).join("");
+}
+
+function addFilledTextMesh(group, entity, font, options) {
+  const lines = textLinesForEntity(entity, options.textScope);
+  if (lines.length === 0) return 0;
+
+  const capHeight = Math.max(0.001, (entity.height ?? 0) * options.textHeightScale);
+  const rotation = ((entity.rotationDeg ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const origin = entity.position;
+  const zLift = Math.max(0.001, 3 * options.coordinateScale);
+  const depth = Math.max(0.0003, capHeight * 0.012);
+  const lineHeight = capHeight * 1.18;
+  let triangleCount = 0;
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = fontSafeLine(lines[lineIndex], font);
+    if (!line.trim()) continue;
+    const geometry = new TextGeometry(line, {
+      font,
+      size: capHeight,
+      depth,
+      curveSegments: 4,
+      bevelEnabled: false
+    });
+    const positions = geometry.getAttribute("position");
+    if (!positions || positions.count === 0) continue;
+
+    const base = group.positions.length / 3;
+    const lineYOffset = -lineIndex * lineHeight;
+    for (let index = 0; index < positions.count; index += 1) {
+      const localX = positions.getX(index);
+      const localY = positions.getY(index) + lineYOffset;
+      group.positions.push(
+        origin[0] + localX * cos - localY * sin,
+        origin[1] + localX * sin + localY * cos,
+        (origin[2] ?? 0) + zLift + positions.getZ(index)
+      );
+    }
+
+    if (geometry.index) {
+      const indices = geometry.index.array;
+      for (let index = 0; index < indices.length; index += 1) group.indices.push(base + indices[index]);
+      triangleCount += Math.floor(geometry.index.count / 3);
+    } else {
+      for (let index = 0; index < positions.count; index += 1) group.indices.push(base + index);
+      triangleCount += Math.floor(positions.count / 3);
+    }
+  }
+
+  return triangleCount;
 }
 
 function padBuffer(buffer, padByte) {
@@ -432,29 +695,27 @@ function boundsOf(positions) {
   return { min, max };
 }
 
-function emptyBounds() {
-  return {
-    min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY],
-    max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
-  };
-}
-
-function includePoint(bounds, point) {
-  for (let axis = 0; axis < 3; axis += 1) {
-    const value = point[axis] ?? 0;
-    if (value < bounds.min[axis]) bounds.min[axis] = value;
-    if (value > bounds.max[axis]) bounds.max[axis] = value;
+async function optionalJson(filePath, fallback) {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return fallback;
+    throw error;
   }
 }
 
-function finiteBounds(bounds) {
-  if (!Number.isFinite(bounds.min[0])) {
-    return undefined;
-  }
-  return {
-    min: bounds.min.map((value) => Number(value.toFixed(6))),
-    max: bounds.max.map((value) => Number(value.toFixed(6)))
-  };
+async function loadScene(sceneDir) {
+  const [manifest, layers, sourceMap, importReport] = await Promise.all([
+    readFile(path.join(sceneDir, "manifest.json"), "utf8").then(JSON.parse),
+    readFile(path.join(sceneDir, "layers.json"), "utf8").then(JSON.parse),
+    optionalJson(path.join(sceneDir, "source-map.json"), { sources: [] }),
+    optionalJson(path.join(sceneDir, "import-report.json"), { summary: { warningCount: 0 }, warnings: [] })
+  ]);
+  const geometryDir = path.join(sceneDir, "geometry");
+  const geometryFiles = (await readdir(geometryDir))
+    .filter((entry) => entry.endsWith(".json"))
+    .sort((a, b) => a.localeCompare(b));
+  return { manifest, layers, sourceMap, importReport, geometryDir, geometryFiles };
 }
 
 function increment(map, key, amount = 1) {
@@ -462,25 +723,62 @@ function increment(map, key, amount = 1) {
 }
 
 function sortedObjectFromMap(map) {
-  return Object.fromEntries([...map.entries()].sort(([a], [b]) => String(a).localeCompare(String(b))));
+  return Object.fromEntries([...map.entries()].sort(([left], [right]) => String(left).localeCompare(String(right))));
 }
 
-async function loadScene(sceneDir) {
-  const [manifest, layers, sourceMap, importReport] = await Promise.all([
-    readFile(path.join(sceneDir, "manifest.json"), "utf8").then(JSON.parse),
-    readFile(path.join(sceneDir, "layers.json"), "utf8").then(JSON.parse),
-    readFile(path.join(sceneDir, "source-map.json"), "utf8")
-      .then(JSON.parse)
-      .catch(() => ({ sources: [] })),
-    readFile(path.join(sceneDir, "import-report.json"), "utf8")
-      .then(JSON.parse)
-      .catch(() => ({ warnings: [] }))
-  ]);
-  const geometryDir = path.join(sceneDir, "geometry");
-  const geometryFiles = (await readdir(geometryDir))
-    .filter((entry) => entry.endsWith(".json"))
-    .sort((a, b) => a.localeCompare(b));
-  return { manifest, layers, sourceMap, importReport, geometryDir, geometryFiles };
+function sourceBaseName(sourcePath) {
+  return sourcePath?.split(/[\\/]/).filter(Boolean).at(-1);
+}
+
+function sourceEntityCounts(sourceMap) {
+  const counts = new Map();
+  for (const source of sourceMap.sources ?? []) {
+    if (!source.entityType || source.entityType === "FILE") continue;
+    increment(counts, source.entityType);
+  }
+  return sortedObjectFromMap(counts);
+}
+
+function importWarningCounts(importReport) {
+  const counts = new Map();
+  for (const warning of importReport.warnings ?? []) {
+    if (warning.code) increment(counts, warning.code);
+  }
+  return sortedObjectFromMap(counts);
+}
+
+function redactedWarnings(importReport) {
+  return (importReport.warnings ?? []).map((warning) => ({
+    code: warning.code,
+    entityType: warning.entityType,
+    handle: warning.handle,
+    message: warning.message
+  }));
+}
+
+async function computeMainLayoutFocusBounds(scene, layerById, options, coordinateScale) {
+  if (!options.focusMainLayout) return undefined;
+
+  const focusBounds = emptyBounds();
+  for (const fileName of scene.geometryFiles) {
+    const document = JSON.parse(await readFile(path.join(scene.geometryDir, fileName), "utf8"));
+    for (const geometry of document.geometries ?? []) {
+      const fallbackLayerId = geometry.layerId;
+      for (const entity of geometry.entities ?? []) {
+        if (entity.type !== "text" || !shouldExportMainText(entity.text)) continue;
+        const layerId = entity.layerId ?? fallbackLayerId ?? "unknown";
+        const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
+        if (options.excludeSheetLayers && isSheetLayer(layer.name)) continue;
+        const bounds = entityBounds(entity);
+        if (!bounds) continue;
+        expandBounds(focusBounds, bounds.min);
+        expandBounds(focusBounds, bounds.max);
+      }
+    }
+  }
+
+  if (boundsIsEmpty(focusBounds)) return undefined;
+  return paddedBoundsXY(focusBounds, options.focusMarginMeters / coordinateScale);
 }
 
 function makeMaterials(materials) {
@@ -517,7 +815,8 @@ function addBufferView(buffers, accessors, typedBuffer, target, accessor) {
 async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
   const buffers = [];
   const accessors = { bufferViews: [], items: [] };
-  const primitives = [];
+  const meshes = [];
+  const nodes = [{ name: path.basename(outputPath, ".glb"), children: [] }];
 
   for (const group of groups) {
     if (group.positions.length === 0) continue;
@@ -554,7 +853,19 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
       primitive.extras.triangleCount = group.indices.length / 3;
     }
 
-    primitives.push(primitive);
+    const meshIndex = meshes.length;
+    const nodeIndex = nodes.length;
+    meshes.push({ name: group.layerName, primitives: [primitive] });
+    nodes.push({
+      mesh: meshIndex,
+      name: group.layerName,
+      extras: {
+        layerId: group.layerId,
+        layerName: group.layerName,
+        materialIndex: group.materialIndex
+      }
+    });
+    nodes[0].children.push(nodeIndex);
   }
 
   const binary = Buffer.concat(buffers);
@@ -569,8 +880,8 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
     },
     scene: 0,
     scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0, name: path.basename(outputPath, ".glb") }],
-    meshes: [{ name: extras.meshName, primitives }],
+    nodes,
+    meshes,
     materials: makeMaterials(materials),
     accessors: accessors.items,
     bufferViews: accessors.bufferViews,
@@ -589,150 +900,20 @@ async function writeGlb(outputPath, primitiveMode, groups, materials, extras) {
   await writeFile(outputPath, Buffer.concat([header, jsonHeader, jsonChunk, binHeader, binChunk]));
 }
 
-function sourceEntityCounts(sourceMap) {
-  const counts = new Map();
-  for (const source of sourceMap.sources ?? []) {
-    if (source.entityType && source.entityType !== "FILE") {
-      increment(counts, source.entityType);
-    }
-  }
-  return sortedObjectFromMap(counts);
-}
-
-function importWarningCounts(importReport) {
-  const counts = new Map();
-  for (const warning of importReport.warnings ?? []) {
-    increment(counts, warning.code ?? "UNKNOWN");
-  }
-  return sortedObjectFromMap(counts);
-}
-
-function reportMarkdown(report) {
-  const cell = (value) => String(value).replace(/\|/g, "\\|");
-  const lines = [
-    "# CAD Exchanger GLB Conversion Report",
-    "",
-    `Source: ${report.sourceFile ?? "unknown"}`,
-    `Units: ${report.sourceUnits} -> ${report.outputUnits}`,
-    `Coordinate scale: ${report.coordinateScale}`,
-    "",
-    "## Entity Counts",
-    "",
-    `- Source-map entities: ${JSON.stringify(report.entityCounts.sourceMap)}`,
-    `- Scene entities: ${JSON.stringify(report.entityCounts.scene)}`,
-    `- Exported entities: ${JSON.stringify(report.entityCounts.exported)}`,
-    "",
-    "## Text",
-    "",
-    `- Text entities in scene: ${report.text.textEntities}`,
-    `- Exported text entities: ${report.text.exportedTextEntities}`,
-    `- Skipped text entities: ${report.text.skippedTextEntities}`,
-    `- Text Z lift: ${report.text.textZLift}`,
-    `- Suspicious source text heights: ${report.text.suspiciousLargeTextHeights.length}`,
-    "",
-    "## Risks",
-    "",
-    ...report.risks.map((risk) => `- ${risk}`),
-    "",
-    "## Import Warnings",
-    "",
-    `- Warning counts: ${JSON.stringify(report.importWarnings.warningCounts)}`,
-    `- Warning details: ${report.importWarnings.warnings.length}`,
-    "",
-    "## Layers",
-    "",
-    "| Layer | Entities | Bounds |",
-    "| --- | ---: | --- |",
-    ...report.layers.map((layer) => `| ${cell(layer.name)} | ${layer.entityCount} | ${layer.bounds ? JSON.stringify(layer.bounds) : "n/a"} |`)
-  ];
-  return `${lines.join("\n")}\n`;
-}
-
-function buildReport(stats, scene, sceneEntityCounts, sourceCounts, layerReports, textMetrics, outputPaths) {
-  const suspiciousLargeTextHeights = textMetrics
-    .filter((entry) => entry.sourceHeight >= 300)
-    .map((entry) => ({
-      label: entry.label,
-      sourceHeight: Number(entry.sourceHeight.toFixed(6)),
-      exportedTextHeight: Number(entry.exportedTextHeight.toFixed(6)),
-      capHeight: Number(entry.capHeight.toFixed(6)),
-      z: Number(entry.z.toFixed(6)),
-      sourceRef: entry.sourceRef,
-      layerId: entry.layerId
-    }))
-    .sort((a, b) => `${b.sourceHeight}:${a.label}:${a.sourceRef}`.localeCompare(`${a.sourceHeight}:${b.label}:${b.sourceRef}`));
-
-  const risks = [];
-  if (stats.skippedTextEntities > 0) {
-    risks.push(`${stats.skippedTextEntities} scene text entities were intentionally filtered from key-text GLB outputs.`);
-  }
-  if (suspiciousLargeTextHeights.length > 0) {
-    risks.push(`${suspiciousLargeTextHeights.length} source text entities are >= 300 source units and should be visually checked.`);
-  }
-  if (stats.coordinateScale !== 1) {
-    risks.push("GLB coordinates are scaled from source units; text styling constants are scaled by the same coordinate scale.");
-  }
-  if ((scene.importReport.warnings ?? []).length > 0) {
-    risks.push(`${scene.importReport.warnings.length} DXF import warnings are included in importWarnings for skipped or approximated source geometry.`);
-  } else {
-    risks.push("No import-report.json was found beside the scene; source DXF skipped/unsupported entities may be incomplete in this report.");
-  }
-
-  return {
-    format: "kairo-cadex-glb-report",
-    version: 1,
-    sourceFile: sourceBaseName(scene.manifest.source?.path),
-    sourceUnits: stats.sourceUnits,
-    outputUnits: stats.outputUnits,
-    coordinateScale: stats.coordinateScale,
-    entityCounts: {
-      sourceMap: sourceCounts,
-      scene: sortedObjectFromMap(sceneEntityCounts),
-      exported: {
-        curveEntities: stats.curveEntities,
-        lineSegments: stats.lineSegments,
-        textEntities: stats.exportedTextEntities,
-        textStrokeSegments: stats.textStrokeSegments
-      }
-    },
-    text: {
-      textEntities: stats.textEntities,
-      exportedTextEntities: stats.exportedTextEntities,
-      skippedTextEntities: stats.skippedTextEntities,
-      textZLift: Number((TEXT_Z_LIFT_SOURCE * stats.coordinateScale).toFixed(6)),
-      suspiciousLargeTextHeights
-    },
-    importWarnings: {
-      warningCounts: importWarningCounts(scene.importReport),
-      warnings: (scene.importReport.warnings ?? []).map((warning) => ({
-        code: warning.code,
-        entityType: warning.entityType,
-        handle: warning.handle,
-        message: warning.message
-      }))
-    },
-    layers: [...layerReports.values()]
-      .map((layer) => ({
-        id: layer.id,
-        name: layer.name,
-        entityCount: layer.entityCount,
-        bounds: finiteBounds(layer.bounds)
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    outputs: Object.fromEntries(Object.entries(outputPaths).map(([key, value]) => [key, path.basename(value)])),
-    risks
-  };
-}
-
 async function main() {
-  const { sceneDir, outputBase, ribbonWidth, coordinateScale, outputUnits } = parseArgs(process.argv.slice(2));
+  const parsedArgs = parseArgs(process.argv.slice(2));
+  const { sceneDir, outputBase, ribbonWidth } = parsedArgs;
   if (
     !sceneDir ||
     !outputBase ||
     !Number.isFinite(ribbonWidth) ||
     ribbonWidth <= 0 ||
-    !Number.isFinite(coordinateScale) ||
-    coordinateScale <= 0
+    !["filled", "stroke", "none"].includes(parsedArgs.textMode) ||
+    !["key", "all"].includes(parsedArgs.textScope) ||
+    !Number.isFinite(parsedArgs.textHeightScale) ||
+    parsedArgs.textHeightScale <= 0 ||
+    !Number.isFinite(parsedArgs.focusMarginMeters) ||
+    parsedArgs.focusMarginMeters < 0
   ) {
     usage();
     process.exitCode = 2;
@@ -740,7 +921,16 @@ async function main() {
   }
 
   const scene = await loadScene(path.resolve(sceneDir));
+  const coordinateScale = parsedArgs.scaleToMeters ? unitScaleToMeters(scene.manifest.units) : parsedArgs.coordinateScale;
+  const outputUnits = parsedArgs.scaleToMeters ? "meter" : parsedArgs.outputUnits;
+  if (!Number.isFinite(coordinateScale) || coordinateScale <= 0) {
+    usage();
+    process.exitCode = 2;
+    return;
+  }
   const layerById = new Map(scene.layers.layers.map((layer) => [layer.id, layer]));
+  const textFont = parsedArgs.textMode === "filled" ? await loadTextFont() : undefined;
+  const focusBounds = await computeMainLayoutFocusBounds(scene, layerById, parsedArgs, coordinateScale);
   const materials = [];
   const materialIndexByKey = new Map();
 
@@ -757,25 +947,10 @@ async function main() {
 
   const lineGroups = new Map();
   const meshGroups = new Map();
-  const textMaterialIndex = materials.push({
-    name: "Kairo text labels",
-    layerId: "kairo-text",
-    layerName: "Kairo text labels",
-    color: [0.08, 0.08, 0.08]
-  }) - 1;
-  const textLineGroup = {
-    materialIndex: textMaterialIndex,
-    layerId: "kairo-text",
-    layerName: "Kairo text labels",
-    positions: []
-  };
-  const textRibbonGroup = {
-    materialIndex: textMaterialIndex,
-    layerId: "kairo-text",
-    layerName: "Kairo text labels",
-    positions: [],
-    indices: []
-  };
+  const textLineGroups = new Map();
+  const textMeshGroups = new Map();
+  const sceneEntityCounts = new Map();
+  const textMetrics = [];
   const stats = {
     source: sourceBaseName(scene.manifest.source?.path),
     units: scene.manifest.units,
@@ -786,28 +961,24 @@ async function main() {
     exportedTextEntities: 0,
     skippedTextEntities: 0,
     textStrokeSegments: 0,
+    textMeshTriangles: 0,
     lineSegments: 0,
     ribbonWidthMm: ribbonWidth,
     exportedRibbonWidth: ribbonWidth * coordinateScale,
     coordinateScale,
     sourceUnits: scene.manifest.units,
     outputUnits,
+    textMode: parsedArgs.textMode,
+    textScope: parsedArgs.textScope,
+    textHeightScale: parsedArgs.textHeightScale,
+    excludeSheetLayers: parsedArgs.excludeSheetLayers,
+    skippedSheetEntities: 0,
+    focusMainLayout: parsedArgs.focusMainLayout,
+    focusMarginMeters: parsedArgs.focusMarginMeters,
+    focusBounds,
+    skippedFocusOutlierEntities: 0,
     materialCount: 0
   };
-  const sceneEntityCounts = new Map();
-  const sourceCounts = sourceEntityCounts(scene.sourceMap);
-  const layerReports = new Map(
-    scene.layers.layers.map((layer) => [
-      layer.id,
-      {
-        id: layer.id,
-        name: layer.name,
-        entityCount: 0,
-        bounds: emptyBounds()
-      }
-    ])
-  );
-  const textMetrics = [];
 
   for (const fileName of scene.geometryFiles) {
     const document = JSON.parse(await readFile(path.join(scene.geometryDir, fileName), "utf8"));
@@ -817,28 +988,70 @@ async function main() {
       const fallbackLayerId = geometry.layerId;
       for (const entity of geometry.entities ?? []) {
         const layerId = entity.layerId ?? fallbackLayerId ?? "unknown";
+        const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
         increment(sceneEntityCounts, entity.type);
-        const layerReport = groupFor(layerReports, layerId, () => ({
-          id: layerId,
-          name: layerById.get(layerId)?.name ?? layerId,
-          entityCount: 0,
-          bounds: emptyBounds()
-        }));
-        layerReport.entityCount += 1;
+        if (parsedArgs.excludeSheetLayers && isSheetLayer(layer.name)) {
+          stats.skippedSheetEntities += 1;
+          continue;
+        }
+        if (focusBounds) {
+          const bounds = entityBounds(entity);
+          if (bounds && !boundsOverlapXY(bounds, focusBounds)) {
+            stats.skippedFocusOutlierEntities += 1;
+            continue;
+          }
+        }
         if (entity.type === "text") {
           stats.textEntities += 1;
-          if (entity.position) {
-            includePoint(layerReport.bounds, scalePoint(entity.position, coordinateScale));
-          }
-          if (shouldExportMainText(entity.text)) {
-            const textResult = addTextStrokes(textLineGroup, textRibbonGroup, scaleEntityForExport(entity, coordinateScale), {
-              coordinateScale,
-              sourceHeight: entity.height ?? 0
-            });
-            if (textResult.strokeCount > 0) {
+          if (parsedArgs.textMode !== "none" && shouldExportText(entity, parsedArgs.textScope)) {
+            const materialIndex = resolveMaterial(layerId);
+            const textKey = `text:${materialIndex}:${layerId}`;
+            const textLineGroup = groupFor(textLineGroups, textKey, () => ({
+              materialIndex,
+              layerId,
+              layerName: layer.name,
+              positions: []
+            }));
+            const textMeshGroup = groupFor(textMeshGroups, textKey, () => ({
+              materialIndex,
+              layerId,
+              layerName: layer.name,
+              positions: [],
+              indices: []
+            }));
+            const scaledEntity = scaleEntityForExport(entity, coordinateScale);
+            const strokeCount = addTextStrokes(
+              textLineGroup,
+              parsedArgs.textMode === "stroke" ? textMeshGroup : undefined,
+              scaledEntity,
+              coordinateScale
+            );
+            const textMeshTriangles =
+              parsedArgs.textMode === "filled" && textFont
+                ? addFilledTextMesh(textMeshGroup, scaledEntity, textFont, {
+                    coordinateScale,
+                    textScope: parsedArgs.textScope,
+                    textHeightScale: parsedArgs.textHeightScale
+                  })
+                : 0;
+            if (strokeCount > 0 || textMeshTriangles > 0) {
               stats.exportedTextEntities += 1;
-              stats.textStrokeSegments += textResult.strokeCount;
-              textMetrics.push(textResult);
+              stats.textStrokeSegments += strokeCount;
+              stats.textMeshTriangles += textMeshTriangles;
+              const label = exportTextLabel(entity.text);
+              const sourceHeight = entity.height ?? 0;
+              const exportedTextHeight = sourceHeight * coordinateScale;
+              const capHeight = Math.max(12 * coordinateScale, Math.min(exportedTextHeight * 0.42, 150 * coordinateScale));
+              const z = ((entity.position?.[2] ?? 0) * coordinateScale) + 3 * coordinateScale;
+              textMetrics.push({
+                label,
+                sourceHeight: Number(sourceHeight.toFixed(6)),
+                exportedTextHeight: Number(exportedTextHeight.toFixed(6)),
+                capHeight: Number(capHeight.toFixed(6)),
+                z: Number(z.toFixed(6)),
+                sourceRef: entity.sourceRef,
+                layerId
+              });
             }
           } else {
             stats.skippedTextEntities += 1;
@@ -848,12 +1061,8 @@ async function main() {
 
         const points = pointsForEntity(entity).map((point) => scalePoint(point, coordinateScale));
         if (points.length < 2) continue;
-        for (const point of points) {
-          includePoint(layerReport.bounds, point);
-        }
         stats.curveEntities += 1;
         const materialIndex = resolveMaterial(layerId);
-        const layer = layerById.get(layerId) ?? { id: layerId, name: layerId };
         const key = `${materialIndex}:${layerId}`;
         const lineGroup = groupFor(lineGroups, key, () => ({
           materialIndex,
@@ -892,7 +1101,7 @@ async function main() {
     textIncluded: false
   });
 
-  await writeGlb(linesTextPath, 1, [...Array.from(lineGroups.values()), textLineGroup], materials, {
+  await writeGlb(linesTextPath, 1, [...Array.from(lineGroups.values()), ...Array.from(textLineGroups.values())], materials, {
     ...stats,
     meshName: "DXF material-colored line primitives with key stroke text",
     primitiveMode: "LINES",
@@ -900,25 +1109,59 @@ async function main() {
     textStyle: "filtered stroke text"
   });
 
-  await writeGlb(meshPath, 4, [...Array.from(meshGroups.values()), textRibbonGroup], materials, {
+  await writeGlb(meshPath, 4, [...Array.from(meshGroups.values()), ...Array.from(textMeshGroups.values())], materials, {
     ...stats,
-    meshName: "DXF ribbon mesh with key stroke text",
+    meshName: parsedArgs.textMode === "filled" ? "DXF ribbon mesh with filled key text" : "DXF ribbon mesh with key stroke text",
     primitiveMode: "TRIANGLES",
     textIncluded: true,
-    textStyle: "filtered ribbon stroke text"
+    textStyle: parsedArgs.textMode === "filled" ? "filtered filled typeface mesh text" : "filtered ribbon stroke text"
   });
 
   await writeFile(
     `${outputRoot}.cadex-summary.json`,
     `${JSON.stringify({ ...stats, outputs: { linesPath, linesTextPath, meshPath } }, null, 2)}\n`
   );
-  const report = buildReport(stats, scene, sceneEntityCounts, sourceCounts, layerReports, textMetrics, {
-    linesPath,
-    linesTextPath,
-    meshPath
-  });
+  const report = {
+    format: "kairo-cadex-glb-report",
+    version: 1,
+    sourceFile: sourceBaseName(scene.manifest.source?.path),
+    sourceUnits: scene.manifest.units,
+    outputUnits,
+    coordinateScale,
+    entityCounts: {
+      sourceMap: sourceEntityCounts(scene.sourceMap),
+      scene: sortedObjectFromMap(sceneEntityCounts),
+      exported: {
+        curveEntities: stats.curveEntities,
+        lineSegments: stats.lineSegments,
+        textEntities: stats.exportedTextEntities,
+        textStrokeSegments: stats.textStrokeSegments,
+        textMeshTriangles: stats.textMeshTriangles
+      }
+    },
+    text: {
+      textEntities: stats.textEntities,
+      exportedTextEntities: stats.exportedTextEntities,
+      skippedTextEntities: stats.skippedTextEntities,
+      textZLift: Number((3 * coordinateScale).toFixed(6)),
+      suspiciousLargeTextHeights: textMetrics.filter((entry) => entry.sourceHeight >= 300)
+    },
+    importWarnings: {
+      warningCount: scene.importReport.summary?.warningCount ?? (scene.importReport.warnings ?? []).length,
+      warningCounts: importWarningCounts(scene.importReport),
+      warnings: redactedWarnings(scene.importReport)
+    },
+    outputs: {
+      linesPath: path.basename(linesPath),
+      linesTextPath: path.basename(linesTextPath),
+      meshPath: path.basename(meshPath)
+    }
+  };
   await writeFile(`${outputRoot}.cadex-report.json`, `${JSON.stringify(report, null, 2)}\n`);
-  await writeFile(`${outputRoot}.cadex-report.md`, reportMarkdown(report));
+  await writeFile(
+    `${outputRoot}.cadex-report.md`,
+    `# CAD Exchanger GLB Conversion Report\n\nSource: ${report.sourceFile ?? "unknown"}\n\nMesh: ${report.outputs.meshPath}\n`
+  );
   console.log(`Wrote ${linesPath}`);
   console.log(`Wrote ${linesTextPath}`);
   console.log(`Wrote ${meshPath}`);

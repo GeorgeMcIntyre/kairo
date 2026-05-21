@@ -147,12 +147,43 @@ type ViewerSelection = {
 type ViewMode = "top2d" | "perspective";
 type FitTarget = "scene" | "main" | "selected" | "raw";
 type AdvancedLayoutExportFormat = "json" | "csv" | "markdown";
+type GlbExportPreset = "process-simulate" | "cad-review" | "lightweight";
+
+type GlbExportSettings = {
+  preset: GlbExportPreset;
+  ribbonWidthMm: number;
+  includeText: boolean;
+  includeReport: boolean;
+};
+
+const GLB_EXPORT_PRESETS: Record<GlbExportPreset, GlbExportSettings> = {
+  "process-simulate": {
+    preset: "process-simulate",
+    ribbonWidthMm: 3,
+    includeText: true,
+    includeReport: true
+  },
+  "cad-review": {
+    preset: "cad-review",
+    ribbonWidthMm: 5,
+    includeText: true,
+    includeReport: true
+  },
+  lightweight: {
+    preset: "lightweight",
+    ribbonWidthMm: 1,
+    includeText: false,
+    includeReport: true
+  }
+};
+
 type ViewerLoadingKind = "public-scene" | "local-file";
 
 type ViewerLoadingState = {
   kind: ViewerLoadingKind;
   name: string;
   phase: string;
+  percent: number;
   startedAt: number;
 };
 
@@ -1074,6 +1105,10 @@ export function App() {
   const [semanticReviewWarnings, setSemanticReviewWarnings] = useState<string[]>([]);
   const [semanticReviewStatus, setSemanticReviewStatus] = useState<string | undefined>();
   const [glbExportStatus, setGlbExportStatus] = useState<string | undefined>();
+  const [glbExportDialogOpen, setGlbExportDialogOpen] = useState(false);
+  const [glbExportSettings, setGlbExportSettings] = useState<GlbExportSettings>(
+    GLB_EXPORT_PRESETS["process-simulate"]
+  );
   const [semanticFilters, setSemanticFilters] = useState<SemanticValidationFilters>({
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
@@ -1289,14 +1324,22 @@ export function App() {
 
   const isCurrentSceneLoad = useCallback((serial: number) => sceneLoadSerialRef.current === serial, []);
 
-  const beginSceneLoading = useCallback((serial: number, kind: ViewerLoadingKind, name: string, phase: string) => {
+  const beginSceneLoading = useCallback((serial: number, kind: ViewerLoadingKind, name: string, phase: string, percent = 1) => {
     if (!isCurrentSceneLoad(serial)) return;
-    setLoadingState({ kind, name, phase, startedAt: performance.now() });
+    setLoadingState({ kind, name, phase, percent, startedAt: performance.now() });
   }, [isCurrentSceneLoad]);
 
   const updateSceneLoadProgress = useCallback((serial: number, progress: SceneLoadProgress) => {
     if (!isCurrentSceneLoad(serial)) return;
-    setLoadingState((current) => (current ? { ...current, phase: progress.label } : current));
+    setLoadingState((current) =>
+      current
+        ? {
+            ...current,
+            phase: progress.label,
+            percent: Math.max(current.percent, progress.percent ?? current.percent)
+          }
+        : current
+    );
   }, [isCurrentSceneLoad]);
 
   const activateScenePackage = useCallback(
@@ -1354,7 +1397,7 @@ export function App() {
         onProgress: (progress) => updateSceneLoadProgress(loadSerial, progress)
       });
       if (!isCurrentSceneLoad(loadSerial)) return;
-      updateSceneLoadProgress(loadSerial, { phase: "public-scene-read", label: "Activating scene" });
+      updateSceneLoadProgress(loadSerial, { phase: "public-scene-read", label: "Activating scene", percent: 95 });
       activateScenePackage(loadedScenePackage, {
         activeName: sceneName,
         status: `Loaded ${sceneName}`
@@ -1397,7 +1440,7 @@ export function App() {
           onProgress: (progress) => updateSceneLoadProgress(loadSerial, progress)
         });
         if (!isCurrentSceneLoad(loadSerial)) return;
-        updateSceneLoadProgress(loadSerial, { phase: result.kind === "dxf" ? "dxf-import" : "kairo-package-read", label: "Activating scene" });
+        updateSceneLoadProgress(loadSerial, { phase: result.kind === "dxf" ? "dxf-import" : "kairo-package-read", label: "Activating scene", percent: 95 });
         const warningSuffix = result.warningCount === 0 ? "" : ` (${result.warningCount} warnings)`;
         const loadedVerb = result.kind === "dxf" ? "Imported" : "Opened";
         activateScenePackage(result.scenePackage, {
@@ -1633,16 +1676,29 @@ export function App() {
     downloadTextFile(`kairo-advanced-layout.${extension}`, advancedLayoutExportContent(format), mime);
   };
 
-  const buildCadExchangerGlbExport = async () => {
-    setGlbExportStatus("Building GLB");
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    return exportScenePackageToCadExchangerGlb(scenePackage);
+  const updateGlbPreset = (preset: GlbExportPreset) => {
+    setGlbExportSettings(GLB_EXPORT_PRESETS[preset]);
   };
 
-  const downloadCadExchangerGlb = () => {
-    void buildCadExchangerGlbExport()
+  const patchGlbExportSettings = (patch: Partial<GlbExportSettings>) => {
+    setGlbExportSettings((current) => ({ ...current, ...patch }));
+  };
+
+  const buildCadExchangerGlbExport = async (settings: GlbExportSettings = glbExportSettings) => {
+    setGlbExportStatus("Building GLB");
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return exportScenePackageToCadExchangerGlb(scenePackage, {
+      presetName: settings.preset,
+      ribbonWidthMm: settings.ribbonWidthMm,
+      includeText: settings.includeText
+    });
+  };
+
+  const downloadCadExchangerGlb = (settings: GlbExportSettings = glbExportSettings) => {
+    void buildCadExchangerGlbExport(settings)
       .then((result) => {
         downloadBinaryFile(result.filename, result.bytes, "model/gltf-binary");
+        setGlbExportDialogOpen(false);
         setGlbExportStatus(`Downloaded ${result.filename}`);
       })
       .catch((error: unknown) => {
@@ -1650,8 +1706,8 @@ export function App() {
       });
   };
 
-  const downloadCadExchangerGlbReport = () => {
-    void buildCadExchangerGlbExport()
+  const downloadCadExchangerGlbReport = (settings: GlbExportSettings = glbExportSettings) => {
+    void buildCadExchangerGlbExport(settings)
       .then((result) => {
         downloadTextFile(result.reportFilename, result.reportMarkdown, "text/markdown");
         setGlbExportStatus(`Downloaded ${result.reportFilename}`);
@@ -1698,11 +1754,12 @@ export function App() {
             <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
               Load Demo Layout
             </button>
-            <button disabled={sceneIsLoading || sceneStats.curveEntityCount === 0} onClick={downloadCadExchangerGlb} type="button">
-              Download GLB
-            </button>
-            <button disabled={sceneIsLoading || sceneStats.curveEntityCount === 0} onClick={downloadCadExchangerGlbReport} type="button">
-              GLB report
+            <button
+              disabled={sceneIsLoading || sceneStats.curveEntityCount === 0}
+              onClick={() => setGlbExportDialogOpen(true)}
+              type="button"
+            >
+              Export GLB / JT
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <button onClick={() => requestFit("scene")} type="button">
@@ -1903,9 +1960,18 @@ export function App() {
         <section className="scene-loading" role="status">
           <span>{loadingKindLabel}</span>
           <strong>{loadingState?.name}</strong>
-          <p>{loadingState?.phase ?? "Preparing"} / {formatTimingMs(loadingElapsedMs)}</p>
-          <div className="scene-loading-bar" aria-hidden="true">
-            <i />
+          <p>
+            {loadingState?.phase ?? "Preparing"} / {Math.round(loadingState?.percent ?? 0)}% / {formatTimingMs(loadingElapsedMs)}
+          </p>
+          <div
+            aria-label={`Loading progress ${Math.round(loadingState?.percent ?? 0)} percent`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={Math.round(loadingState?.percent ?? 0)}
+            className="scene-loading-bar"
+            role="progressbar"
+          >
+            <i style={{ width: `${Math.max(2, Math.min(100, loadingState?.percent ?? 0))}%` }} />
           </div>
         </section>
       ) : null}
@@ -2603,6 +2669,93 @@ export function App() {
           ))}
         </div>
       </aside>
+      ) : null}
+
+
+      {glbExportDialogOpen ? (
+        <div className="export-dialog-backdrop" role="presentation">
+          <section aria-labelledby="glb-export-title" aria-modal="true" className="export-dialog" role="dialog">
+            <div className="export-dialog-heading">
+              <div>
+                <h2 id="glb-export-title">GLB Export Settings</h2>
+                <span>Process Simulate handoff through CAD Exchanger / JT</span>
+              </div>
+              <button aria-label="Close export settings" onClick={() => setGlbExportDialogOpen(false)} type="button">
+                x
+              </button>
+            </div>
+            <div className="export-dialog-grid">
+              <label>
+                <span>Preset</span>
+                <select
+                  onChange={(event) => updateGlbPreset(event.target.value as GlbExportPreset)}
+                  value={glbExportSettings.preset}
+                >
+                  <option value="process-simulate">Process Simulate placement</option>
+                  <option value="cad-review">CAD Exchanger visual review</option>
+                  <option value="lightweight">Lightweight conversion test</option>
+                </select>
+              </label>
+              <label>
+                <span>Line width (mm)</span>
+                <input
+                  min="0.1"
+                  onChange={(event) =>
+                    patchGlbExportSettings({ ribbonWidthMm: Math.max(0.1, Number(event.target.value) || 0.1) })
+                  }
+                  step="0.1"
+                  type="number"
+                  value={glbExportSettings.ribbonWidthMm}
+                />
+              </label>
+              <label>
+                <span>Text geometry</span>
+                <select
+                  onChange={(event) => patchGlbExportSettings({ includeText: event.target.value === "true" })}
+                  value={String(glbExportSettings.includeText)}
+                >
+                  <option value="true">Include key text geometry</option>
+                  <option value="false">Geometry only</option>
+                </select>
+              </label>
+              <label>
+                <span>Report</span>
+                <select
+                  onChange={(event) => patchGlbExportSettings({ includeReport: event.target.value === "true" })}
+                  value={String(glbExportSettings.includeReport)}
+                >
+                  <option value="true">Enable markdown report</option>
+                  <option value="false">GLB only</option>
+                </select>
+              </label>
+            </div>
+            <dl className="export-dialog-facts">
+              <dt>Source units</dt>
+              <dd>{scenePackage.manifest.units}</dd>
+              <dt>GLB units</dt>
+              <dd>meter</dd>
+              <dt>Scene content</dt>
+              <dd>
+                {sceneStats.layerCount} layers / {sceneStats.curveEntityCount.toLocaleString()} curve entities / {layoutSemantics.textEntities.length.toLocaleString()} text entities
+              </dd>
+              <dt>Workflow</dt>
+              <dd>Open the GLB in CAD Exchanger, export JT, then use the layer/material names while positioning equipment in Process Simulate.</dd>
+            </dl>
+            <div className="export-dialog-actions">
+              <button onClick={() => setGlbExportDialogOpen(false)} type="button">
+                Cancel
+              </button>
+              {glbExportSettings.includeReport ? (
+                <button onClick={() => downloadCadExchangerGlbReport()} type="button">
+                  Download Report
+                </button>
+              ) : null}
+              <button onClick={() => downloadCadExchangerGlb()} type="button">
+                Download GLB
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {diagnosticsOpen ? (

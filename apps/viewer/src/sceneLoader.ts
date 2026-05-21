@@ -60,6 +60,7 @@ export type SceneLoadProgressPhase =
 export type SceneLoadProgress = {
   phase: SceneLoadProgressPhase;
   label: string;
+  percent?: number;
 };
 
 export type SceneLoadOptions = {
@@ -125,7 +126,7 @@ export async function loadPublicScenePackage(
   fetcher: FetchLike = fetch,
   options: SceneLoadOptions = {}
 ): Promise<ScenePackage> {
-  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene manifest" });
+  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene manifest", percent: 20 });
   const [manifestDocument, sceneDocument, layersDocument, materialsDocument, sourceMapDocument] = await Promise.all([
     fetchJson(fetcher, `${basePath}/manifest.json`),
     fetchJson(fetcher, `${basePath}/scene.json`),
@@ -135,7 +136,7 @@ export async function loadPublicScenePackage(
   ]);
 
   const sceneData = sceneDocument as SceneDocument;
-  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene geometry" });
+  options.onProgress?.({ phase: "public-scene-read", label: "Loading scene geometry", percent: 70 });
   const geometry = await Promise.all(
     geometryRefsFromScene(sceneData).map((geometryRef) => fetchJson(fetcher, `${basePath}/geometry/${encodeURIComponent(geometryRef)}.json`) as Promise<GeometryDocument>)
   );
@@ -163,7 +164,7 @@ export async function loadDxfFileScenePackage(file: File, options: SceneLoadOpti
   }
 
   const fileReadStartedAt = performance.now();
-  options.onProgress?.({ phase: "file-read", label: "Reading file" });
+  options.onProgress?.({ phase: "file-read", label: "Reading file", percent: 10 });
   const text = await file.text();
   recordStage("file-read", fileReadStartedAt);
 
@@ -171,13 +172,14 @@ export async function loadDxfFileScenePackage(file: File, options: SceneLoadOpti
   const moduleLoadStartedAt = performance.now();
   options.onProgress?.({
     phase: "importer-module-load",
-    label: useWorker ? "Starting DXF worker" : "Loading DXF importer"
+    label: useWorker ? "Starting DXF worker" : "Loading DXF importer",
+    percent: 30
   });
   const importer = useWorker ? undefined : await import("@kairo/importer-dxf/browser");
   recordStage("importer-module-load", moduleLoadStartedAt);
 
   const importStartedAt = performance.now();
-  options.onProgress?.({ phase: "dxf-import", label: useWorker ? "Importing DXF in worker" : "Importing DXF" });
+  options.onProgress?.({ phase: "dxf-import", label: useWorker ? "Importing DXF in worker" : "Importing DXF", percent: 75 });
   const result = useWorker
     ? await importDxfTextWithWorker(fileName, text)
     : await importer!.importDxfTextToKairo(fileName, text, { createdBy: "kairo viewer upload" });
@@ -199,7 +201,7 @@ export async function loadKairoPackageFileScenePackage(file: File, options: Scen
     throw new Error("Only .kairo files can be opened as Kairo packages.");
   }
 
-  options.onProgress?.({ phase: "kairo-package-read", label: "Opening Kairo package" });
+  options.onProgress?.({ phase: "kairo-package-read", label: "Opening Kairo package", percent: 75 });
   const bytes = new Uint8Array(await file.arrayBuffer());
   return readKairoPackage(bytes).scenePackage;
 }
