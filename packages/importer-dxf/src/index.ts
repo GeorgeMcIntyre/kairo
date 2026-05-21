@@ -32,7 +32,7 @@ export async function importDxfToKairo(inputPath: string, options: DxfImportOpti
 export async function writeScenePackage(outputDir: string, scenePackage: ScenePackage): Promise<void> {
   const absoluteOutputDir = path.resolve(outputDir);
   const geometryDir = path.join(absoluteOutputDir, "geometry");
-  const writable = splitLargeGeometryDocuments(scenePackage);
+  const writable = prepareScenePackageForWrite(scenePackage);
   await mkdir(absoluteOutputDir, { recursive: true });
   await rm(geometryDir, { recursive: true, force: true });
   await mkdir(geometryDir, { recursive: true });
@@ -54,7 +54,7 @@ export async function writeScenePackage(outputDir: string, scenePackage: ScenePa
   );
 }
 
-function splitLargeGeometryDocuments(scenePackage: ScenePackage): ScenePackage {
+export function prepareScenePackageForWrite(scenePackage: ScenePackage): ScenePackage {
   const geometry: GeometryDocument[] = [];
   const replacementRefs = new Map<string, string[]>();
 

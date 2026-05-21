@@ -152,4 +152,31 @@ describe("computeRobustSceneBounds", () => {
     expect(result.outlierEntityIds).toEqual([]);
     expect(result.fitBounds).toEqual(result.rawBounds);
   });
+
+  it("hides small disconnected sparse components near a dominant large layout", () => {
+    const mainLayout = Array.from({ length: 1500 }, (_, index) => {
+      const x = index % 50;
+      const y = Math.floor(index / 50);
+      return {
+        id: `main-${index}`,
+        type: "line" as const,
+        start: [x * 1000, y * 1000, 0],
+        end: [x * 1000 + 500, y * 1000, 0]
+      };
+    });
+    const sparseIsland = Array.from({ length: 10 }, (_, index) => ({
+      id: `island-${index}`,
+      type: "line" as const,
+      start: [25000 + index, 120000 + index, 0],
+      end: [25000 + index + 0.1, 120000 + index, 0]
+    }));
+
+    const result = computeRobustSceneBounds([...mainLayout, ...sparseIsland], {
+      spatialClusterMinEntityCount: 100,
+      spatialClusterKeepFraction: 0.05
+    });
+
+    expect(result.outlierEntityIds).toEqual(expect.arrayContaining(sparseIsland.map((entity) => entity.id)));
+    expect(result.fitBounds.max[1]).toBeLessThan(120000);
+  });
 });

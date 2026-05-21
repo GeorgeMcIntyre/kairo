@@ -183,6 +183,58 @@ describe("kairo validate", () => {
     expect(importResult.stdout).toContain("Warnings: 0\n");
   });
 
+  it("imports a DXF fixture directly into a validated .kairo package with a QA report", async () => {
+    const outputPath = path.join(tempRoot, "one-line.kairo");
+    const reportPath = path.join(tempRoot, "one-line-package-report.json");
+    const importResult = await captureCli([
+      "import-dxf-package",
+      dxfFixturePath,
+      outputPath,
+      "--report",
+      reportPath,
+      "--quiet-warnings",
+      "--redact-source-paths",
+      "--full-source-map"
+    ]);
+
+    expect(importResult.code).toBe(0);
+    expect(importResult.stderr).toBe("");
+    expect(importResult.stdout).toContain("Kairo DXF package import passed\n");
+    expect(importResult.stdout).toContain("Conversion: 100.0000%\n");
+    expect(importResult.stdout).toContain("Read-back validation: 0 errors, 0 warnings\n");
+
+    const validateResult = await captureCli(["validate", outputPath]);
+    expect(validateResult.code).toBe(0);
+    expect(validateResult.stderr).toBe("");
+    expect(validateResult.stdout).toContain("Kairo validation passed\n");
+
+    const report = JSON.parse(await readFile(reportPath, "utf8")) as {
+      ok: boolean;
+      packageBytes: number;
+      scene: { units: string; geometryDocumentCount: number; sourceMapCount: number };
+      import: { coverage: { conversionPercent: number; failedInstances: number } };
+      validation: { readBack: { valid: boolean } };
+    };
+    expect(report.ok).toBe(true);
+    expect(report.packageBytes).toBeGreaterThan(100);
+    expect(report.scene.units).toBe("millimeter");
+    expect(report.scene.geometryDocumentCount).toBeGreaterThan(0);
+    expect(report.scene.sourceMapCount).toBeGreaterThan(0);
+    expect(report.import.coverage.conversionPercent).toBe(100);
+    expect(report.import.coverage.failedInstances).toBe(0);
+    expect(report.validation.readBack.valid).toBe(true);
+  });
+
+  it("requires the .kairo extension when importing a DXF package", async () => {
+    const result = await captureCli(["import-dxf-package", dxfFixturePath, path.join(tempRoot, "one-line.zip")]);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "Kairo DXF package import failed\n- ERROR INVALID_PACKAGE_PATH: Output file must use the .kairo extension.\n"
+    );
+  });
+
   it("reports exact DXF conversion coverage without writing a scene", async () => {
     const result = await captureCli(["dxf-coverage", dxfFixturePath]);
 

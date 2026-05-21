@@ -1,6 +1,12 @@
 import { createKairoPackage, flattenGeometry, readKairoPackage } from "@kairo/core";
-import { analyzeDxfBlocks, importDxfToKairo, writeDxfBlockInventoryReports, writeScenePackage } from "@kairo/importer-dxf";
-import type { GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
+import {
+  analyzeDxfBlocks,
+  importDxfToKairo,
+  prepareScenePackageForWrite,
+  writeDxfBlockInventoryReports,
+  writeScenePackage
+} from "@kairo/importer-dxf";
+import type { DrawingEntity, Geometry, GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
 import { scenePackageSchema } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -176,6 +182,177 @@ function jsonErrorOutput(error: CliError) {
   };
 }
 
+function parseOptionValue(args: string[], optionName: string): string | undefined {
+  const index = args.indexOf(optionName);
+  if (index === -1) return undefined;
+  return args[index + 1];
+}
+
+function withoutOptions(args: string[], optionsWithValues: string[], booleanOptions: string[]) {
+  const positional: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (optionsWithValues.includes(arg)) {
+      index += 1;
+      continue;
+    }
+    if (booleanOptions.includes(arg)) {
+      continue;
+    }
+    positional.push(arg);
+  }
+  return positional;
+}
+
+function parseCompressionLevel(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 9) {
+    throw expectedError("INVALID_COMPRESSION_LEVEL", "--compression-level must be an integer from 0 to 9.");
+  }
+  return parsed;
+}
+
+function redactSourcePaths(scenePackage: ScenePackage): ScenePackage {
+  return {
+    ...scenePackage,
+    manifest: {
+      ...scenePackage.manifest,
+      source: {
+        ...scenePackage.manifest.source,
+        path: scenePackage.manifest.source.path ? path.basename(scenePackage.manifest.source.path) : undefined,
+        note: [scenePackage.manifest.source.note, "Source paths redacted by kairo import-dxf-package."]
+          .filter(Boolean)
+          .join(" ")
+      }
+    },
+    sourceMap: {
+      sources: scenePackage.sourceMap.sources.map((source) => ({
+        ...source,
+        path: path.basename(source.path)
+      }))
+    }
+  };
+}
+
+function compactSourceMap(scenePackage: ScenePackage): ScenePackage {
+  return {
+    ...scenePackage,
+    manifest: {
+      ...scenePackage.manifest,
+      source: {
+        ...scenePackage.manifest.source,
+        note: [scenePackage.manifest.source.note, "Source map compacted for large-DXF package loading."]
+          .filter(Boolean)
+          .join(" ")
+      }
+    },
+    scene: {
+      ...scenePackage.scene,
+      nodes: scenePackage.scene.nodes.map((node) => {
+        const { sourceRef: _sourceRef, ...rest } = node;
+        return rest;
+      })
+    },
+    geometry: scenePackage.geometry.map((document) => ({
+      geometries: document.geometries.map((geometry) => {
+        const { sourceRef: _geometrySourceRef, ...geometryRest } = geometry;
+        if (geometry.kind !== "curve-set") return geometryRest;
+        return {
+          ...geometryRest,
+          entities: geometry.entities.map((entity) => {
+            const { sourceRef: _entitySourceRef, ...entityRest } = entity;
+            return entityRest;
+          })
+        };
+      })
+    })),
+    sourceMap: {
+      sources: []
+    }
+  };
+}
+
+function includePoint(bounds: { min: [number, number, number]; max: [number, number, number] }, point: readonly number[]) {
+  for (let index = 0; index < 3; index += 1) {
+    const value = point[index] ?? 0;
+    bounds.min[index] = Math.min(bounds.min[index], value);
+    bounds.max[index] = Math.max(bounds.max[index], value);
+  }
+}
+
+function includeEntityBounds(bounds: { min: [number, number, number]; max: [number, number, number] }, entity: DrawingEntity) {
+  if (entity.type === "line") {
+    includePoint(bounds, entity.start);
+    includePoint(bounds, entity.end);
+  } else if (entity.type === "polyline") {
+    for (const point of entity.points) includePoint(bounds, point);
+  } else if (entity.type === "circle") {
+    includePoint(bounds, [entity.center[0] - entity.radius, entity.center[1] - entity.radius, entity.center[2]]);
+    includePoint(bounds, [entity.center[0] + entity.radius, entity.center[1] + entity.radius, entity.center[2]]);
+  } else if (entity.type === "arc") {
+    includePoint(bounds, [entity.center[0] - entity.radius, entity.center[1] - entity.radius, entity.center[2]]);
+    includePoint(bounds, [entity.center[0] + entity.radius, entity.center[1] + entity.radius, entity.center[2]]);
+  } else if (entity.type === "ellipse") {
+    const major = Math.hypot(entity.majorAxis[0], entity.majorAxis[1], entity.majorAxis[2]);
+    const minor = major * entity.minorToMajorRatio;
+    const radius = Math.max(major, minor);
+    includePoint(bounds, [entity.center[0] - radius, entity.center[1] - radius, entity.center[2]]);
+    includePoint(bounds, [entity.center[0] + radius, entity.center[1] + radius, entity.center[2]]);
+  } else if (entity.type === "spline") {
+    for (const point of entity.controlPoints) includePoint(bounds, point);
+    for (const point of entity.fitPoints) includePoint(bounds, point);
+  } else if (entity.type === "point") {
+    includePoint(bounds, entity.position);
+  } else if (entity.type === "solid" || entity.type === "face3d") {
+    for (const point of entity.vertices) includePoint(bounds, point);
+  } else if (entity.type === "text") {
+    includePoint(bounds, entity.position);
+  }
+}
+
+function includeGeometryBounds(bounds: { min: [number, number, number]; max: [number, number, number] }, geometry: Geometry) {
+  if ("boundingBox" in geometry && geometry.boundingBox) {
+    includePoint(bounds, geometry.boundingBox.min);
+    includePoint(bounds, geometry.boundingBox.max);
+    return;
+  }
+  if (geometry.kind === "curve-set") {
+    for (const entity of geometry.entities) includeEntityBounds(bounds, entity);
+  } else {
+    for (let index = 0; index < geometry.vertices.length; index += 3) {
+      includePoint(bounds, [geometry.vertices[index], geometry.vertices[index + 1], geometry.vertices[index + 2]]);
+    }
+  }
+}
+
+function sceneBounds(scenePackage: ScenePackage) {
+  const bounds = {
+    min: [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY] as [number, number, number],
+    max: [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY] as [number, number, number]
+  };
+  for (const document of scenePackage.geometry) {
+    for (const geometry of document.geometries) includeGeometryBounds(bounds, geometry);
+  }
+  return Number.isFinite(bounds.min[0]) ? bounds : undefined;
+}
+
+function sceneSummary(scenePackage: ScenePackage) {
+  const root = scenePackage.scene.nodes.find((node) => node.id === scenePackage.scene.rootNodeId);
+  return {
+    rootNodeId: scenePackage.scene.rootNodeId,
+    rootName: root?.displayName ?? scenePackage.scene.rootNodeId,
+    units: scenePackage.manifest.units,
+    nodeCount: scenePackage.scene.nodes.length,
+    geometryDocumentCount: scenePackage.geometry.length,
+    geometryCount: flattenGeometry(scenePackage).length,
+    layerCount: scenePackage.layers.layers.length,
+    materialCount: scenePackage.materials.materials.length,
+    sourceMapCount: scenePackage.sourceMap.sources.length,
+    bounds: sceneBounds(scenePackage)
+  };
+}
+
 async function validateCommand(args: string[], io: CliIo): Promise<number> {
   const json = args.includes("--json");
   const positional = args.filter((arg) => arg !== "--json");
@@ -269,6 +446,121 @@ async function importDxfCommand(args: string[], io: CliIo): Promise<number> {
   } catch (error) {
     const normalized = normalizeError(error);
     io.stderr(`Kairo DXF import failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
+    return 1;
+  }
+}
+
+async function importDxfPackageCommand(args: string[], io: CliIo): Promise<number> {
+  const quietWarnings = args.includes("--quiet-warnings");
+  const redactPaths = args.includes("--redact-source-paths");
+  const fullSourceMap = args.includes("--full-source-map");
+  const reportPath = parseOptionValue(args, "--report");
+  const compressionLevelValue = parseOptionValue(args, "--compression-level");
+  const positional = withoutOptions(args, ["--report", "--compression-level"], ["--quiet-warnings", "--redact-source-paths", "--full-source-map"]);
+  const [inputPath, outputPath] = positional;
+
+  if (!inputPath || !outputPath) {
+    io.stderr(
+      "Kairo DXF package import failed\n- ERROR MISSING_IMPORT_PACKAGE_ARGS: Usage: kairo import-dxf-package <input.dxf> <output.kairo> [--report <report.json>] [--quiet-warnings] [--redact-source-paths] [--full-source-map] [--compression-level 0-9]\n"
+    );
+    return 1;
+  }
+
+  if (path.extname(outputPath).toLowerCase() !== ".kairo") {
+    io.stderr("Kairo DXF package import failed\n- ERROR INVALID_PACKAGE_PATH: Output file must use the .kairo extension.\n");
+    return 1;
+  }
+
+  try {
+    if (args.includes("--report") && !reportPath) {
+      throw expectedError("MISSING_REPORT_PATH", "--report requires a report JSON path.");
+    }
+    if (args.includes("--compression-level") && !compressionLevelValue) {
+      throw expectedError("MISSING_COMPRESSION_LEVEL", "--compression-level requires an integer from 0 to 9.");
+    }
+    const compressionLevel = parseCompressionLevel(compressionLevelValue);
+    const importResult = await importDxfToKairo(inputPath, { createdBy: "kairo import-dxf-package" });
+    const packageScenePackage = fullSourceMap ? importResult.scenePackage : compactSourceMap(importResult.scenePackage);
+    const writableScenePackage = prepareScenePackageForWrite(
+      redactPaths ? redactSourcePaths(packageScenePackage) : packageScenePackage
+    );
+    const validationReport = validateScenePackage(writableScenePackage);
+    if (!validationReport.valid) {
+      io.stderr(`${formatInvalidOutput(validationReport)}\n`);
+      return 1;
+    }
+
+    const archive = createKairoPackage(writableScenePackage, {
+      createdBy: "kairo import-dxf-package",
+      compressionLevel
+    });
+    const absoluteOutputPath = path.resolve(outputPath);
+    await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
+    await writeFile(absoluteOutputPath, archive);
+
+    const readBackReport = validateScenePackage(readKairoPackage(archive).scenePackage);
+    const report = {
+      ok: validationReport.valid && readBackReport.valid,
+      input: path.resolve(inputPath),
+      output: absoluteOutputPath,
+      packageBytes: archive.byteLength,
+      options: {
+        redactSourcePaths: redactPaths,
+        sourceMap: fullSourceMap ? "full" : "compact",
+        compressionLevel: compressionLevel ?? 6
+      },
+      scene: sceneSummary(writableScenePackage),
+      import: {
+        summary: importResult.summary,
+        coverage: importResult.coverage,
+        warningCount: importResult.warnings.length,
+        warnings: importResult.warnings,
+        preCleanReport: importResult.preCleanReport,
+        timing: importResult.timing ?? []
+      },
+      validation: {
+        write: validationReport,
+        readBack: readBackReport
+      }
+    };
+
+    if (reportPath) {
+      const absoluteReportPath = path.resolve(reportPath);
+      await mkdir(path.dirname(absoluteReportPath), { recursive: true });
+      await writeFile(absoluteReportPath, stableJson(report));
+    }
+
+    io.stdout(
+      [
+        "Kairo DXF package import passed",
+        `Input: ${path.resolve(inputPath)}`,
+        `Output: ${absoluteOutputPath}`,
+        reportPath ? `Report: ${path.resolve(reportPath)}` : undefined,
+        `Package bytes: ${archive.byteLength}`,
+        `Units: ${writableScenePackage.manifest.units}`,
+        `Geometry documents: ${writableScenePackage.geometry.length}`,
+        `Supported entities: ${importResult.summary.supportedEntityCount}`,
+        `Unsupported entities: ${importResult.summary.unsupportedEntityCount}`,
+        `Conversion: ${importResult.coverage.conversionPercent.toFixed(4)}%`,
+        `Warnings: ${importResult.summary.warningCount}`,
+        `Read-back validation: ${readBackReport.summary.errors} errors, ${readBackReport.summary.warnings} warnings`
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n") + "\n"
+    );
+
+    if (!quietWarnings) {
+      for (const warning of importResult.preCleanReport.warnings) {
+        io.stderr(`- WARNING ${warning.code}${warning.line ? ` line ${warning.line}` : ""}: ${warning.message}\n`);
+      }
+      for (const warning of importResult.warnings) {
+        io.stderr(`- WARNING ${warning.code}${warning.entityType ? ` ${warning.entityType}` : ""}${warning.handle ? ` ${warning.handle}` : ""}: ${warning.message}\n`);
+      }
+    }
+    return readBackReport.valid ? 0 : 1;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(`Kairo DXF package import failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`);
     return 1;
   }
 }
@@ -609,6 +901,10 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return importDxfCommand(args, io);
   }
 
+  if (command === "import-dxf-package") {
+    return importDxfPackageCommand(args, io);
+  }
+
   if (command === "dxf-coverage") {
     return dxfCoverageCommand(args, io);
   }
@@ -630,7 +926,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   }
 
   const message =
-    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> [--quiet-warnings] | kairo dxf-coverage <input.dxf> [...input.dxf] [--json] | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
+    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> [--quiet-warnings] | kairo import-dxf-package <input.dxf> <output.kairo> [--report <report.json>] [--quiet-warnings] [--redact-source-paths] [--full-source-map] [--compression-level 0-9] | kairo dxf-coverage <input.dxf> [...input.dxf] [--json] | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

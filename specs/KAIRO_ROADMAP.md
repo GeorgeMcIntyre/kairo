@@ -1,21 +1,21 @@
 # Kairo Roadmap
 
-Last updated: 2026-05-10
-HEAD: c1241f1 feat: extract MTEXT entities and keep big labels visible at fit-scene
+Last updated: 2026-05-21
+HEAD: current DXF package / GLB export branch
 
-## Overall POC Readiness: ~70%
+## Overall POC Readiness: ~82%
 
 | Area | Readiness | Notes |
 |---|---|---|
-| Repo / workspace baseline | 90% | Monorepo, schema, validator, CLI, viewer all running; tests 151/151 |
-| DXF parser compatibility | 85% | Pre-clean solves ACAD_REACTORS; R12, 2010, 2013 verified; MTEXT scanner added |
-| DXF geometry coverage | 75% | LINE/LWPOLYLINE/CIRCLE/ARC/POLYLINE/INSERT (incl. mirror, z-offset, nested)/TEXT/ATTDEF/MTEXT done; hatches, dimensions, splines missing |
-| Text completeness | 70% | TEXT, ATTDEF, MTEXT visible; alignment/attachment semantics approximate; MTEXT inside block INSERTs not expanded |
-| Viewer usability | 65% | Top-2D, perspective, fit, selection, layers, text overlay with density modes; drawing-first UI and zoom-to-cursor still needed |
-| Selection / inspection | 35% | Functional but not practical: panel shows minimal details, picking tolerance needs work |
-| QA / repeatability | 70% | 151 tests passing; documented QA workflow; no automated visual QA yet |
-| Production robustness | 25% | PoC only; no error recovery, no streaming, no auth |
-| JT / export | 5% | Parked — requires Siemens JT Open Toolkit |
+| Repo / workspace baseline | 90% | Monorepo, schema, validator, CLI, viewer all running; current suite is significantly broader than the original 151-test baseline |
+| DXF parser compatibility | 88% | Pre-clean solves ACAD_REACTORS; R12, 2010, 2013 verified; production DXF coverage reports are available |
+| DXF geometry coverage | 82% | Core layout geometry, text, common inserts, points, ellipses, splines, solids, and face entities are covered; hatches/dimensions remain the main gaps |
+| Text completeness | 78% | TEXT, ATTDEF, ATTRIB, and MTEXT are visible in viewer/GLB paths; CAD-review text quality now depends on chosen export preset |
+| Viewer usability | 78% | Drawing-first DXF loading, progress percentage, fit, layers, text controls, `.kairo` open/drop, and GLB/JT settings popup are in place |
+| Selection / inspection | 45% | Functional but still needs a stronger engineering inspection panel and isolate workflow |
+| QA / repeatability | 82% | CLI coverage, package validation, GLB handoff reports, and large-DXF package workflow are documented |
+| Production robustness | 45% | `.kairo` packages avoid browser size limits; still no streaming importer, auth, cloud job queue, or durable project database |
+| JT / export | 55% | GLB export exists; JT handoff works through CAD Exchanger GUI or Batch when licensed, but native JT writing remains parked |
 
 ## Phase History
 
@@ -62,7 +62,8 @@ HEAD: c1241f1 feat: extract MTEXT entities and keep big labels visible at fit-sc
 | ISSUE-008 | Complex POLYLINE / spline-fit policy | Later |
 | ISSUE-009 | Render performance / batching baseline | Later |
 | 11 | GLB export | CAD Exchanger handoff implemented; production exporter still later |
-| 12 | JT export | Parked — requires licensed Siemens toolkit |
+| 12 | JT export | External CAD Exchanger handoff active; native JT writer parked unless Siemens JT Open Toolkit is authorized |
+| 13 | `.kairo` package workflow for large DXFs | In progress |
 
 ## What Demo-Ready Means
 
@@ -74,16 +75,26 @@ A useful engineering PoC demo requires all of:
 4. Scene tree, layer list, selection highlight, and text density controls are usable.
 5. Validation report shows zero errors.
 6. Import report accounts for all skipped entities — no silent drops.
-7. The full QA workflow runs in under 5 minutes from a fresh DXF file.
+7. Large files can be converted to `.kairo` without browser upload.
+8. GLB export settings are explicit enough for CAD Exchanger and Siemens Process Simulate handoff.
 
-Current estimate for demo-ready: **After ISSUE-002 (selection) + ISSUE-004 (drawing-first UI)**. The geometry, layers, and text are largely in place. What's missing is practical ergonomics for inspection and review.
+Current estimate for demo-ready: **package workflow + selection/isolate polish**. The geometry, layers, text, GLB handoff, and large-file strategy are in place. What's missing is practical engineering inspection workflow and repeated Siemens Process Simulate acceptance checks.
+
+## Current Priority Roadmap
+
+| Priority | Work | Why |
+|---|---|---|
+| P0 | Productize `.kairo` as the large-DXF cache | Removes the 300 MB browser limit and makes every later review repeatable |
+| P0 | Keep conversion coverage visible in every report | Prevents silent entity loss and gives a real percentage complete |
+| P1 | Siemens Process Simulate acceptance loop | Confirms scale, placement, tree grouping, and JT usability with real users |
+| P1 | Layer/tree hide-show workflow | Lets engineers isolate equipment, border, text, and layout groups |
+| P2 | Better selection/properties panel | Turns the viewer from visual QA into a useful engineering review tool |
 
 ## Parked Work
 
 | Area | Reason |
 |---|---|
-| JT export | Requires Siemens JT Open Toolkit; not started; do not begin without re-authorization |
-| GLB export | Browser CAD Exchanger handoff exists for line/triangle geometry; richer production exporter remains later |
+| Native JT export | External CAD Exchanger handoff is the current route; native writer remains parked without a licensed Siemens toolkit |
 | DWG direct parsing | Convert to DXF first (ODA or AutoCAD) |
 | Full MTEXT rich formatting | Color, font, bold, italic, tables — not needed for current POC |
 | Non-uniform scale INSERT expansion | 0 instances in Scott DXF2013; not worth implementing yet |

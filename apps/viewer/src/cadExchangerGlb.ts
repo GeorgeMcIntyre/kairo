@@ -109,6 +109,17 @@ function floatBytes(values: readonly number[]): Uint8Array {
   return new Uint8Array(new Float32Array(values).buffer);
 }
 
+function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
+  const totalLength = parts.reduce((total, part) => total + part.byteLength, 0);
+  const combined = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const part of parts) {
+    combined.set(part, offset);
+    offset += part.byteLength;
+  }
+  return combined;
+}
+
 function boundsOf(positions: readonly number[]) {
   const min = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY];
   const max = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
@@ -485,15 +496,7 @@ export function exportScenePackageToCadExchangerGlb(
     throw new Error("No GLB geometry was generated. The scene has no exportable curves or meshes.");
   }
 
-  const binaryChunk = padBytes(
-    binaryParts.reduce((combined, part) => {
-      const next = new Uint8Array(combined.byteLength + part.byteLength);
-      next.set(combined);
-      next.set(part, combined.byteLength);
-      return next;
-    }, new Uint8Array()),
-    0
-  );
+  const binaryChunk = padBytes(concatBytes(binaryParts), 0);
   const gltf = {
     asset: {
       version: "2.0",

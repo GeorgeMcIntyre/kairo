@@ -52,6 +52,8 @@ export type RobustBoundsOptions = {
   distanceMultiplier?: number;
   iqrMultiplier?: number;
   topOutlierCount?: number;
+  spatialClusterMinEntityCount?: number;
+  spatialClusterKeepFraction?: number;
 };
 
 export type ParsedSourceRef =
@@ -298,6 +300,83 @@ function quantileOfSorted(sortedValues: readonly number[], quantile: number): nu
   return sortedValues[index];
 }
 
+function dominantSpatialClusterOutlierIds(records: readonly EntityBounds[], bounds: Bounds3, options: RobustBoundsOptions): Set<string> {
+  const minEntityCount = Math.max(options.spatialClusterMinEntityCount ?? 1000, 0);
+  if (records.length < minEntityCount || boundsIsEmpty(bounds)) return new Set();
+
+  const size = boundsSize(bounds);
+  const diagonal = Math.hypot(size[0], size[1]);
+  if (!Number.isFinite(diagonal) || diagonal <= 0) return new Set();
+
+  const cellSize = Math.max(5000, Math.min(25000, diagonal / 60));
+  const cellRecords = new Map<string, { x: number; y: number; records: EntityBounds[] }>();
+  for (const record of records) {
+    const x = Math.floor((record.centroid[0] - bounds.min[0]) / cellSize);
+    const y = Math.floor((record.centroid[1] - bounds.min[1]) / cellSize);
+    const key = `${x},${y}`;
+    const cell = cellRecords.get(key);
+    if (cell) {
+      cell.records.push(record);
+    } else {
+      cellRecords.set(key, { x, y, records: [record] });
+    }
+  }
+
+  const seen = new Set<string>();
+  const components: Array<{ count: number; cellKeys: string[] }> = [];
+  const neighborOffsets = [
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1]
+  ];
+
+  for (const [key, cell] of cellRecords) {
+    if (seen.has(key)) continue;
+    const queue = [cell];
+    const cellKeys = [key];
+    seen.add(key);
+    let count = 0;
+
+    for (let index = 0; index < queue.length; index++) {
+      const current = queue[index];
+      count += current.records.length;
+      for (const [dx, dy] of neighborOffsets) {
+        const neighborKey = `${current.x + dx},${current.y + dy}`;
+        const neighbor = cellRecords.get(neighborKey);
+        if (!neighbor || seen.has(neighborKey)) continue;
+        seen.add(neighborKey);
+        queue.push(neighbor);
+        cellKeys.push(neighborKey);
+      }
+    }
+
+    components.push({ count, cellKeys });
+  }
+
+  if (components.length <= 1) return new Set();
+  components.sort((left, right) => right.count - left.count);
+
+  const dominantCount = components[0].count;
+  const keepThreshold = Math.max(minEntityCount, dominantCount * Math.max(options.spatialClusterKeepFraction ?? 0.01, 0));
+  const keptCells = new Set<string>();
+  for (const component of components) {
+    if (component.count < keepThreshold) continue;
+    for (const key of component.cellKeys) keptCells.add(key);
+  }
+
+  const outliers = new Set<string>();
+  for (const [key, cell] of cellRecords) {
+    if (keptCells.has(key)) continue;
+    for (const record of cell.records) outliers.add(record.entityId);
+  }
+  return outliers;
+}
+
 export function computeSceneCentroid(centroids: readonly Vec3[]): Vec3 {
   if (centroids.length === 0) return [0, 0, 0];
   return [
@@ -365,7 +444,7 @@ export function computeRobustSceneBounds(
   }
 
   const mainClusterCenter = boundsCenter(mainClusterBounds);
-  const entityBounds = baseRecords.map((record, index): EntityBounds => {
+  let entityBounds = baseRecords.map((record, index): EntityBounds => {
     const distanceFromMainCluster = Math.hypot(
       record.centroid[0] - mainClusterCenter[0],
       record.centroid[1] - mainClusterCenter[1]
@@ -384,6 +463,14 @@ export function computeRobustSceneBounds(
       isOutlier
     };
   });
+
+  const visibleSpatialRecords = entityBounds.filter((record) => !record.isOutlier);
+  const spatialOutlierIds = dominantSpatialClusterOutlierIds(visibleSpatialRecords, mainClusterBounds, options);
+  if (spatialOutlierIds.size > 0) {
+    entityBounds = entityBounds.map((record) =>
+      spatialOutlierIds.has(record.entityId) ? { ...record, isOutlier: true } : record
+    );
+  }
 
   const visibleBounds = emptyBounds();
   const outlierBounds = emptyBounds();

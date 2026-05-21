@@ -571,6 +571,11 @@ button:hover {
   height: 100%;
 }
 
+.viewport-interacting .text-overlay,
+.viewport-interacting .semantic-overlay {
+  visibility: hidden;
+}
+
 .text-overlay {
   position: absolute;
   inset: 0;
@@ -1314,6 +1319,16 @@ button:hover {
   overflow-wrap: anywhere;
 }
 
+.export-dialog-status {
+  padding: 10px 12px;
+  border: 1px solid #2d4b6d;
+  border-radius: 4px;
+  background: #102033;
+  color: #cfe8ff;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .export-dialog-actions {
   display: flex;
   justify-content: end;
@@ -1332,6 +1347,11 @@ button:hover {
   border-color: #1b86c9;
   background: #0b5c9d;
   color: #f4f8fc;
+}
+
+.export-dialog-actions button:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .semantic-validation-lists {

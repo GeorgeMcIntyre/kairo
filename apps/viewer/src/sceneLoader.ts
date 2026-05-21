@@ -54,6 +54,7 @@ export type SceneLoadProgressPhase =
   | "file-read"
   | "importer-module-load"
   | "dxf-import"
+  | "dxf-package-import"
   | "kairo-package-read"
   | "public-scene-read";
 
@@ -66,10 +67,15 @@ export type SceneLoadProgress = {
 export type SceneLoadOptions = {
   onProgress?: (progress: SceneLoadProgress) => void;
   useWorker?: boolean;
+  largeDxfPackageThresholdBytes?: number;
+  packageImportEndpoint?: string;
+  packageImportFetch?: typeof fetch;
 };
 
 const dxfFilePattern = /\.dxf$/i;
 const kairoFilePattern = /\.kairo$/i;
+const defaultLargeDxfPackageThresholdBytes = 200 * 1024 * 1024;
+const defaultPackageImportEndpoint = "/api/kairo/import-dxf-package";
 const browserWorkerAvailable = () => typeof Worker !== "undefined";
 let dxfImportRequestId = 0;
 
@@ -152,6 +158,45 @@ export async function loadPublicScenePackage(
 }
 
 export async function loadDxfFileScenePackage(file: File, options: SceneLoadOptions = {}): Promise<DxfImportResult> {
+  const packageThreshold = options.largeDxfPackageThresholdBytes ?? defaultLargeDxfPackageThresholdBytes;
+  if (file.size >= packageThreshold) {
+    const packaged = await loadLargeDxfViaLocalPackageImport(file, options);
+    return {
+      scenePackage: packaged.scenePackage,
+      warnings: [],
+      summary: {
+        supportedEntityCount: packaged.supportedEntityCount,
+        unsupportedEntityCount: packaged.unsupportedEntityCount,
+        layerCount: packaged.scenePackage.layers.layers.length,
+        warningCount: packaged.warningCount
+      },
+      coverage: {
+        totalSourceInstances: packaged.supportedEntityCount + packaged.unsupportedEntityCount,
+        coveredInstances: packaged.supportedEntityCount,
+        failedInstances: packaged.unsupportedEntityCount,
+        conversionPercent: packaged.conversionPercent,
+        failures: [],
+        byEntityType: {},
+        byFailureCode: {}
+      },
+      preCleanReport: {
+        enabled: false,
+        removedAcadReactorsCount: 0,
+        removedAcadReactorsLineRanges: [],
+        appendedMissingEof: false,
+        originalLineCount: 0,
+        cleanedLineCount: 0,
+        warnings: []
+      },
+      packageCacheKey: packaged.packageCacheKey,
+      packageCacheStatus: packaged.packageCacheStatus,
+      timing: packaged.timing
+    } as DxfImportResult & {
+      packageCacheKey?: string;
+      packageCacheStatus?: "hit" | "miss";
+    };
+  }
+
   const totalStartedAt = performance.now();
   const timing: DxfImportTimingStage[] = [];
   const recordStage = (stage: string, startedAt: number) => {
@@ -199,6 +244,77 @@ export async function loadDxfFileScenePackage(file: File, options: SceneLoadOpti
   };
 }
 
+async function loadLargeDxfViaLocalPackageImport(file: File, options: SceneLoadOptions = {}) {
+  const startedAt = performance.now();
+  const fileName = file.name.trim() || "uploaded.dxf";
+  const endpoint = options.packageImportEndpoint ?? defaultPackageImportEndpoint;
+  const fetcher = options.packageImportFetch ?? fetch;
+
+  options.onProgress?.({
+    phase: "dxf-package-import",
+    label: "Preparing large DXF package",
+    percent: 10
+  });
+
+  let response: Response;
+  try {
+    response = await fetcher(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/dxf",
+        "X-Kairo-File-Name": encodeURIComponent(fileName),
+        "X-Kairo-File-Size": String(file.size),
+        "X-Kairo-File-Last-Modified": String(file.lastModified)
+      },
+      body: file
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Large DXF import requires the local Kairo dev server package endpoint. ${reason}`);
+  }
+
+  if (!response.ok) {
+    let reason = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string };
+      if (body.message) reason = body.message;
+    } catch {
+      // Keep HTTP status when the response is not JSON.
+    }
+    throw new Error(`Large DXF package import failed: ${reason}`);
+  }
+
+  options.onProgress?.({
+    phase: "kairo-package-read",
+    label: "Opening generated Kairo package",
+    percent: 85
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const scenePackage = readKairoPackage(bytes).scenePackage;
+  const warningCount = Number(response.headers.get("X-Kairo-Warning-Count") ?? 0);
+  const supportedEntityCount = Number(response.headers.get("X-Kairo-Supported-Entities") ?? 0);
+  const unsupportedEntityCount = Number(response.headers.get("X-Kairo-Unsupported-Entities") ?? 0);
+  const conversionPercent = Number(response.headers.get("X-Kairo-Conversion-Percent") ?? 100);
+  const cacheStatus = response.headers.get("X-Kairo-Cache");
+  const packageCacheKey = response.headers.get("X-Kairo-Cache-Key") ?? undefined;
+
+  return {
+    scenePackage,
+    warningCount: Number.isFinite(warningCount) ? warningCount : 0,
+    supportedEntityCount: Number.isFinite(supportedEntityCount) ? supportedEntityCount : 0,
+    unsupportedEntityCount: Number.isFinite(unsupportedEntityCount) ? unsupportedEntityCount : 0,
+    conversionPercent: Number.isFinite(conversionPercent) ? conversionPercent : 100,
+    packageCacheKey,
+    packageCacheStatus: cacheStatus === "hit" ? "hit" : cacheStatus === "miss" ? "miss" : undefined,
+    timing: [
+      {
+        stage: cacheStatus === "hit" ? "local-dxf-package-cache-hit-total" : "local-dxf-package-import-total",
+        ms: Math.max(0, performance.now() - startedAt)
+      }
+    ]
+  };
+}
+
 export async function loadKairoPackageFileScenePackage(file: File, options: SceneLoadOptions = {}): Promise<ScenePackage> {
   const fileName = file.name.trim() || "uploaded.kairo";
   if (!kairoFilePattern.test(fileName)) {
@@ -215,12 +331,19 @@ export type LocalSceneFileLoadResult =
       kind: "dxf";
       scenePackage: ScenePackage;
       warningCount: number;
+      largeSceneMode: boolean;
+      packageCacheKey?: string;
+      analysisCacheKey?: string;
+      packageCacheStatus?: "hit" | "miss";
       timing?: DxfImportTimingStage[];
     }
   | {
       kind: "kairo-package";
       scenePackage: ScenePackage;
       warningCount: 0;
+      largeSceneMode: boolean;
+      packageCacheKey?: string;
+      analysisCacheKey?: string;
       timing?: DxfImportTimingStage[];
     };
 
@@ -228,10 +351,20 @@ export async function loadLocalSceneFilePackage(file: File, options: SceneLoadOp
   const fileName = file.name.trim();
   if (dxfFilePattern.test(fileName)) {
     const result = await loadDxfFileScenePackage(file, options);
+    const packageMetadata = result as DxfImportResult & {
+      packageCacheKey?: string;
+      packageCacheStatus?: "hit" | "miss";
+    };
     return {
       kind: "dxf",
       scenePackage: result.scenePackage,
       warningCount: result.summary.warningCount,
+      largeSceneMode: file.size >= (options.largeDxfPackageThresholdBytes ?? defaultLargeDxfPackageThresholdBytes),
+      packageCacheKey: packageMetadata.packageCacheKey,
+      analysisCacheKey: packageMetadata.packageCacheKey
+        ? `large-dxf:${packageMetadata.packageCacheKey}:analysis-v1`
+        : undefined,
+      packageCacheStatus: packageMetadata.packageCacheStatus,
       timing: result.timing
     };
   }
@@ -242,6 +375,8 @@ export async function loadLocalSceneFilePackage(file: File, options: SceneLoadOp
       kind: "kairo-package",
       scenePackage: await loadKairoPackageFileScenePackage(file, options),
       warningCount: 0,
+      largeSceneMode: file.size >= 50 * 1024 * 1024,
+      analysisCacheKey: `kairo-file:${fileName}:${file.size}:${file.lastModified}:analysis-v1`,
       timing: [{ stage: "kairo-package-read", ms: Math.max(0, performance.now() - startedAt) }]
     };
   }

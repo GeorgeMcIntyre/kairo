@@ -29,26 +29,28 @@ import {
   buildAdvancedLayoutModel,
   exportAdvancedLayoutCsv,
   exportAdvancedLayoutJson,
-  exportAdvancedLayoutMarkdown
+  exportAdvancedLayoutMarkdown,
+  type AdvancedLayoutModel
 } from "./advancedEngineering/advancedLayout";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
-import { computeLayoutSemantics, type LayoutSemantics } from "./semantic/layoutSemantics";
+import type { LayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
 import {
   DEFAULT_SEMANTIC_VALIDATION_FILTERS,
   buildSemanticOverlayModel,
-  computeOutlierSummary,
   filterSemanticValidation,
   resolveSemanticSelection,
   type SemanticSelection,
   type SemanticOverlayModel,
-  type SemanticValidationFilters
+  type SemanticValidationFilters,
+  type OutlierSummary
 } from "./semantic/semanticValidation";
 import {
   applySemanticDeviceOverrides,
   buildSemanticSummary,
   exportSemanticSummaryJson,
   exportSemanticSummaryMarkdown,
+  type SemanticSummary,
   type SemanticDeviceOverride,
   type SemanticOverrideMap
 } from "./semantic/semanticSummary";
@@ -66,6 +68,14 @@ import {
   rendererViewportFromElement,
   type ViewportSize
 } from "./viewerMath";
+import { computeViewerAnalysis, type ViewerAnalysisCacheStatus } from "./viewerAnalysis";
+import {
+  LARGE_SCENE_INTERACTION_IDLE_MS,
+  isClickLikePointerGesture,
+  isLargeSceneInteractionMode,
+  rendererPixelRatioForInteraction,
+  shouldRunHoverRaycast
+} from "./viewportInteraction";
 
 const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
 const DEMO_SCENE_NAME = "scott-dxf2013-import";
@@ -79,6 +89,82 @@ const EMPTY_LAYOUT_SEMANTICS: LayoutSemantics = {
   devices: [],
   unknownTextEntities: []
 };
+
+const EMPTY_SEMANTIC_SUMMARY: SemanticSummary = {
+  counts: {
+    stations: 0,
+    devices: 0,
+    linkedDevices: 0,
+    ambiguousDevices: 0,
+    unlinkedDevices: 0,
+    unknownLabels: 0,
+    lowConfidenceDevices: 0,
+    byKind: {}
+  },
+  stations: [],
+  devices: [],
+  warnings: []
+};
+
+const EMPTY_OUTLIER_SUMMARY: OutlierSummary = {
+  outlierCount: 0,
+  topLayers: [],
+  topOutliers: []
+};
+
+function emptyAdvancedLayoutModel(sourcePath?: string): AdvancedLayoutModel {
+  return {
+    modelVersion: "0.2",
+    sourcePath,
+    revisionIdentity: {
+      sourcePath,
+      sourceFormat: "DXF",
+      sourceFingerprint: "analysis-pending",
+      stableKeyVersion: "semantic-v1"
+    },
+    lines: [],
+    areas: [],
+    stations: [],
+    cells: [],
+    devices: [],
+    robots: [],
+    nests: [],
+    dunnage: [],
+    annotations: [],
+    foundationPoints: [],
+    serviceZones: [],
+    bomItems: [],
+    warnings: [],
+    reviewItems: [],
+    summary: {
+      counts: {
+        lines: 0,
+        areas: 0,
+        stations: 0,
+        cells: 0,
+        devices: 0,
+        robots: 0,
+        nests: 0,
+        dunnage: 0,
+        annotations: 0,
+        foundationPoints: 0,
+        serviceZones: 0,
+        bomItems: 0,
+        warnings: 0,
+        reviewItems: 0,
+        linkedDevices: 0,
+        ambiguousDevices: 0,
+        unlinkedDevices: 0,
+        devicesMissingStation: 0
+      },
+      devicesByKind: {},
+      bomByCategory: {},
+      foundationByCategory: {},
+      reviewBySeverity: {},
+      warningsByCategory: {}
+    }
+  };
+}
 
 type RenderRecord = {
   object: THREE.Object3D;
@@ -403,6 +489,12 @@ function formatTimingMs(value: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
 }
 
+function formatFileSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "unknown size";
+  const mb = bytes / 1024 / 1024;
+  return mb >= 1024 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
+}
+
 function deviceKindLabel(value: string) {
   return value.replace(/_/g, " ");
 }
@@ -448,6 +540,13 @@ function downloadBytesFile(filename: string, content: Uint8Array, type: string) 
   URL.revokeObjectURL(url);
 }
 
+function downloadUrlFile(url: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "";
+  anchor.click();
+}
+
 function Viewport({
   scenePackage,
   robustBounds,
@@ -461,6 +560,8 @@ function Viewport({
   readableOrientation,
   semanticOverlayEnabled,
   semanticOverlayModel,
+  largeSceneMode,
+  diagnosticsEnabled,
   onSelectSemantic,
   onViewportDiagnostics
 }: {
@@ -476,6 +577,8 @@ function Viewport({
   readableOrientation: boolean;
   semanticOverlayEnabled: boolean;
   semanticOverlayModel: SemanticOverlayModel;
+  largeSceneMode: boolean;
+  diagnosticsEnabled: boolean;
   onSelectSemantic: (selection: SemanticSelection) => void;
   onViewportDiagnostics?: (diagnostics: ViewportDiagnostics) => void;
 }) {
@@ -489,10 +592,17 @@ function Viewport({
   const lastFitBoundsRef = useRef<THREE.Box3>(new THREE.Box3());
   const viewportTimingRef = useRef<DxfImportTimingStage[]>([]);
   const hoveredNodeIdRef = useRef("");
+  const pointerStartRef = useRef<{ x: number; y: number; button: number; pointerId: number } | undefined>(undefined);
+  const pointerDownRef = useRef(false);
+  const interactionActiveRef = useRef(false);
+  const interactionIdleTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | undefined>(undefined);
+  const lastHoverRaycastMsRef = useRef(0);
+  const lastDiagnosticsPublishMsRef = useRef(0);
   const [overlayCamera, setOverlayCamera] = useState<TextOverlayCamera | null>(null);
   const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
   const [rafTick, setRafTick] = useState(0);
   const [overlayMetrics, setOverlayMetrics] = useState<TextOverlayMetrics | null>(null);
+  const [viewportInteracting, setViewportInteracting] = useState(false);
   const textItems = useMemo(() => collectTextItems(scenePackage), [scenePackage]);
 
   // Latest-ref pattern: read current values in effects without adding them as deps.
@@ -506,8 +616,20 @@ function Viewport({
   onSelectRef.current = onSelect;
   const onViewportDiagnosticsRef = useRef(onViewportDiagnostics);
   onViewportDiagnosticsRef.current = onViewportDiagnostics;
+  const diagnosticsEnabledRef = useRef(diagnosticsEnabled);
+  diagnosticsEnabledRef.current = diagnosticsEnabled;
+  const largeSceneModeRef = useRef(largeSceneMode);
+  largeSceneModeRef.current = largeSceneMode;
 
-  const publishViewportDiagnostics = (bounds: THREE.Box3 = mainBoundsRef.current) => {
+  const publishViewportDiagnostics = (bounds: THREE.Box3 = mainBoundsRef.current, options?: { force?: boolean }) => {
+    if (!options?.force && !diagnosticsEnabledRef.current) {
+      return;
+    }
+    const now = performance.now();
+    if (!options?.force && now - lastDiagnosticsPublishMsRef.current < 1000) {
+      return;
+    }
+    lastDiagnosticsPublishMsRef.current = now;
     const host = hostRef.current;
     const renderer = rendererRef.current;
     const camera = cameraRef.current;
@@ -554,8 +676,10 @@ function Viewport({
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(initialViewport.rendererPixelRatio);
+    const renderer = new THREE.WebGLRenderer({ antialias: !largeSceneModeRef.current });
+    renderer.setPixelRatio(
+      rendererPixelRatioForInteraction(initialViewport.devicePixelRatio, largeSceneModeRef.current, false)
+    );
     renderer.setSize(initialViewport.width, initialViewport.height, false);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -579,11 +703,57 @@ function Viewport({
 
     setOverlayCamera(camera);
     setOverlayHost(host);
+    let raycastCount = 0;
+    let raycastTotalMs = 0;
+    let cameraChangeCount = 0;
+
+    const updateRendererPixelRatio = (interacting: boolean) => {
+      const viewport = rendererViewportFromElement(host, window.devicePixelRatio || 1);
+      renderer.setPixelRatio(
+        rendererPixelRatioForInteraction(viewport.devicePixelRatio, largeSceneModeRef.current, interacting)
+      );
+      renderer.setSize(viewport.width, viewport.height, false);
+    };
+
+    const finishInteractionAfterIdle = () => {
+      interactionActiveRef.current = false;
+      setViewportInteracting(false);
+      updateRendererPixelRatio(false);
+      setRafTick((tick) => tick + 1);
+      publishViewportDiagnostics(mainBoundsRef.current);
+    };
+
+    const scheduleInteractionIdle = () => {
+      if (interactionIdleTimerRef.current !== undefined) {
+        globalThis.clearTimeout(interactionIdleTimerRef.current);
+      }
+      interactionIdleTimerRef.current = globalThis.setTimeout(
+        finishInteractionAfterIdle,
+        largeSceneModeRef.current ? LARGE_SCENE_INTERACTION_IDLE_MS : 16
+      );
+    };
+
+    const startInteraction = () => {
+      if (!interactionActiveRef.current) {
+        interactionActiveRef.current = true;
+        setViewportInteracting(true);
+        updateRendererPixelRatio(true);
+      }
+      scheduleInteractionIdle();
+    };
+
     const onCameraChange = () => {
+      cameraChangeCount += 1;
+      if (largeSceneModeRef.current) {
+        startInteraction();
+        return;
+      }
       publishViewportDiagnostics(mainBoundsRef.current);
       setRafTick((tick) => tick + 1);
     };
     controls.addEventListener("change", onCameraChange);
+    controls.addEventListener("start", startInteraction);
+    controls.addEventListener("end", scheduleInteractionIdle);
 
     const ambient = new THREE.AmbientLight("#ffffff", 1.7);
     const key = new THREE.DirectionalLight("#ffffff", 2);
@@ -638,6 +808,7 @@ function Viewport({
 
     recordsRef.current = records;
     applyHighlight(records, selectedNodeIdRef.current);
+    const pickObjects = records.flatMap((record) => [record.object, ...record.object.children]);
 
     const sceneBounds = box3FromBounds(robustBounds.rawBounds);
     sceneBoundsRef.current = sceneBounds;
@@ -722,26 +893,60 @@ function Viewport({
       return { nodeId, entity };
     };
 
+    const recordRaycastTiming = (elapsedMs: number) => {
+      raycastCount += 1;
+      raycastTotalMs += elapsedMs;
+      viewportTimingRef.current = [
+        ...viewportTimingRef.current.filter(
+          (entry) =>
+            entry.stage !== "raycast-count" &&
+            entry.stage !== "raycast-average" &&
+            entry.stage !== "camera-change-count"
+        ),
+        { stage: "raycast-count", ms: raycastCount },
+        { stage: "raycast-average", ms: raycastTotalMs / Math.max(raycastCount, 1) },
+        { stage: "camera-change-count", ms: cameraChangeCount }
+      ];
+    };
+
     const castRay = (event: PointerEvent) => {
+      const startedAt = performance.now();
       const bounds = renderer.domElement.getBoundingClientRect();
       const ndc = pointerClientToNdc(event.clientX, event.clientY, bounds);
       pointer.set(ndc.x, ndc.y);
       setDynamicThreshold();
       raycaster.setFromCamera(pointer, camera);
-      return raycaster.intersectObjects(
-        records.flatMap((record) => [record.object, ...record.object.children]),
-        true
-      );
+      const intersections = raycaster.intersectObjects(pickObjects, true);
+      recordRaycastTiming(Math.max(0, performance.now() - startedAt));
+      return intersections;
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      const selection = resolveHitSelection(castRay(event));
-      if (selection) {
-        onSelectRef.current(selection);
+      pointerDownRef.current = true;
+      pointerStartRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        button: event.button,
+        pointerId: event.pointerId
+      };
+      if (largeSceneModeRef.current && event.button !== 0) {
+        startInteraction();
       }
     };
 
     const onPointerMove = (event: PointerEvent) => {
+      if (
+        !shouldRunHoverRaycast({
+          largeSceneMode: largeSceneModeRef.current,
+          pointerDown: pointerDownRef.current || event.buttons !== 0,
+          interacting: interactionActiveRef.current,
+          nowMs: performance.now(),
+          lastHoverRaycastMs: lastHoverRaycastMsRef.current
+        })
+      ) {
+        return;
+      }
+      lastHoverRaycastMsRef.current = performance.now();
       const nodeId = resolveHitSelection(castRay(event))?.nodeId ?? "";
       if (nodeId !== hoveredNodeIdRef.current) {
         hoveredNodeIdRef.current = nodeId;
@@ -750,8 +955,35 @@ function Viewport({
       }
     };
 
+    const onPointerUp = (event: PointerEvent) => {
+      const pointerStart = pointerStartRef.current;
+      pointerDownRef.current = false;
+      pointerStartRef.current = undefined;
+      if (!pointerStart || pointerStart.pointerId !== event.pointerId) {
+        return;
+      }
+      if (pointerStart.button !== 0) {
+        return;
+      }
+      if (!isClickLikePointerGesture(pointerStart, { x: event.clientX, y: event.clientY })) {
+        return;
+      }
+      const selection = resolveHitSelection(castRay(event));
+      if (selection) {
+        onSelectRef.current(selection);
+      }
+    };
+
+    const onPointerCancel = () => {
+      pointerDownRef.current = false;
+      pointerStartRef.current = undefined;
+    };
+
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+    renderer.domElement.addEventListener("pointercancel", onPointerCancel);
+    renderer.domElement.addEventListener("pointerleave", onPointerCancel);
 
     let frame = 0;
     let firstRenderPublished = false;
@@ -772,7 +1004,13 @@ function Viewport({
 
     const resize = () => {
       const viewport = rendererViewportFromElement(host, window.devicePixelRatio || 1);
-      renderer.setPixelRatio(viewport.rendererPixelRatio);
+      renderer.setPixelRatio(
+        rendererPixelRatioForInteraction(
+          viewport.devicePixelRatio,
+          largeSceneModeRef.current,
+          interactionActiveRef.current
+        )
+      );
       renderer.setSize(viewport.width, viewport.height, false);
       const resizeFitBounds = lastFitBoundsRef.current.isEmpty() ? mainBoundsRef.current : lastFitBoundsRef.current;
       if (!resizeFitBounds.isEmpty()) {
@@ -801,7 +1039,16 @@ function Viewport({
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
+      renderer.domElement.removeEventListener("pointercancel", onPointerCancel);
+      renderer.domElement.removeEventListener("pointerleave", onPointerCancel);
       controls.removeEventListener("change", onCameraChange);
+      controls.removeEventListener("start", startInteraction);
+      controls.removeEventListener("end", scheduleInteractionIdle);
+      if (interactionIdleTimerRef.current !== undefined) {
+        globalThis.clearTimeout(interactionIdleTimerRef.current);
+        interactionIdleTimerRef.current = undefined;
+      }
       for (const record of records) {
         record.object.traverse((child) => {
           if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
@@ -828,6 +1075,12 @@ function Viewport({
       record.object.visible = !record.layerId || !hiddenLayerIds.has(record.layerId);
     }
   }, [hiddenLayerIds]);
+
+  useEffect(() => {
+    if (diagnosticsEnabled) {
+      publishViewportDiagnostics(mainBoundsRef.current, { force: true });
+    }
+  }, [diagnosticsEnabled]);
 
   // Fit: reposition camera without rebuilding geometry.
   useEffect(() => {
@@ -860,7 +1113,7 @@ function Viewport({
   }, [selectedNodeId]);
 
   return (
-    <div className="viewport" ref={hostRef}>
+    <div className={`viewport${viewportInteracting && largeSceneMode ? " viewport-interacting" : ""}`} ref={hostRef}>
       <SceneTextOverlay
         items={textItems}
         camera={overlayCamera}
@@ -868,13 +1121,13 @@ function Viewport({
         hiddenLayerIds={hiddenLayerIds}
         hiddenEntityIds={hiddenOutlierEntityIds}
         rafTick={rafTick}
-        densityMode={labelDensity}
+        densityMode={viewportInteracting && largeSceneMode ? "off" : labelDensity}
         readableOrientation={readableOrientation}
         onMetrics={DEV_MODE ? setOverlayMetrics : undefined}
       />
       <SemanticOverlay
         camera={overlayCamera}
-        enabled={semanticOverlayEnabled}
+        enabled={semanticOverlayEnabled && !(viewportInteracting && largeSceneMode)}
         host={overlayHost}
         model={semanticOverlayModel}
         rafTick={rafTick}
@@ -976,6 +1229,7 @@ export function App() {
   });
   const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
   const [glbExportStatus, setGlbExportStatus] = useState<string | undefined>();
+  const [glbExportBusy, setGlbExportBusy] = useState(false);
   const [glbExportDialogOpen, setGlbExportDialogOpen] = useState(false);
   const [glbExportSettings, setGlbExportSettings] = useState<GlbExportSettings>(
     GLB_EXPORT_PRESETS["process-simulate"]
@@ -983,41 +1237,68 @@ export function App() {
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
   const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
+  const [semanticAnalysisCacheStatus, setSemanticAnalysisCacheStatus] = useState<ViewerAnalysisCacheStatus>("none");
+  const [analysisCacheKey, setAnalysisCacheKey] = useState<string | undefined>();
+  const [packageCacheKey, setPackageCacheKey] = useState<string | undefined>();
+  const [largeSceneMode, setLargeSceneMode] = useState(false);
   const [dxfDragActive, setDxfDragActive] = useState(false);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
   const sceneStats = useMemo(() => computeSceneStats(scenePackage), [scenePackage]);
+  const largeViewportMode = isLargeSceneInteractionMode(sceneStats.curveEntityCount, largeSceneMode);
   const robustBounds = useMemo(
     () => computeRobustSceneBounds(flattenCurveEntities(scenePackage.geometry)),
     [scenePackage]
   );
   const [detectedLayoutSemantics, setDetectedLayoutSemantics] =
     useState<LayoutSemantics>(EMPTY_LAYOUT_SEMANTICS);
-  const [semanticAnalysisStatus, setSemanticAnalysisStatus] = useState<"pending" | "ready">("pending");
+  const [baseSemanticSummary, setBaseSemanticSummary] = useState<SemanticSummary>(EMPTY_SEMANTIC_SUMMARY);
+  const [outlierSummary, setOutlierSummary] = useState<OutlierSummary>(EMPTY_OUTLIER_SUMMARY);
+  const [semanticAnalysisStatus, setSemanticAnalysisStatus] = useState<"pending" | "loading" | "ready" | "failed">(
+    "pending"
+  );
 
   useEffect(() => {
     let cancelled = false;
-    setSemanticAnalysisStatus("pending");
+    setSemanticAnalysisStatus("loading");
+    setSemanticAnalysisCacheStatus("none");
     setSemanticAnalysisTiming(undefined);
     setDetectedLayoutSemantics(EMPTY_LAYOUT_SEMANTICS);
+    setBaseSemanticSummary(EMPTY_SEMANTIC_SUMMARY);
+    setOutlierSummary(EMPTY_OUTLIER_SUMMARY);
 
-    const runAnalysis = () => {
-      const startedAt = performance.now();
-      const nextSemantics = computeLayoutSemantics(scenePackage, robustBounds);
-      if (cancelled) return;
-      const elapsedMs = Math.max(0, performance.now() - startedAt);
-      setDetectedLayoutSemantics(nextSemantics);
-      setSemanticAnalysisStatus("ready");
-      setSemanticAnalysisTiming({ stage: "semantic-analysis", ms: elapsedMs });
+    const runAnalysis = async () => {
+      try {
+        const { analysis, cacheStatus } = await computeViewerAnalysis(scenePackage, robustBounds, analysisCacheKey);
+        if (cancelled) return;
+        setDetectedLayoutSemantics(analysis.layoutSemantics);
+        setBaseSemanticSummary(analysis.semanticSummary);
+        setOutlierSummary(analysis.outlierSummary);
+        setSemanticAnalysisStatus("ready");
+        setSemanticAnalysisCacheStatus(cacheStatus);
+        setSemanticAnalysisTiming(analysis.timing);
 
-      if (DEV_MODE) {
-        // eslint-disable-next-line no-console
-        console.info("[Kairo] semantic analysis", {
-          ms: Math.round(elapsedMs),
-          stations: nextSemantics.stations.length,
-          devices: nextSemantics.devices.length,
-          unknownTextEntities: nextSemantics.unknownTextEntities.length
+        if (DEV_MODE) {
+          // eslint-disable-next-line no-console
+          console.info("[Kairo] semantic analysis", {
+            ms: Math.round(analysis.timing.ms),
+            cacheStatus,
+            stations: analysis.layoutSemantics.stations.length,
+            devices: analysis.layoutSemantics.devices.length,
+            unknownTextEntities: analysis.layoutSemantics.unknownTextEntities.length
+          });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setSemanticAnalysisStatus("failed");
+        setSemanticAnalysisTiming({
+          stage: "semantic-analysis-failed",
+          ms: 0
         });
+        if (DEV_MODE) {
+          // eslint-disable-next-line no-console
+          console.error("[Kairo] semantic analysis failed", error);
+        }
       }
     };
 
@@ -1027,7 +1308,7 @@ export function App() {
       cancelled = true;
       globalThis.clearTimeout(handle);
     };
-  }, [scenePackage, robustBounds]);
+  }, [scenePackage, robustBounds, analysisCacheKey]);
 
   useEffect(() => {
     if (!loadingState) {
@@ -1067,22 +1348,28 @@ export function App() {
   );
   const semanticOverlayModel = useMemo(
     () =>
-      semanticOverlayEnabled
+      semanticOverlayEnabled && semanticAnalysisStatus === "ready"
         ? buildSemanticOverlayModel(layoutSemantics, semanticFilters, selectedSemantic, SEMANTIC_OVERLAY_LIMITS)
         : EMPTY_SEMANTIC_OVERLAY_MODEL,
-    [layoutSemantics, semanticFilters, selectedSemantic, semanticOverlayEnabled]
+    [layoutSemantics, semanticFilters, selectedSemantic, semanticOverlayEnabled, semanticAnalysisStatus]
   );
   const selectedSemanticDetails = useMemo(
     () => resolveSemanticSelection(layoutSemantics, selectedSemantic),
     [layoutSemantics, selectedSemantic]
   );
   const semanticSummary = useMemo(
-    () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path),
-    [layoutSemantics, scenePackage.manifest.source.path]
+    () =>
+      Object.keys(semanticDeviceOverrides).length > 0
+        ? buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path)
+        : baseSemanticSummary,
+    [baseSemanticSummary, layoutSemantics, scenePackage.manifest.source.path, semanticDeviceOverrides]
   );
   const advancedLayoutModel = useMemo(
-    () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
-    [scenePackage, layoutSemantics]
+    () =>
+      semanticPanelOpen && semanticAnalysisStatus === "ready"
+        ? buildAdvancedLayoutModel(scenePackage, layoutSemantics)
+        : emptyAdvancedLayoutModel(scenePackage.manifest.source.path),
+    [scenePackage, layoutSemantics, semanticPanelOpen, semanticAnalysisStatus]
   );
   const visibleLayoutLines = advancedLayoutModel.lines.slice(0, 16);
   const visibleLayoutAreas = advancedLayoutModel.areas.slice(0, 24);
@@ -1090,7 +1377,6 @@ export function App() {
   const visibleLayoutBomItems = advancedLayoutModel.bomItems.slice(0, 48);
   const visibleFoundationPoints = advancedLayoutModel.foundationPoints.slice(0, 24);
   const visibleServiceZones = advancedLayoutModel.serviceZones.slice(0, 24);
-  const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
     () => (showOutliers ? new Set<string>() : new Set(robustBounds.outlierEntityIds)),
     [robustBounds, showOutliers]
@@ -1204,6 +1490,9 @@ export function App() {
         status: string;
         semanticOverlayEnabled?: boolean;
         semanticPanelOpen?: boolean;
+        largeSceneMode?: boolean;
+        analysisCacheKey?: string;
+        packageCacheKey?: string;
         timing?: DxfImportTimingStage[];
       }
     ) => {
@@ -1222,6 +1511,9 @@ export function App() {
       setLoadingState(undefined);
       setActiveSceneName(options.activeName);
       setSceneLoadTiming(options.timing ?? []);
+      setLargeSceneMode(Boolean(options.largeSceneMode));
+      setAnalysisCacheKey(options.analysisCacheKey);
+      setPackageCacheKey(options.packageCacheKey);
       if (options.semanticOverlayEnabled !== undefined) {
         setSemanticOverlayEnabled(options.semanticOverlayEnabled);
       }
@@ -1297,8 +1589,11 @@ export function App() {
         activateScenePackage(result.scenePackage, {
           activeName: fileName,
           status: `${loadedVerb} ${fileName}${warningSuffix}`,
-          semanticOverlayEnabled: true,
+          semanticOverlayEnabled: result.largeSceneMode ? false : true,
           semanticPanelOpen: false,
+          largeSceneMode: result.largeSceneMode,
+          packageCacheKey: result.packageCacheKey,
+          analysisCacheKey: result.analysisCacheKey ?? `local-file:${fileName}:${file.size}:${file.lastModified}:analysis-v1`,
           timing: result.timing
         });
 
@@ -1427,9 +1722,13 @@ export function App() {
   };
 
   const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
-    if (format === "json") return exportAdvancedLayoutJson(advancedLayoutModel);
-    if (format === "csv") return exportAdvancedLayoutCsv(advancedLayoutModel);
-    return exportAdvancedLayoutMarkdown(advancedLayoutModel);
+    const model =
+      semanticAnalysisStatus === "ready"
+        ? buildAdvancedLayoutModel(scenePackage, layoutSemantics)
+        : emptyAdvancedLayoutModel(scenePackage.manifest.source.path);
+    if (format === "json") return exportAdvancedLayoutJson(model);
+    if (format === "csv") return exportAdvancedLayoutCsv(model);
+    return exportAdvancedLayoutMarkdown(model);
   };
 
   const copyAdvancedLayoutExport = (format: AdvancedLayoutExportFormat) => {
@@ -1459,10 +1758,56 @@ export function App() {
     setGlbExportSettings((current) => ({ ...current, ...patch }));
   };
 
+  const glbExportUrl = (settings: GlbExportSettings, cacheKey: string, options?: { prepare?: boolean }) => {
+    const params = new URLSearchParams({
+      cacheKey,
+      preset: settings.preset,
+      geometryMode: settings.geometryMode,
+      textMode: settings.textMode,
+      ribbonWidthMm: String(settings.ribbonWidthMm),
+      layerTree: String(settings.layerTree),
+      includeOutliers: String(settings.includeOutliers)
+    });
+    if (options?.prepare) params.set("prepare", "true");
+    return `/api/kairo/export-glb?${params.toString()}`;
+  };
+
   const downloadCadExchangerGlbExport = async (settings: GlbExportSettings = glbExportSettings) => {
     const startedAt = performance.now();
-    setGlbExportStatus("Preparing GLB...");
+    setGlbExportBusy(true);
+    setGlbExportStatus(largeViewportMode && packageCacheKey ? "Starting server GLB export..." : "Preparing GLB...");
     try {
+      if (largeViewportMode && !packageCacheKey) {
+        setGlbExportStatus("Large GLB export needs the local DXF package cache. Re-open the source DXF, then export again.");
+        return;
+      }
+
+      if (largeViewportMode && packageCacheKey) {
+        setGlbExportStatus("Generating GLB on the local server. Keep this tab open...");
+        const response = await fetch(glbExportUrl(settings, packageCacheKey, { prepare: true }));
+        const prepared = (await response.json()) as {
+          ok?: boolean;
+          cacheStatus?: "hit" | "miss";
+          filename?: string;
+          bytes?: number;
+          lineSegments?: number;
+          primitiveModes?: string[];
+          outputUnits?: string;
+          message?: string;
+        };
+        if (!response.ok || !prepared.ok) {
+          throw new Error(prepared.message ?? `GLB export failed with HTTP ${response.status}.`);
+        }
+        downloadUrlFile(glbExportUrl(settings, packageCacheKey));
+        setGlbExportDialogOpen(false);
+        setGlbExportStatus(
+          `GLB ready and browser download started: ${formatFileSize(prepared.bytes ?? 0)} / ${
+            prepared.cacheStatus === "hit" ? "cache hit" : "new export"
+          } / ${formatTimingMs(performance.now() - startedAt)}.`
+        );
+        return;
+      }
+
       const { exportScenePackageToCadExchangerGlb } = await import("./cadExchangerGlb");
       const result = exportScenePackageToCadExchangerGlb(scenePackage, {
         geometryMode: settings.geometryMode,
@@ -1481,6 +1826,8 @@ export function App() {
       );
     } catch (error) {
       setGlbExportStatus(error instanceof Error ? error.message : "GLB export failed");
+    } finally {
+      setGlbExportBusy(false);
     }
   };
 
@@ -1498,6 +1845,10 @@ export function App() {
             <span>
               {sceneStats.layerCount} layers / {sceneStats.geometryDocumentCount} geometry docs /{" "}
               {sceneStats.curveEntityCount} curves / {robustBounds.outlierEntityIds.length} outliers / v{APP_VERSION}
+              {largeViewportMode ? ` / large scene` : ""}
+              {semanticAnalysisStatus === "ready"
+                ? ` / analysis ${semanticAnalysisCacheStatus}`
+                : ` / analysis ${semanticAnalysisStatus}`}
             </span>
           </div>
           <div className="toolbar-actions">
@@ -1510,6 +1861,9 @@ export function App() {
             />
             <button onClick={openLocalFilePicker} type="button">
               Open DXF / Kairo
+            </button>
+            <button onClick={() => setGlbExportDialogOpen(true)} type="button">
+              Export GLB
             </button>
             <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
               Load Demo Layout
@@ -1604,7 +1958,7 @@ export function App() {
               title="Show station markers, device candidate bounds, and association lines"
               type="button"
             >
-              Semantic overlay
+              {semanticAnalysisStatus === "ready" ? "Semantic overlay" : "Semantics loading"}
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <button
@@ -1661,6 +2015,8 @@ export function App() {
           scenePackage={scenePackage}
           selectedNodeId={selectedNodeId}
           viewMode={viewMode}
+          largeSceneMode={largeViewportMode}
+          diagnosticsEnabled={diagnosticsOpen}
           onSelect={selectViewport}
           labelDensity={labelDensity}
           readableOrientation={readableOrientation}
@@ -1757,9 +2113,11 @@ export function App() {
             <span>Semantic validation</span>
             <div className="panel-heading-actions">
               <strong>
-                {semanticAnalysisStatus === "pending"
-                  ? "Analyzing..."
-                  : `${semanticValidation.stations.length}/${semanticValidation.devices.length}`}
+                {semanticAnalysisStatus === "ready"
+                  ? `${semanticValidation.stations.length}/${semanticValidation.devices.length}`
+                  : semanticAnalysisStatus === "failed"
+                    ? "Analysis failed"
+                    : "Analyzing..."}
               </strong>
               <button className="panel-hide-button" type="button" onClick={() => setSemanticPanelOpen(false)}>
                 Hide
@@ -2773,12 +3131,17 @@ export function App() {
                   : "Text label metadata is not written."}
               </dd>
             </dl>
+            {glbExportStatus ? (
+              <div className="export-dialog-status" role="status">
+                {glbExportStatus}
+              </div>
+            ) : null}
             <div className="export-dialog-actions">
-              <button onClick={() => setGlbExportDialogOpen(false)} type="button">
+              <button disabled={glbExportBusy} onClick={() => setGlbExportDialogOpen(false)} type="button">
                 Cancel
               </button>
-              <button onClick={() => void downloadCadExchangerGlbExport()} type="button">
-                Download GLB
+              <button disabled={glbExportBusy} onClick={() => void downloadCadExchangerGlbExport()} type="button">
+                {glbExportBusy ? "Exporting..." : "Download GLB"}
               </button>
             </div>
           </section>

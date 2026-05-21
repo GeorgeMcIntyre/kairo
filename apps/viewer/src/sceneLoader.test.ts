@@ -213,6 +213,71 @@ describe("viewer scene loader", () => {
     expect(kairoProgress).toEqual(["kairo-package-read"]);
   });
 
+  it("streams large DXF files through the local package endpoint instead of reading them as text", async () => {
+    const archive = createKairoPackage(sampleScenePackage, { createdBy: "viewer-large-dxf-test" });
+    const progress: string[] = [];
+    let uploadedBody: BodyInit | null | undefined;
+    let uploadedFileName = "";
+    const loaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "large-layout.dxf"), {
+      largeDxfPackageThresholdBytes: 1,
+      onProgress: (entry) => progress.push(`${entry.phase}:${entry.label}:${entry.percent}`),
+      packageImportFetch: async (_input, init) => {
+        uploadedBody = init?.body;
+        uploadedFileName = init?.headers instanceof Headers
+          ? init.headers.get("X-Kairo-File-Name") ?? ""
+          : (init?.headers as Record<string, string>)["X-Kairo-File-Name"];
+        return new Response(filePart(archive), {
+          status: 200,
+          headers: {
+            "X-Kairo-Warning-Count": "12",
+            "X-Kairo-Supported-Entities": "200",
+            "X-Kairo-Unsupported-Entities": "0",
+            "X-Kairo-Conversion-Percent": "100.0000",
+            "X-Kairo-Cache-Key": "large-cache-key"
+          }
+        });
+      }
+    });
+
+    expect(uploadedBody).toBeInstanceOf(File);
+    expect(uploadedFileName).toBe("large-layout.dxf");
+    expect(loaded.kind).toBe("dxf");
+    expect(loaded.warningCount).toBe(12);
+    expect(loaded.largeSceneMode).toBe(true);
+    expect(loaded.analysisCacheKey).toBe("large-dxf:large-cache-key:analysis-v1");
+    expect(loaded.scenePackage.scene.rootNodeId).toBe(sampleScenePackage.scene.rootNodeId);
+    expect(loaded.timing?.map((entry) => entry.stage)).toEqual(["local-dxf-package-import-total"]);
+    expect(progress).toEqual([
+      "dxf-package-import:Preparing large DXF package:10",
+      "kairo-package-read:Opening generated Kairo package:85"
+    ]);
+  });
+
+  it("records cache-hit timing when the local package endpoint reuses a package", async () => {
+    const archive = createKairoPackage(sampleScenePackage, { createdBy: "viewer-large-dxf-cache-test" });
+    const loaded = await loadLocalSceneFilePackage(new File([oneLineDxf], "large-layout.dxf"), {
+      largeDxfPackageThresholdBytes: 1,
+      packageImportFetch: async () =>
+        new Response(filePart(archive), {
+          status: 200,
+          headers: {
+            "X-Kairo-Cache": "hit",
+            "X-Kairo-Cache-Key": "cache-hit-key",
+            "X-Kairo-Warning-Count": "0",
+            "X-Kairo-Supported-Entities": "200",
+            "X-Kairo-Unsupported-Entities": "0",
+            "X-Kairo-Conversion-Percent": "100"
+          }
+        })
+    });
+
+    expect(loaded.timing?.map((entry) => entry.stage)).toEqual(["local-dxf-package-cache-hit-total"]);
+    expect(loaded.analysisCacheKey).toBe("large-dxf:cache-hit-key:analysis-v1");
+    expect(loaded.kind).toBe("dxf");
+    if (loaded.kind !== "dxf") throw new Error("Expected DXF load result.");
+    expect(loaded.packageCacheStatus).toBe("hit");
+  });
+
   it("rejects unsupported local package extensions", async () => {
     await expect(loadLocalSceneFilePackage(new File(["{}"], "scene.json"))).rejects.toThrow("Only .dxf and .kairo");
   });
