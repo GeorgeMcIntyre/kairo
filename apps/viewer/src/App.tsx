@@ -203,12 +203,14 @@ type AdvancedWorkflowPanel =
 
 type GlbExportPreset = "process-simulate" | "cad-review" | "lightweight";
 type GlbExportGeometryMode = "lines" | "ribbons";
-type GlbExportTextMode = "metadata" | "skip";
+type GlbExportTextMode = "metadata" | "visible" | "skip";
+type GlbExportCurveDetail = "standard" | "compact" | "coarse";
 
 type GlbExportSettings = {
   preset: GlbExportPreset;
   geometryMode: GlbExportGeometryMode;
   textMode: GlbExportTextMode;
+  curveDetail: GlbExportCurveDetail;
   ribbonWidthMm: number;
   includeOutliers: boolean;
   layerTree: boolean;
@@ -219,7 +221,8 @@ const GLB_EXPORT_PRESETS: Record<GlbExportPreset, GlbExportSettings> = {
     preset: "process-simulate",
     geometryMode: "ribbons",
     textMode: "metadata",
-    ribbonWidthMm: 3,
+    curveDetail: "compact",
+    ribbonWidthMm: 0.5,
     includeOutliers: false,
     layerTree: true
   },
@@ -227,6 +230,7 @@ const GLB_EXPORT_PRESETS: Record<GlbExportPreset, GlbExportSettings> = {
     preset: "cad-review",
     geometryMode: "ribbons",
     textMode: "metadata",
+    curveDetail: "standard",
     ribbonWidthMm: 5,
     includeOutliers: true,
     layerTree: true
@@ -235,6 +239,7 @@ const GLB_EXPORT_PRESETS: Record<GlbExportPreset, GlbExportSettings> = {
     preset: "lightweight",
     geometryMode: "lines",
     textMode: "skip",
+    curveDetail: "coarse",
     ribbonWidthMm: 1,
     includeOutliers: false,
     layerTree: false
@@ -1764,6 +1769,7 @@ export function App() {
       preset: settings.preset,
       geometryMode: settings.geometryMode,
       textMode: settings.textMode,
+      curveDetail: settings.curveDetail,
       ribbonWidthMm: String(settings.ribbonWidthMm),
       layerTree: String(settings.layerTree),
       includeOutliers: String(settings.includeOutliers)
@@ -1812,6 +1818,7 @@ export function App() {
       const result = exportScenePackageToCadExchangerGlb(scenePackage, {
         geometryMode: settings.geometryMode,
         textMode: settings.textMode,
+        curveDetail: settings.curveDetail,
         ribbonWidthMm: settings.ribbonWidthMm,
         layerTree: settings.layerTree,
         presetName: settings.preset,
@@ -3067,8 +3074,21 @@ export function App() {
                   }
                   value={glbExportSettings.geometryMode}
                 >
-                  <option value="ribbons">Physical ribbons</option>
-                  <option value="lines">Native GLB lines</option>
+                  <option value="ribbons">Physical ribbons - JT safe</option>
+                  <option value="lines">Native GLB lines - GLB only</option>
+                </select>
+              </label>
+              <label>
+                <span>Curve detail</span>
+                <select
+                  onChange={(event) =>
+                    patchGlbExportSettings({ curveDetail: event.target.value as GlbExportCurveDetail })
+                  }
+                  value={glbExportSettings.curveDetail}
+                >
+                  <option value="compact">CAD compact</option>
+                  <option value="standard">Standard visual</option>
+                  <option value="coarse">Smallest test</option>
                 </select>
               </label>
               <label>
@@ -3100,6 +3120,7 @@ export function App() {
                   value={glbExportSettings.textMode}
                 >
                   <option value="metadata">Store label data in GLB extras</option>
+                  <option value="visible">Visible stroke text for CADEx</option>
                   <option value="skip">Skip label metadata</option>
                 </select>
               </label>
@@ -3124,11 +3145,15 @@ export function App() {
               </dd>
               <dt>Outliers</dt>
               <dd>{robustBounds.outlierEntityIds.length.toLocaleString()}</dd>
+              <dt>Curve detail</dt>
+              <dd>{glbExportSettings.curveDetail}</dd>
               <dt>Text</dt>
               <dd>
                 {glbExportSettings.textMode === "metadata"
                   ? "Text labels are written into GLB extras for downstream positioning metadata."
-                  : "Text label metadata is not written."}
+                  : glbExportSettings.textMode === "visible"
+                    ? "Text labels are exported as stroke-ribbon geometry and written into GLB extras."
+                    : "Text label metadata is not written."}
               </dd>
             </dl>
             {glbExportStatus ? (

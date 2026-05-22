@@ -19,7 +19,7 @@ const nodeMaxOldSpaceMb = Number(process.env.KAIRO_LARGE_DXF_NODE_HEAP_MB ?? 122
 const packageCacheDirectory = process.env.KAIRO_LARGE_DXF_CACHE_DIR ?? path.join(tmpdir(), "kairo-large-dxf-cache");
 const glbExportScriptPath = path.join(repoRoot, "tools", "export-kairo-package-cadex-glb.ts");
 const tsxCliPath = path.join(path.dirname(require.resolve("tsx/package.json")), "dist", "cli.mjs");
-const glbExportCacheVersion = "cadex-glb-v2-spatial-outliers";
+const glbExportCacheVersion = "cadex-glb-v5-visible-text";
 
 function safeFileName(value: string | undefined, fallback: string) {
   const decoded = value ? decodeURIComponent(value) : fallback;
@@ -165,7 +165,10 @@ async function importDxfPackageWithCli(inputPath: string, outputPath: string, re
 
 function settingFromUrl(searchParams: URLSearchParams) {
   const geometryMode = searchParams.get("geometryMode") === "lines" ? "lines" : "ribbons";
-  const textMode = searchParams.get("textMode") === "skip" ? "skip" : "metadata";
+  const textModeParam = searchParams.get("textMode");
+  const textMode = textModeParam === "skip" || textModeParam === "visible" ? textModeParam : "metadata";
+  const curveDetailParam = searchParams.get("curveDetail");
+  const curveDetail = curveDetailParam === "coarse" || curveDetailParam === "standard" ? curveDetailParam : "compact";
   const ribbonWidthMm = Math.max(0.01, Number(searchParams.get("ribbonWidthMm") ?? 3) || 3);
   const layerTree = searchParams.get("layerTree") !== "false";
   const includeOutliers = searchParams.get("includeOutliers") === "true";
@@ -173,6 +176,7 @@ function settingFromUrl(searchParams: URLSearchParams) {
   return {
     geometryMode,
     textMode,
+    curveDetail,
     ribbonWidthMm,
     layerTree,
     presetName,
@@ -203,6 +207,7 @@ async function exportGlbWithWorker(packagePath: string, outputPath: string, stat
   const exportSettings = {
     geometryMode: settings.geometryMode,
     textMode: settings.textMode,
+    curveDetail: settings.curveDetail,
     ribbonWidthMm: settings.ribbonWidthMm,
     layerTree: settings.layerTree,
     presetName: settings.presetName,
@@ -245,11 +250,15 @@ async function sendGlbResponse(res: ServerResponse, glbPath: string, statsPath: 
 
 async function sendPreparedGlbResponse(res: ServerResponse, glbPath: string, statsPath: string, cacheStatus: "hit" | "miss") {
   const [glbStats, statsText] = await Promise.all([stat(glbPath), readFile(statsPath, "utf8")]);
-  const stats = JSON.parse(statsText) as { filename?: string; lineSegments?: number; primitiveModes?: string[]; outputUnits?: string };
+  const payload = JSON.parse(statsText) as {
+    filename?: string;
+    stats?: { lineSegments?: number; primitiveModes?: string[]; outputUnits?: string };
+  };
+  const stats = payload.stats ?? {};
   writeJson(res, 200, {
     ok: true,
     cacheStatus,
-    filename: safeFileName(encodeURIComponent(stats.filename ?? path.basename(glbPath)), "kairo-layout.cadex-handoff.glb"),
+    filename: safeFileName(encodeURIComponent(payload.filename ?? path.basename(glbPath)), "kairo-layout.cadex-handoff.glb"),
     bytes: glbStats.size,
     lineSegments: stats.lineSegments,
     primitiveModes: stats.primitiveModes,

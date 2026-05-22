@@ -20,16 +20,32 @@ export type CurveBatchData = {
 
 export type CurveBatchOptions = {
   hiddenEntityIds?: ReadonlySet<string>;
+  tessellation?: CurveTessellationOptions;
+};
+
+export type CurveTessellationOptions = {
+  circleSegments?: number;
+  arcSegments?: number;
+  ellipseSegments?: number;
+  bulgeMinSegments?: number;
+  bulgeAngleStepRad?: number;
 };
 
 const CIRCLE_SEGMENTS = 32;
 const ARC_SEGMENTS = 24;
 const ELLIPSE_SEGMENTS = 48;
+const BULGE_MIN_SEGMENTS = 8;
+const BULGE_ANGLE_STEP_RAD = Math.PI / 12;
 
-export function pointsForCircle(entity: Extract<DrawingEntity, { type: "circle" }>) {
+function resolveSegmentCount(value: number | undefined, fallback: number, minimum: number) {
+  return Math.max(minimum, Math.round(value ?? fallback));
+}
+
+export function pointsForCircle(entity: Extract<DrawingEntity, { type: "circle" }>, options: CurveTessellationOptions = {}) {
   const points: THREE.Vector3[] = [];
-  for (let i = 0; i <= CIRCLE_SEGMENTS; i += 1) {
-    const angle = (i / CIRCLE_SEGMENTS) * Math.PI * 2;
+  const segments = resolveSegmentCount(options.circleSegments, CIRCLE_SEGMENTS, 8);
+  for (let i = 0; i <= segments; i += 1) {
+    const angle = (i / segments) * Math.PI * 2;
     points.push(
       new THREE.Vector3(
         entity.center[0] + Math.cos(angle) * entity.radius,
@@ -41,12 +57,13 @@ export function pointsForCircle(entity: Extract<DrawingEntity, { type: "circle" 
   return points;
 }
 
-export function pointsForArc(entity: Extract<DrawingEntity, { type: "arc" }>) {
+export function pointsForArc(entity: Extract<DrawingEntity, { type: "arc" }>, options: CurveTessellationOptions = {}) {
   const points: THREE.Vector3[] = [];
   const start = THREE.MathUtils.degToRad(entity.startAngleDeg);
   const end = THREE.MathUtils.degToRad(entity.endAngleDeg);
-  for (let i = 0; i <= ARC_SEGMENTS; i += 1) {
-    const angle = start + ((end - start) * i) / ARC_SEGMENTS;
+  const segments = resolveSegmentCount(options.arcSegments, ARC_SEGMENTS, 4);
+  for (let i = 0; i <= segments; i += 1) {
+    const angle = start + ((end - start) * i) / segments;
     points.push(
       new THREE.Vector3(
         entity.center[0] + Math.cos(angle) * entity.radius,
@@ -58,14 +75,15 @@ export function pointsForArc(entity: Extract<DrawingEntity, { type: "arc" }>) {
   return points;
 }
 
-export function pointsForEllipse(entity: Extract<DrawingEntity, { type: "ellipse" }>) {
+export function pointsForEllipse(entity: Extract<DrawingEntity, { type: "ellipse" }>, options: CurveTessellationOptions = {}) {
   const points: THREE.Vector3[] = [];
   const major = new THREE.Vector3(...entity.majorAxis);
   const minor = new THREE.Vector3(-entity.majorAxis[1], entity.majorAxis[0], entity.majorAxis[2]).multiplyScalar(
     entity.minorToMajorRatio
   );
-  for (let i = 0; i <= ELLIPSE_SEGMENTS; i += 1) {
-    const t = entity.startParameter + ((entity.endParameter - entity.startParameter) * i) / ELLIPSE_SEGMENTS;
+  const segments = resolveSegmentCount(options.ellipseSegments, ELLIPSE_SEGMENTS, 8);
+  for (let i = 0; i <= segments; i += 1) {
+    const t = entity.startParameter + ((entity.endParameter - entity.startParameter) * i) / segments;
     points.push(
       new THREE.Vector3(...entity.center)
         .add(major.clone().multiplyScalar(Math.cos(t)))
@@ -80,7 +98,7 @@ export function pointsForSpline(entity: Extract<DrawingEntity, { type: "spline" 
   return points;
 }
 
-function pointsForBulgedSegment(start: THREE.Vector3, end: THREE.Vector3, bulge: number) {
+function pointsForBulgedSegment(start: THREE.Vector3, end: THREE.Vector3, bulge: number, options: CurveTessellationOptions = {}) {
   if (Math.abs(bulge) < 1e-12) {
     return [start.clone(), end.clone()];
   }
@@ -98,7 +116,10 @@ function pointsForBulgedSegment(start: THREE.Vector3, end: THREE.Vector3, bulge:
   const center = midpoint.clone().add(normal.multiplyScalar(centerOffset));
   const radius = center.distanceTo(start);
   const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-  const segmentCount = Math.max(8, Math.ceil(Math.abs(sweep) / (Math.PI / 12)));
+  const segmentCount = Math.max(
+    resolveSegmentCount(options.bulgeMinSegments, BULGE_MIN_SEGMENTS, 2),
+    Math.ceil(Math.abs(sweep) / Math.max(options.bulgeAngleStepRad ?? BULGE_ANGLE_STEP_RAD, Math.PI / 48))
+  );
   const points: THREE.Vector3[] = [];
 
   for (let i = 0; i <= segmentCount; i += 1) {
@@ -116,7 +137,7 @@ function pointsForBulgedSegment(start: THREE.Vector3, end: THREE.Vector3, bulge:
   return points;
 }
 
-export function pointsForPolyline(entity: Extract<DrawingEntity, { type: "polyline" }>) {
+export function pointsForPolyline(entity: Extract<DrawingEntity, { type: "polyline" }>, options: CurveTessellationOptions = {}) {
   const vertices = entity.points.map((point) => new THREE.Vector3(...point));
   if (vertices.length < 2) return vertices;
   const points: THREE.Vector3[] = [];
@@ -125,7 +146,7 @@ export function pointsForPolyline(entity: Extract<DrawingEntity, { type: "polyli
   for (let i = 0; i < segmentCount; i += 1) {
     const start = vertices[i];
     const end = vertices[(i + 1) % vertices.length];
-    const segmentPoints = pointsForBulgedSegment(start, end, entity.bulges?.[i] ?? 0);
+    const segmentPoints = pointsForBulgedSegment(start, end, entity.bulges?.[i] ?? 0, options);
     if (points.length > 0) {
       segmentPoints.shift();
     }
@@ -140,21 +161,21 @@ export function pointsForFaceOrSolid(entity: Extract<DrawingEntity, { type: "fac
   return points.length > 0 ? [...points, points[0].clone()] : points;
 }
 
-export function pointsForEntity(entity: DrawingEntity): THREE.Vector3[] {
+export function pointsForEntity(entity: DrawingEntity, options: CurveTessellationOptions = {}): THREE.Vector3[] {
   if (entity.type === "line") {
     return [new THREE.Vector3(...entity.start), new THREE.Vector3(...entity.end)];
   }
 
   if (entity.type === "polyline") {
-    return pointsForPolyline(entity);
+    return pointsForPolyline(entity, options);
   }
 
   if (entity.type === "circle") {
-    return pointsForCircle(entity);
+    return pointsForCircle(entity, options);
   }
 
   if (entity.type === "arc") {
-    return pointsForArc(entity);
+    return pointsForArc(entity, options);
   }
 
   if (entity.type === "point") {
@@ -163,7 +184,7 @@ export function pointsForEntity(entity: DrawingEntity): THREE.Vector3[] {
   }
 
   if (entity.type === "ellipse") {
-    return pointsForEllipse(entity);
+    return pointsForEllipse(entity, options);
   }
 
   if (entity.type === "spline") {
@@ -190,7 +211,7 @@ export function createCurveBatchData(
       continue;
     }
 
-    const points = pointsForEntity(entity);
+    const points = pointsForEntity(entity, options.tessellation);
     const pickable: PickableCurveEntity = {
       entityId: entity.id,
       sourceRef: entity.sourceRef,
