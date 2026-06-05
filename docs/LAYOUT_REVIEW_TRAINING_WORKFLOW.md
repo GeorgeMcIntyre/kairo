@@ -29,6 +29,10 @@ No model training happens in this slice. The output is boring JSON/CSV/Markdown 
    - `training-truth-comparison.json`
    - `training-truth-comparison.csv`
    - `training-truth-comparison.md`
+10. Export a reviewed reusable library:
+   - `reviewed-layout-library.json`
+   - `reviewed-layout-library.csv`
+   - `reviewed-layout-library.md`
 
 ## Review Pack
 
@@ -94,6 +98,27 @@ Comparison statuses:
 | `excluded` | Reviewed truth says the record is rejected and not trainable. |
 | `review-only` | Reviewed truth keeps the record for manual review only. |
 | `extra` | Generated package contains a record not present in reviewed truth. |
+
+## Reviewed Library Export
+
+The reviewed library export converts trainable reviewed truth records into reusable item records.
+
+Rules:
+
+- `accepted` and `corrected` records become reusable reviewed library items.
+- Corrected device types override the generated item type.
+- Equipment metadata is remapped from the final reviewed type when possible.
+- Rejected records are preserved as excluded records and are not reusable items.
+- Uncertain records are preserved as review-only records and are not reusable items.
+
+Schema:
+
+```json
+{
+  "schema": "kairo-reviewed-layout-library",
+  "schemaVersion": 1
+}
+```
 
 ## Current Limits
 

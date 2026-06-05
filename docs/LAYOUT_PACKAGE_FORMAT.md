@@ -156,6 +156,32 @@ Comparison records use these statuses:
 
 This report lets Kairo check a new/generated Layout Package against a saved reviewed truth package without introducing model logic.
 
+## Reviewed Layout Library
+
+Reviewed reusable library export names:
+
+- `reviewed-layout-library.json`
+- `reviewed-layout-library.csv`
+- `reviewed-layout-library.md`
+
+Schema:
+
+```json
+{
+  "schema": "kairo-reviewed-layout-library",
+  "schemaVersion": 1
+}
+```
+
+The reviewed library includes:
+
+- reusable `items` built only from trainable accepted/corrected truth records
+- `reviewOnlyRecords` retained for uncertain records
+- `excludedRecords` retained for rejected records
+- summary counts by item type and review outcome
+
+This is the first durable shape for a human-approved Kairo object library extracted from DXF layout intelligence.
+
 ## Example
 
 See `docs/examples/p736-layout-library-package.sample.json` for a compact package example using the known P736 labels.

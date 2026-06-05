@@ -44,6 +44,12 @@ import {
   exportLayoutPackageMarkdown
 } from "./layoutLibrary/layoutPackage";
 import {
+  buildReviewedLayoutLibrary,
+  exportReviewedLayoutLibraryCsv,
+  exportReviewedLayoutLibraryJson,
+  exportReviewedLayoutLibraryMarkdown
+} from "./layoutLibrary/reviewedLayoutLibrary";
+import {
   buildBlankLayoutReviewPack,
   compareLayoutPackageToTrainingTruth,
   exportLayoutReviewPackJson,
@@ -1144,6 +1150,10 @@ export function App() {
     [layoutLibraryPackage, importedLayoutReviewPack, blankLayoutReviewPack]
   );
   const activeReviewedTrainingTruth = importedReviewedTrainingTruth ?? reviewedTrainingTruth;
+  const reviewedLayoutLibrary = useMemo(
+    () => buildReviewedLayoutLibrary(layoutLibraryPackage, activeReviewedTrainingTruth),
+    [layoutLibraryPackage, activeReviewedTrainingTruth]
+  );
   const trainingTruthComparison = useMemo(
     () => compareLayoutPackageToTrainingTruth(layoutLibraryPackage, activeReviewedTrainingTruth),
     [layoutLibraryPackage, activeReviewedTrainingTruth]
@@ -1606,6 +1616,18 @@ export function App() {
     const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
     const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
     downloadTextFile(`training-truth-comparison.${extension}`, trainingTruthComparisonContent(format), mime);
+  };
+
+  const reviewedLayoutLibraryContent = (format: AdvancedLayoutExportFormat) => {
+    if (format === "json") return exportReviewedLayoutLibraryJson(reviewedLayoutLibrary);
+    if (format === "csv") return exportReviewedLayoutLibraryCsv(reviewedLayoutLibrary);
+    return exportReviewedLayoutLibraryMarkdown(reviewedLayoutLibrary);
+  };
+
+  const downloadReviewedLayoutLibrary = (format: AdvancedLayoutExportFormat) => {
+    const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
+    const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
+    downloadTextFile(`reviewed-layout-library.${extension}`, reviewedLayoutLibraryContent(format), mime);
   };
 
   const compactSelectionStatus = selectedSemanticDetails
@@ -2100,6 +2122,15 @@ export function App() {
             </button>
             <button onClick={() => downloadTrainingTruthComparison("markdown")} type="button">
               Download Compare MD
+            </button>
+            <button onClick={() => downloadReviewedLayoutLibrary("json")} type="button">
+              Download Reviewed Library JSON
+            </button>
+            <button onClick={() => downloadReviewedLayoutLibrary("csv")} type="button">
+              Download Reviewed Library CSV
+            </button>
+            <button onClick={() => downloadReviewedLayoutLibrary("markdown")} type="button">
+              Download Reviewed Library MD
             </button>
             {layoutReviewStatus ? (
               <span className="semantic-copy-status" role="status">
