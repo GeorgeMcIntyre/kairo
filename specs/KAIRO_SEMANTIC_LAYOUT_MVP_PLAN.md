@@ -293,7 +293,7 @@ Use synthetic scene/semantic fixtures first. Add Scott-layout golden expectation
 
 ## Next Implementation Steps
 
-1. Add `apps/viewer/src/equipment/equipmentLibrary.ts` with static MVP entries and mapping tests.
+1. Add `apps/viewer/src/equipment/equipmentLibrary.ts` with static MVP entries and mapping tests. Done in `apps/viewer/src/equipment`.
 2. Add envelope helpers for footprint, clearance, and padding using `Bounds3`.
 3. Add `apps/viewer/src/layoutValidation/layoutRules.ts` with the deterministic rules above.
 4. Add `buildSemanticLayoutModel(scenePackage, layoutSemantics)` that joins devices to equipment metadata and validation issues.

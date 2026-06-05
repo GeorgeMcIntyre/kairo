@@ -188,6 +188,15 @@ describe("advanced engineering layout model", () => {
       "device-long-note",
       "device-unlinked"
     ]);
+    expect(model.devices.find((entry) => entry.id === "device-linked")).toMatchObject({
+      equipmentTypeId: "robot.generic",
+      equipmentDisplayName: "Generic industrial robot",
+      bomCategory: "robot",
+      equipmentRequiresReview: true
+    });
+    expect(model.summary.devicesByEquipmentType).toEqual({
+      "robot.generic": 4
+    });
     expect(model.annotations.map((entry) => entry.id)).toEqual([
       "annotation-device-device-long-note",
       "annotation-text-fence-note"
@@ -225,6 +234,9 @@ describe("advanced engineering layout model", () => {
     });
     expect(csv).toContain('"Fence ""Panel"", 1424mm x 2388mm with install risk | by others"');
     expect(markdown).toContain("Fence \"Panel\", 1424mm x 2388mm with install risk \\| by others");
+    expect(csv).toContain('"robot.generic","robot"');
+    expect(markdown).toContain("## Equipment Library Types");
+    expect(markdown).toContain("| 7B-010L-04 | device_number | robot.generic | 7B-010L |");
   });
 
   it("retains strong-tag long device text as annotation context without changing the primary device label", () => {

@@ -4,6 +4,7 @@ import { safeDisplayText, type SemanticNoteKind } from "../textSafety";
 import type { DeviceKind } from "../semantic/deviceDictionary";
 import type { DeviceGeometryAssociationStatus } from "../semantic/semanticDevices";
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity } from "../semantic/layoutSemantics";
+import { findEquipmentForDeviceKind, type EquipmentBomCategory } from "../equipment/equipmentLibrary";
 
 export type AdvancedLayoutModelVersion = "0.1";
 export type FoundationItemCategory =
@@ -49,6 +50,10 @@ export type Device = {
   id: string;
   kind: DeviceKind;
   primaryLabel: string;
+  equipmentTypeId?: string;
+  equipmentDisplayName?: string;
+  bomCategory?: EquipmentBomCategory;
+  equipmentRequiresReview: boolean;
   rawText?: string;
   displayText: string;
   stationId?: string;
@@ -127,6 +132,7 @@ export type ConceptQuoteSummary = {
     devicesMissingStation: number;
   };
   devicesByKind: Record<string, number>;
+  devicesByEquipmentType: Record<string, number>;
   foundationByCategory: Record<string, number>;
   reviewBySeverity: Record<string, number>;
   warningsByCategory: Record<string, number>;
@@ -240,22 +246,29 @@ function annotationFromLongDevice(device: DeviceSemantic): Annotation | undefine
 
 function buildDevices(semantics: LayoutSemantics): Device[] {
   return semantics.devices
-    .map((device) => ({
-      id: device.id,
-      kind: device.kind,
-      primaryLabel: device.labelText,
-      rawText: device.rawText,
-      displayText: device.displayText ?? safeDisplayText(device.labelText),
-      stationId: device.stationId,
-      sourceTextIds: device.sourceTextEntityIds,
-      linkedEntityIds: device.linkedEntityIds,
-      geometryGroupId: device.geometryGroupId,
-      bounds: device.bounds,
-      centroid: device.centroid,
-      associationStatus: device.associationStatus,
-      confidence: device.confidence,
-      evidence: [...device.evidence, ...device.associationReason]
-    }))
+    .map((device) => {
+      const equipment = findEquipmentForDeviceKind(device.kind);
+      return {
+        id: device.id,
+        kind: device.kind,
+        primaryLabel: device.labelText,
+        equipmentTypeId: equipment?.item.equipmentTypeId,
+        equipmentDisplayName: equipment?.item.displayName,
+        bomCategory: equipment?.item.defaultBomCategory,
+        equipmentRequiresReview: equipment?.requiresReview ?? true,
+        rawText: device.rawText,
+        displayText: device.displayText ?? safeDisplayText(device.labelText),
+        stationId: device.stationId,
+        sourceTextIds: device.sourceTextEntityIds,
+        linkedEntityIds: device.linkedEntityIds,
+        geometryGroupId: device.geometryGroupId,
+        bounds: device.bounds,
+        centroid: device.centroid,
+        associationStatus: device.associationStatus,
+        confidence: device.confidence,
+        evidence: [...device.evidence, ...device.associationReason, ...(equipment?.reason ?? ["no equipment library match"])]
+      };
+    })
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -451,6 +464,7 @@ function buildSummary(model: Omit<AdvancedLayoutModel, "summary">): ConceptQuote
       devicesMissingStation: model.devices.filter((device) => !device.stationId).length
     },
     devicesByKind: countBy(model.devices, (device) => device.kind),
+    devicesByEquipmentType: countBy(model.devices, (device) => device.equipmentTypeId ?? "unmapped"),
     foundationByCategory: countBy(model.foundationItems, (item) => item.category),
     reviewBySeverity: countBy(model.reviewItems, (item) => item.severity),
     warningsByCategory: countBy(model.warnings, (warning) => warning.category)
@@ -498,9 +512,9 @@ export function exportAdvancedLayoutJson(model: AdvancedLayoutModel): string {
 
 export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
   const rows = [
-    csvRow(["section", "id", "parent", "type", "status", "confidence", "source_ids", "label", "notes"]),
+    csvRow(["section", "id", "parent", "type", "equipment_type", "bom_category", "status", "confidence", "source_ids", "label", "notes"]),
     ...model.lines.map((line) =>
-      csvRow(["line", line.id, "", line.linePrefix, "", line.confidence.toFixed(2), line.stationIds, line.name, line.evidence.join("; ")])
+      csvRow(["line", line.id, "", line.linePrefix, "", "", "", line.confidence.toFixed(2), line.stationIds, line.name, line.evidence.join("; ")])
     ),
     ...model.stations.map((station) =>
       csvRow([
@@ -508,6 +522,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         station.id,
         station.lineId,
         station.side,
+        "",
+        "",
         "",
         station.confidence.toFixed(2),
         station.anchorTextIds,
@@ -521,6 +537,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         device.id,
         device.stationId ?? "",
         device.kind,
+        device.equipmentTypeId ?? "",
+        device.bomCategory ?? "",
         device.associationStatus,
         device.confidence.toFixed(2),
         [...device.sourceTextIds, ...device.linkedEntityIds],
@@ -536,6 +554,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         annotation.noteKind,
         "",
         "",
+        "",
+        "",
         annotation.sourceTextIds,
         annotation.rawText,
         annotation.evidence.join("; ")
@@ -547,6 +567,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         item.id,
         item.stationId ?? "",
         item.category,
+        "",
+        "",
         item.installRisk,
         item.confidence.toFixed(2),
         item.sourceEntityIds,
@@ -560,6 +582,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         warning.id,
         "",
         warning.category,
+        "",
+        "",
         warning.severity,
         "",
         warning.sourceIds,
@@ -573,6 +597,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         item.id,
         "",
         item.category,
+        "",
+        "",
         item.status,
         "",
         [...item.sourceIds, ...item.linkedIds],
@@ -616,6 +642,10 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     "",
     ...Object.entries(model.summary.devicesByKind).map(([kind, count]) => `- ${kind}: ${count}`),
     "",
+    "## Equipment Library Types",
+    "",
+    ...Object.entries(model.summary.devicesByEquipmentType).map(([typeId, count]) => `- ${typeId}: ${count}`),
+    "",
     "## Review Items",
     "",
     markdownRow(["Severity", "Category", "Title", "Suggested action"]),
@@ -626,12 +656,13 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     "",
     "## Devices",
     "",
-    markdownRow(["Label", "Type", "Station", "Confidence", "Association", "Linked entities"]),
-    "|---|---|---|---:|---|---:|",
+    markdownRow(["Label", "Type", "Equipment", "Station", "Confidence", "Association", "Linked entities"]),
+    "|---|---|---|---|---:|---|---:|",
     ...model.devices.map((device) =>
       markdownRow([
         device.primaryLabel,
         device.kind,
+        device.equipmentTypeId ?? "unmapped",
         device.stationId ?? "-",
         device.confidence.toFixed(2),
         device.associationStatus,
