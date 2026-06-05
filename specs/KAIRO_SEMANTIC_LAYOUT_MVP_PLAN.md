@@ -33,7 +33,7 @@ Already present:
 - `apps/viewer/src/semantic`: text extraction, station parsing, device classification, geometry association, semantic QA report.
 - `apps/viewer/src/advancedEngineering`: line/station/device/annotation export model.
 - Viewer export actions for semantic summary, semantic QA, and Advanced Engineering JSON/CSV/Markdown.
-- Advanced Engineering exports now include deterministic BOM rows with station, equipment type, device kind, labels, quantity, linked entity IDs, confidence, and review status.
+- Advanced Engineering exports now include deterministic BOM rows with station, equipment type, device kind, labels, quantity, linked entity IDs, confidence, and review status. Markdown splits ready rows from rows needing review.
 
 Keep the next implementation inside these boundaries unless a shared model clearly belongs in `packages/core`.
 

@@ -333,6 +333,9 @@ describe("advanced engineering layout model", () => {
     expect(csv).toContain('"robot.generic","robot","geometry-bounds","250"');
     expect(markdown).toContain("## Equipment Library Types");
     expect(markdown).toContain("## BOM Rows");
+    expect(markdown).toContain("### Needs Review");
+    expect(markdown).toContain("### Ready");
+    expect(markdown).toContain("Linked entities");
     expect(markdown).toContain("## Validation Issues");
     expect(markdown).toContain("| 7B-010L-04 | device_number | robot.generic | geometry-bounds | 250 | 7B-010L |");
     expect(csv).toContain('"bom","bom-7b-010l-robot.generic-robot.generic"');
@@ -384,6 +387,10 @@ describe("advanced engineering layout model", () => {
       labels: ["7B-060L-1N"],
       linkedEntityIds: ["p736-nest-geom"]
     });
+    expect(exportAdvancedLayoutMarkdown(model)).toContain(
+      "| 7B-070L | dunnage.station | dunnage | dunnage | 2 |"
+    );
+    expect(exportAdvancedLayoutMarkdown(model)).toContain("p736-dn1-geom, p736-dn2-geom");
   });
 
   it("retains strong-tag long device text as annotation context without changing the primary device label", () => {

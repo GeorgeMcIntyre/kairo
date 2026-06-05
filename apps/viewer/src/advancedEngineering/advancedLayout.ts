@@ -827,7 +827,43 @@ function markdownRow(values: readonly unknown[]): string {
   return `| ${values.map(markdownCell).join(" | ")} |`;
 }
 
+function bomMarkdownTableRows(rows: readonly BomRow[]): string[] {
+  return [
+    markdownRow([
+      "Station",
+      "Equipment",
+      "Type",
+      "Category",
+      "Qty",
+      "Confidence",
+      "Status",
+      "Labels",
+      "Linked entities",
+      "Review reasons"
+    ]),
+    "|---|---|---|---|---:|---:|---|---|---|---|",
+    ...(rows.length === 0
+      ? [markdownRow(["-", "-", "-", "-", 0, "-", "-", "-", "-", "No rows"])]
+      : rows.map((row) =>
+          markdownRow([
+            row.stationId ?? "-",
+            row.equipmentTypeId ?? "unmapped",
+            row.deviceKind,
+            row.bomCategory ?? "unknown",
+            row.quantity,
+            row.confidence.toFixed(2),
+            row.reviewStatus,
+            row.labels.join(", "),
+            row.linkedEntityIds.join(", "),
+            row.reviewReasons.join("; ")
+          ])
+        ))
+  ];
+}
+
 export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string {
+  const bomRowsNeedingReview = model.bomRows.filter((row) => row.reviewStatus === "needs-review");
+  const readyBomRows = model.bomRows.filter((row) => row.reviewStatus === "ready");
   const lines = [
     "# Kairo Advanced Engineering Layout Summary",
     "",
@@ -854,21 +890,13 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     "",
     "## BOM Rows",
     "",
-    markdownRow(["Station", "Equipment", "Type", "Category", "Qty", "Confidence", "Status", "Labels", "Review reasons"]),
-    "|---|---|---|---|---:|---:|---|---|---|",
-    ...model.bomRows.map((row) =>
-      markdownRow([
-        row.stationId ?? "-",
-        row.equipmentTypeId ?? "unmapped",
-        row.deviceKind,
-        row.bomCategory ?? "unknown",
-        row.quantity,
-        row.confidence.toFixed(2),
-        row.reviewStatus,
-        row.labels.join(", "),
-        row.reviewReasons.join("; ")
-      ])
-    ),
+    "### Needs Review",
+    "",
+    ...bomMarkdownTableRows(bomRowsNeedingReview),
+    "",
+    "### Ready",
+    "",
+    ...bomMarkdownTableRows(readyBomRows),
     "",
     "## Validation Issues",
     "",
