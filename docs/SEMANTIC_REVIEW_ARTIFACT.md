@@ -46,6 +46,28 @@ Schema:
 
 The timestamp is fixed by design so generated artifacts are stable and easy to diff.
 
+## CLI Export
+
+The CLI can generate the same blank review artifact from an exploded scene folder or `.kairo` package:
+
+```powershell
+node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json
+```
+
+During local verification on 2026-06-05, the staged Scott/P736 scene exported:
+
+| Count | Value |
+|---|---:|
+| Devices | 116 |
+| Stations | 14 |
+| Unknown labels | 948 |
+| Accepted records | 36 |
+| Corrected records | 0 |
+| Rejected records | 0 |
+| Uncertain records | 80 |
+
+The generated file in `tmp/` is smoke-test output only. A checked-in reviewed truth fixture should be created after George reviews and corrects the artifact.
+
 ## Record Contract
 
 Each record captures one generated semantic device:

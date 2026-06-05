@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,6 +48,103 @@ async function readSceneJson(scenePath: string) {
       }>;
     }
   };
+}
+
+async function writeSemanticReviewScene(tempRoot: string) {
+  const scenePath = path.join(tempRoot, "semantic-scene");
+  await mkdir(path.join(scenePath, "geometry"), { recursive: true });
+  await writeFile(
+    path.join(scenePath, "manifest.json"),
+    `${JSON.stringify(
+      {
+        format: "kairo-neutral-scene",
+        version: "0.1.0",
+        units: "millimeter",
+        axisSystem: { up: "Z", handedness: "right" },
+        rootSceneFile: "scene.json",
+        createdBy: { name: "kairo test", version: "0.1.0" },
+        source: { format: "synthetic", path: "fixtures/P736.dxf" }
+      },
+      null,
+      2
+    )}\n`
+  );
+  await writeFile(
+    path.join(scenePath, "scene.json"),
+    `${JSON.stringify(
+      {
+        rootNodeId: "node-root",
+        nodes: [
+          {
+            id: "node-root",
+            displayName: "P736 Semantic Fixture",
+            type: "drawing",
+            children: [],
+            localTransform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            geometryRefs: ["geom-semantic"]
+          }
+        ]
+      },
+      null,
+      2
+    )}\n`
+  );
+  await writeFile(
+    path.join(scenePath, "layers.json"),
+    `${JSON.stringify(
+      {
+        layers: [
+          { id: "layer-text", name: "Text", visible: true },
+          { id: "layer-robot", name: "Robot", visible: true }
+        ]
+      },
+      null,
+      2
+    )}\n`
+  );
+  await writeFile(path.join(scenePath, "materials.json"), `${JSON.stringify({ materials: [] }, null, 2)}\n`);
+  await writeFile(
+    path.join(scenePath, "source-map.json"),
+    `${JSON.stringify({ sources: [{ id: "src-fixture", path: "fixtures/P736.dxf", format: "dxf" }] }, null, 2)}\n`
+  );
+  await writeFile(
+    path.join(scenePath, "geometry", "geom-semantic.json"),
+    `${JSON.stringify(
+      {
+        geometries: [
+          {
+            id: "geom-semantic",
+            kind: "curve-set",
+            layerId: "layer-robot",
+            entities: [
+              {
+                id: "robot-line",
+                type: "line",
+                start: [0, 0, 0],
+                end: [800, 0, 0],
+                layerId: "layer-robot",
+                sourceRef: "src-fixture"
+              },
+              {
+                id: "robot-label",
+                type: "text",
+                text: "7B-020L-04",
+                position: [100, 100, 0],
+                rotationDeg: 0,
+                height: 120,
+                origin: "TEXT",
+                layerId: "layer-text",
+                sourceRef: "src-fixture"
+              }
+            ]
+          }
+        ]
+      },
+      null,
+      2
+    )}\n`
+  );
+  return scenePath;
 }
 
 describe("kairo validate", () => {
@@ -258,6 +355,41 @@ describe("kairo validate", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe(
       "Kairo viewer scene staging failed\n- ERROR INVALID_SCENE_NAME: Scene name may only contain letters, numbers, dot, underscore, and dash.\n"
+    );
+  });
+
+  it("exports a semantic review artifact from an exploded scene", async () => {
+    const scenePath = await writeSemanticReviewScene(tempRoot);
+    const outputPath = path.join(tempRoot, "review", "kairo-semantic-review-artifact.json");
+    const result = await captureCli(["export-semantic-review", scenePath, outputPath]);
+
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Kairo semantic review export passed\n");
+    expect(result.stdout).toContain("Scene: P736 Semantic Fixture\n");
+    expect(result.stdout).toContain("Devices: 1\n");
+
+    const artifact = JSON.parse(await readFile(outputPath, "utf8")) as {
+      schema: string;
+      source: { name: string; path: string };
+      records: Array<{ detectedLabel: string; detectedDeviceType: string }>;
+    };
+    expect(artifact.schema).toBe("kairo-semantic-review-artifact");
+    expect(artifact.source).toEqual({ id: "semantic-source-p736.dxf", name: "P736.dxf", path: "fixtures/P736.dxf" });
+    expect(artifact.records).toHaveLength(1);
+    expect(artifact.records[0]).toMatchObject({
+      detectedLabel: "7B-020L-04",
+      detectedDeviceType: "robot"
+    });
+  });
+
+  it("requires a JSON output path for semantic review export", async () => {
+    const result = await captureCli(["export-semantic-review", sampleScenePath, path.join(tempRoot, "review.txt")]);
+
+    expect(result.code).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe(
+      "Kairo semantic review export failed\n- ERROR INVALID_SEMANTIC_REVIEW_PATH: Output file must use the .json extension.\n"
     );
   });
 });

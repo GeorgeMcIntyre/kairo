@@ -57,6 +57,7 @@ node packages/cli/dist/index.js validate examples/example-scene --json
 node packages/cli/dist/index.js import-dxf packages/importer-dxf/test-fixtures/one-line.dxf imported-scene
 node packages/cli/dist/index.js validate imported-scene
 node packages/cli/dist/index.js stage-viewer-scene imported-scene imported-scene
+node packages/cli/dist/index.js export-semantic-review imported-scene kairo-semantic-review-artifact.json
 ```
 
 `pnpm dev` launches the viewer. It loads the included sample scene, shows validation status, and lets you select scene tree nodes to highlight their geometry and inspect metadata/source paths.
@@ -65,8 +66,16 @@ The viewer Semantics panel includes export-first review actions:
 
 - `Download QA MD`
 - `Download QA JSON`
+- `Download Semantic Review JSON`
+- `Import Semantic Review JSON`
 
 These QA exports list detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 labels, unknown labels, duplicates, and missing/uncertain items.
+
+The semantic review JSON persists manual class, geometry association, and unlink decisions so they can be reloaded before regenerating QA, Advanced Engineering, Layout Library, and reviewed-library exports. The same blank review artifact can be generated from a staged scene or `.kairo` package with:
+
+```bash
+node packages/cli/dist/index.js export-semantic-review apps/viewer/public/scenes/scott-dxf2013-import tmp/scott-semantic-review-artifact.json
+```
 
 To view a generated exploded scene in the dev viewer, stage it into the ignored viewer public scenes directory and open it by query string:
 

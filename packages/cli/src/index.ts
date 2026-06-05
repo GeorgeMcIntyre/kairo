@@ -1,8 +1,13 @@
-import { createKairoPackage, flattenGeometry, readKairoPackage } from "@kairo/core";
+import { computeRobustSceneBounds, createKairoPackage, flattenGeometry, readKairoPackage } from "@kairo/core";
 import { analyzeDxfBlocks, importDxfToKairo, writeDxfBlockInventoryReports, writeScenePackage } from "@kairo/importer-dxf";
 import type { GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
 import { scenePackageSchema } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
+import { computeLayoutSemantics } from "../../../apps/viewer/src/semantic/layoutSemantics";
+import {
+  buildSemanticReviewArtifact,
+  exportSemanticReviewArtifactJson
+} from "../../../apps/viewer/src/semantic/semanticReviewArtifact";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -536,6 +541,62 @@ async function sceneOutliersCommand(args: string[], io: CliIo): Promise<number> 
   }
 }
 
+async function exportSemanticReviewCommand(args: string[], io: CliIo): Promise<number> {
+  const [scenePath, outputPath] = args;
+
+  if (!scenePath || !outputPath) {
+    io.stderr(
+      "Kairo semantic review export failed\n- ERROR MISSING_SEMANTIC_REVIEW_ARGS: Usage: kairo export-semantic-review <scene-path|package.kairo> <output.json>\n"
+    );
+    return 1;
+  }
+
+  if (path.extname(outputPath).toLowerCase() !== ".json") {
+    io.stderr("Kairo semantic review export failed\n- ERROR INVALID_SEMANTIC_REVIEW_PATH: Output file must use the .json extension.\n");
+    return 1;
+  }
+
+  try {
+    const sceneData = await loadScenePackageFromPath(scenePath);
+    const report = validateScenePackage(sceneData);
+    if (!report.valid) {
+      io.stderr(`${formatInvalidOutput(report)}\n`);
+      return 1;
+    }
+
+    const scenePackage = scenePackageSchema.parse(sceneData);
+    const robustBounds = computeRobustSceneBounds(flattenCurveEntities(scenePackage.geometry));
+    const semantics = computeLayoutSemantics(scenePackage, robustBounds);
+    const artifact = buildSemanticReviewArtifact(semantics, {}, scenePackage.manifest.source.path);
+    const absoluteOutputPath = path.resolve(outputPath);
+    await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
+    await writeFile(absoluteOutputPath, exportSemanticReviewArtifactJson(artifact), "utf8");
+
+    io.stdout(
+      [
+        "Kairo semantic review export passed",
+        `Scene: ${scenePackage.scene.nodes.find((node) => node.id === scenePackage.scene.rootNodeId)?.displayName ?? scenePackage.scene.rootNodeId}`,
+        `Input: ${path.resolve(scenePath)}`,
+        `Output: ${absoluteOutputPath}`,
+        `Devices: ${semantics.devices.length}`,
+        `Stations: ${semantics.stations.length}`,
+        `Unknown labels: ${semantics.unknownTextEntities.length}`,
+        `Accepted: ${artifact.summary.acceptedRecords}`,
+        `Corrected: ${artifact.summary.correctedRecords}`,
+        `Rejected: ${artifact.summary.rejectedRecords}`,
+        `Uncertain: ${artifact.summary.uncertainRecords}`
+      ].join("\n") + "\n"
+    );
+    return 0;
+  } catch (error) {
+    const normalized = normalizeError(error);
+    io.stderr(
+      `Kairo semantic review export failed\n- ERROR ${normalized.code}${normalized.path ? ` ${normalized.path}` : ""}: ${normalized.message}\n`
+    );
+    return 1;
+  }
+}
+
 export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<number> {
   const [command, ...args] = argv;
 
@@ -563,8 +624,12 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
     return sceneOutliersCommand(args, io);
   }
 
+  if (command === "export-semantic-review") {
+    return exportSemanticReviewCommand(args, io);
+  }
+
   const message =
-    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N]";
+    "Usage: kairo validate <scene-path|package.kairo> [--json] | kairo import-dxf <input.dxf> <output-dir> | kairo pack-scene <scene-path> <output.kairo> | kairo inspect-dxf <input.dxf> [output-base-path] | kairo stage-viewer-scene <scene-path> <scene-name> | kairo scene-outliers <scene-path> [--top N] | kairo export-semantic-review <scene-path|package.kairo> <output.json>";
   io.stderr(`Kairo command failed\n- ERROR UNKNOWN_COMMAND: ${message}\n`);
   return 1;
 }

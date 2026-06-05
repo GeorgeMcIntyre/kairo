@@ -13,9 +13,10 @@ Last updated: 2026-06-05
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 320/320 passed |
+| `pnpm test` | 322/322 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle ~938 kB, chunk size warning only) |
+| `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -38,6 +39,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 
 - Full monorepo build: schema, validator, core, importer-dxf, CLI, viewer.
 - CLI commands: `validate`, `import-dxf`, `pack-scene`, `inspect-dxf`, `stage-viewer-scene`, `scene-outliers`.
+- CLI semantic review export: `export-semantic-review <scene-path|package.kairo> <output.json>` writes deterministic `kairo-semantic-review-artifact` JSON for Git-based review.
 - `.kairo` package format: standard deflated ZIP container with custom extension. `pack-scene` writes packages, `validate` reads packages, and the viewer opens `.kairo` files through the same local file picker/drop path as raw DXF.
 - DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains, TEXT, ATTDEF (default value or tag fallback), MTEXT (via direct ENTITIES-section scanner).
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
@@ -64,7 +66,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Drawing-first panel controls: Layers, Semantics, and Inspector panels can be hidden independently from the toolbar and from each panel header without changing layer visibility, selection, or semantic overlay state. Local DXF opens with Layers/Inspector visible and Semantics collapsed by default.
 - Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
 - Manual correction MVP: selected semantic devices can be overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
-- Semantic review artifact MVP: viewer can export/import `kairo-semantic-review-artifact.json` so manual semantic class, corrected geometry group, and unlink/reject decisions can be persisted as project-side JSON and reloaded against the current semantic extraction.
+- Semantic review artifact MVP: viewer can export/import `kairo-semantic-review-artifact.json` so manual semantic class, corrected geometry group, and unlink/reject decisions can be persisted as project-side JSON and reloaded against the current semantic extraction. The CLI can also export a blank review artifact from staged scenes or `.kairo` packages.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Semantic QA export MVP: deterministic Markdown/JSON exports include detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 checklist, unknown labels, duplicates, and missing/uncertain rows.
 - Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
