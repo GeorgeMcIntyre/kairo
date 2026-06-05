@@ -6,6 +6,7 @@ import type { DeviceGeometryAssociationStatus } from "../semantic/semanticDevice
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity } from "../semantic/layoutSemantics";
 import { findEquipmentForDeviceKind, type EquipmentBomCategory } from "../equipment/equipmentLibrary";
 import { buildEquipmentEnvelope, type EquipmentFootprintSource } from "../equipment/equipmentEnvelope";
+import { buildLayoutValidationIssues, type LayoutValidationIssue } from "../layoutValidation/layoutRules";
 
 export type AdvancedLayoutModelVersion = "0.1";
 export type FoundationItemCategory =
@@ -137,9 +138,12 @@ export type ConceptQuoteSummary = {
     ambiguousDevices: number;
     unlinkedDevices: number;
     devicesMissingStation: number;
+    validationIssues: number;
   };
   devicesByKind: Record<string, number>;
   devicesByEquipmentType: Record<string, number>;
+  validationByRule: Record<string, number>;
+  validationBySeverity: Record<string, number>;
   foundationByCategory: Record<string, number>;
   reviewBySeverity: Record<string, number>;
   warningsByCategory: Record<string, number>;
@@ -153,6 +157,7 @@ export type AdvancedLayoutModel = {
   devices: Device[];
   annotations: Annotation[];
   foundationItems: FoundationItem[];
+  validationIssues: LayoutValidationIssue[];
   warnings: Warning[];
   reviewItems: ReviewItem[];
   summary: ConceptQuoteSummary;
@@ -480,10 +485,13 @@ function buildSummary(model: Omit<AdvancedLayoutModel, "summary">): ConceptQuote
       linkedDevices: model.devices.filter((device) => device.associationStatus === "linked").length,
       ambiguousDevices: model.devices.filter((device) => device.associationStatus === "ambiguous").length,
       unlinkedDevices: model.devices.filter((device) => device.associationStatus === "unlinked").length,
-      devicesMissingStation: model.devices.filter((device) => !device.stationId).length
+      devicesMissingStation: model.devices.filter((device) => !device.stationId).length,
+      validationIssues: model.validationIssues.length
     },
     devicesByKind: countBy(model.devices, (device) => device.kind),
     devicesByEquipmentType: countBy(model.devices, (device) => device.equipmentTypeId ?? "unmapped"),
+    validationByRule: countBy(model.validationIssues, (issue) => issue.ruleId),
+    validationBySeverity: countBy(model.validationIssues, (issue) => issue.severity),
     foundationByCategory: countBy(model.foundationItems, (item) => item.category),
     reviewBySeverity: countBy(model.reviewItems, (item) => item.severity),
     warningsByCategory: countBy(model.warnings, (warning) => warning.category)
@@ -497,6 +505,7 @@ export function buildAdvancedLayoutModel(scenePackage: ScenePackage, semantics: 
   const stations = buildStations(semantics, annotations);
   const lines = buildLines(stations);
   const foundationItems: FoundationItem[] = [];
+  const validationIssues = buildLayoutValidationIssues(devices, stations);
   const { warnings, reviewItems } = buildWarningsAndReviewItems(devices, annotations);
   const modelWithoutSummary = {
     modelVersion: MODEL_VERSION,
@@ -506,6 +515,7 @@ export function buildAdvancedLayoutModel(scenePackage: ScenePackage, semantics: 
     devices,
     annotations,
     foundationItems,
+    validationIssues,
     warnings,
     reviewItems
   };
@@ -648,6 +658,23 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         warning.recommendedAction
       ])
     ),
+    ...model.validationIssues.map((issue) =>
+      csvRow([
+        "validation",
+        issue.id,
+        "",
+        issue.ruleId,
+        "",
+        "",
+        "",
+        "",
+        issue.severity,
+        "",
+        [...issue.entityIds, ...issue.deviceIds],
+        issue.message,
+        issue.suggestedAction
+      ])
+    ),
     ...model.reviewItems.map((item) =>
       csvRow([
         "review",
@@ -695,6 +722,7 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     `- Devices: ${model.summary.counts.devices}`,
     `- Annotations: ${model.summary.counts.annotations}`,
     `- Foundation items: ${model.summary.counts.foundationItems}`,
+    `- Validation issues: ${model.summary.counts.validationIssues}`,
     `- Review items: ${model.summary.counts.reviewItems}`,
     "",
     "## Device Types",
@@ -704,6 +732,20 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     "## Equipment Library Types",
     "",
     ...Object.entries(model.summary.devicesByEquipmentType).map(([typeId, count]) => `- ${typeId}: ${count}`),
+    "",
+    "## Validation Issues",
+    "",
+    markdownRow(["Severity", "Rule", "Devices", "Message", "Suggested action"]),
+    "|---|---|---|---|---|",
+    ...model.validationIssues.map((issue) =>
+      markdownRow([
+        issue.severity,
+        issue.ruleId,
+        issue.deviceIds.join(", "),
+        issue.message,
+        issue.suggestedAction
+      ])
+    ),
     "",
     "## Review Items",
     "",

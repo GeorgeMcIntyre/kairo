@@ -295,7 +295,7 @@ Use synthetic scene/semantic fixtures first. Add Scott-layout golden expectation
 
 1. Add `apps/viewer/src/equipment/equipmentLibrary.ts` with static MVP entries and mapping tests. Done in `apps/viewer/src/equipment`.
 2. Add envelope helpers for footprint, clearance, and padding using `Bounds3`. Done in `apps/viewer/src/equipment/equipmentEnvelope.ts`.
-3. Add `apps/viewer/src/layoutValidation/layoutRules.ts` with the deterministic rules above.
+3. Add `apps/viewer/src/layoutValidation/layoutRules.ts` with the deterministic rules above. Done in `apps/viewer/src/layoutValidation/layoutRules.ts`.
 4. Add `buildSemanticLayoutModel(scenePackage, layoutSemantics)` that joins devices to equipment metadata and validation issues.
 5. Extend Advanced Engineering export with `bomRows`, `validationIssues`, and envelope source fields.
 6. Add export tests for P736 labels: robot, dunnage, dunnage, nest.

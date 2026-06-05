@@ -143,7 +143,21 @@ function semanticsFixture(): LayoutSemantics {
   const stations = [station("7B-010L", "7B", "010", "L"), station("7B-020R", "7B", "020", "R")];
   const devices = [
     device("device-linked", "7B-010L-04", "7B-010L", "linked"),
-    device("device-ambiguous", "7B-020R-03", "7B-020R", "ambiguous"),
+    device("device-ambiguous", "7B-020R-03", "7B-020R", "ambiguous", {
+      associationCandidates: [
+        {
+          groupId: "candidate-ambiguous",
+          source: "cluster",
+          entityIds: ["geom-ambiguous"],
+          bounds: { min: [5000, 0, 0], max: [6000, 1000, 0] },
+          centroid: [5500, 500, 0],
+          distanceToBounds: 0,
+          distanceToCentroid: 0,
+          confidence: 0.68,
+          reason: ["nearby geometry cluster"]
+        }
+      ]
+    }),
     device("device-unlinked", "7B-999L-99", undefined, "unlinked"),
     device("device-long-note", "7B-020R-05", "7B-020R", "linked", {
       rawText: "Install bracket near 7B-020R-05 with quote-impact note and field verification",
@@ -233,6 +247,12 @@ describe("advanced engineering layout model", () => {
       unlinkedDevices: 1,
       devicesMissingStation: 1
     });
+    expect(model.summary.counts.validationIssues).toBeGreaterThan(0);
+    expect(model.summary.validationByRule).toMatchObject({
+      DEVICE_AMBIGUOUS_GEOMETRY: 1,
+      DEVICE_UNLINKED_GEOMETRY: 1,
+      LOW_CONFIDENCE_BOM_ROW: 2
+    });
     expect(model.reviewItems.map((entry) => entry.id)).toEqual(
       expect.arrayContaining([
         "review-device-ambiguous-device-ambiguous",
@@ -258,7 +278,9 @@ describe("advanced engineering layout model", () => {
     expect(markdown).toContain("Fence \"Panel\", 1424mm x 2388mm with install risk \\| by others");
     expect(csv).toContain('"robot.generic","robot","geometry-bounds","250"');
     expect(markdown).toContain("## Equipment Library Types");
+    expect(markdown).toContain("## Validation Issues");
     expect(markdown).toContain("| 7B-010L-04 | device_number | robot.generic | geometry-bounds | 250 | 7B-010L |");
+    expect(csv).toContain('"validation","layout-device-unlinked-device-unlinked"');
   });
 
   it("retains strong-tag long device text as annotation context without changing the primary device label", () => {
@@ -291,6 +313,7 @@ describe("advanced engineering layout model", () => {
     expect(model.lines).toEqual([]);
     expect(model.foundationItems).toEqual([]);
     expect(model.reviewItems).toEqual([]);
+    expect(model.validationIssues).toEqual([]);
     expect(model.summary.counts).toMatchObject({
       lines: 0,
       stations: 0,
