@@ -70,6 +70,63 @@ Viewer download names:
 - `kairo-layout-library-package.csv`
 - `kairo-layout-library-package.md`
 
+## Review Pack Format
+
+Review template export:
+
+- `kairo-layout-review-template.json`
+
+Schema:
+
+```json
+{
+  "schema": "kairo-layout-review-pack",
+  "schemaVersion": 1
+}
+```
+
+Each review record includes:
+
+| Field | Meaning |
+|---|---|
+| `detectedItemId` | Generated training record item ID. |
+| `detectedLabel` | Label found in the source layout. |
+| `detectedDeviceType` | Generated Kairo device type. |
+| `correctedDeviceType` | Reviewer-corrected type, when status is `corrected`. |
+| `detectedGeometryAssociation` | Generated geometry association status and entity IDs. |
+| `correctedGeometryAssociationId` | Reviewer-selected association ID, when known. |
+| `correctedGeometryAssociationNote` | Reviewer note for geometry correction. |
+| `confidence` | Generated confidence. |
+| `evidence` | Generated reason/evidence. |
+| `reviewStatus` | `accepted`, `corrected`, `rejected`, or `uncertain`. |
+| `reviewerNote` | Human review note. |
+| `reviewedAt` | Review timestamp string. |
+| `reviewVersion` | Numeric review schema version for the record. |
+
+## Reviewed Training Truth
+
+Merged export names:
+
+- `reviewed-training-truth.json`
+- `reviewed-training-truth.csv`
+- `reviewed-training-summary.md`
+
+Schema:
+
+```json
+{
+  "schema": "kairo-reviewed-training-truth",
+  "schemaVersion": 1
+}
+```
+
+Merge behavior:
+
+- `accepted` records are trainable and keep the generated type/association.
+- `corrected` records are trainable and use corrected type/association fields.
+- `rejected` records are retained but marked `excluded`.
+- `uncertain` records are retained as `review-only`.
+
 ## Example
 
 See `docs/examples/p736-layout-library-package.sample.json` for a compact package example using the known P736 labels.

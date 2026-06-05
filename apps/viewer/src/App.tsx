@@ -43,6 +43,16 @@ import {
   exportLayoutPackageJson,
   exportLayoutPackageMarkdown
 } from "./layoutLibrary/layoutPackage";
+import {
+  buildBlankLayoutReviewPack,
+  exportLayoutReviewPackJson,
+  exportReviewedTrainingSummaryMarkdown,
+  exportReviewedTrainingTruthCsv,
+  exportReviewedTrainingTruthJson,
+  mergeReviewedTrainingTruth,
+  parseLayoutReviewPackJson,
+  type LayoutReviewPack
+} from "./layoutLibrary/layoutReviewPack";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics, type LayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
@@ -960,6 +970,7 @@ function LayerPanel({
 
 export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const reviewPackInputRef = useRef<HTMLInputElement | null>(null);
   const sceneLoadSerialRef = useRef(0);
   const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
   const [jobSession, setJobSession] = useState<KairoJobSession>(() => createJobSessionForScenePackage(sampleScenePackage));
@@ -986,6 +997,8 @@ export function App() {
     ...DEFAULT_SEMANTIC_VALIDATION_FILTERS
   });
   const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
+  const [importedLayoutReviewPack, setImportedLayoutReviewPack] = useState<LayoutReviewPack | undefined>();
+  const [layoutReviewStatus, setLayoutReviewStatus] = useState<string | undefined>();
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
   const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
@@ -1112,6 +1125,14 @@ export function App() {
   const layoutLibraryPackage = useMemo(
     () => buildLayoutPackage(scenePackage, layoutSemantics, advancedLayoutModel),
     [scenePackage, layoutSemantics, advancedLayoutModel]
+  );
+  const blankLayoutReviewPack = useMemo(
+    () => buildBlankLayoutReviewPack(layoutLibraryPackage),
+    [layoutLibraryPackage]
+  );
+  const reviewedTrainingTruth = useMemo(
+    () => mergeReviewedTrainingTruth(layoutLibraryPackage, importedLayoutReviewPack ?? blankLayoutReviewPack),
+    [layoutLibraryPackage, importedLayoutReviewPack, blankLayoutReviewPack]
   );
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
@@ -1396,6 +1417,8 @@ export function App() {
 
   useEffect(() => {
     setSemanticDeviceOverrides({});
+    setImportedLayoutReviewPack(undefined);
+    setLayoutReviewStatus(undefined);
   }, [scenePackage]);
 
   const updateSelectedDeviceOverride = (patch: SemanticDeviceOverride) => {
@@ -1482,6 +1505,52 @@ export function App() {
     downloadTextFile(`kairo-layout-library-package.${extension}`, layoutLibraryExportContent(format), mime);
   };
 
+  const openLayoutReviewPackPicker = () => {
+    reviewPackInputRef.current?.click();
+  };
+
+  const downloadLayoutReviewTemplate = () => {
+    downloadTextFile("kairo-layout-review-template.json", exportLayoutReviewPackJson(blankLayoutReviewPack), "application/json");
+  };
+
+  const importLayoutReviewPack = async (file: File) => {
+    try {
+      const content = await file.text();
+      const result = parseLayoutReviewPackJson(content, layoutLibraryPackage);
+      if (!result.ok) {
+        const first = result.errors[0];
+        setImportedLayoutReviewPack(undefined);
+        setLayoutReviewStatus(first ? `Review import failed: ${first.path} ${first.message}` : "Review import failed");
+        return;
+      }
+      setImportedLayoutReviewPack(result.reviewPack);
+      setLayoutReviewStatus(`Imported review pack: ${result.reviewPack.records.length} record(s)`);
+    } catch (error) {
+      setImportedLayoutReviewPack(undefined);
+      setLayoutReviewStatus(error instanceof Error ? `Review import failed: ${error.message}` : "Review import failed");
+    }
+  };
+
+  const handleLayoutReviewPackInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) void importLayoutReviewPack(file);
+  };
+
+  const reviewedTrainingTruthContent = (format: AdvancedLayoutExportFormat) => {
+    if (format === "json") return exportReviewedTrainingTruthJson(reviewedTrainingTruth);
+    if (format === "csv") return exportReviewedTrainingTruthCsv(reviewedTrainingTruth);
+    return exportReviewedTrainingSummaryMarkdown(reviewedTrainingTruth);
+  };
+
+  const downloadReviewedTrainingTruth = (format: AdvancedLayoutExportFormat) => {
+    const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
+    const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
+    const baseName =
+      format === "markdown" ? "reviewed-training-summary" : format === "csv" ? "reviewed-training-truth" : "reviewed-training-truth";
+    downloadTextFile(`${baseName}.${extension}`, reviewedTrainingTruthContent(format), mime);
+  };
+
   const compactSelectionStatus = selectedSemanticDetails
     ? `Semantic: ${selectedSemanticDetails.title}`
     : selectedEntity
@@ -1513,6 +1582,13 @@ export function App() {
               accept=".dxf,.kairo"
               className="file-input"
               onChange={handleLocalFileInputChange}
+              type="file"
+            />
+            <input
+              ref={reviewPackInputRef}
+              accept=".json,application/json"
+              className="file-input"
+              onChange={handleLayoutReviewPackInputChange}
               type="file"
             />
             <button onClick={openLocalFilePicker} type="button">
@@ -1933,6 +2009,27 @@ export function App() {
             <button onClick={() => downloadLayoutLibraryExport("markdown")} type="button">
               Download Library MD
             </button>
+            <span className="semantic-action-divider" aria-hidden="true" />
+            <button onClick={downloadLayoutReviewTemplate} type="button">
+              Download Review Template
+            </button>
+            <button onClick={openLayoutReviewPackPicker} type="button">
+              Import Review JSON
+            </button>
+            <button onClick={() => downloadReviewedTrainingTruth("json")} type="button">
+              Download Truth JSON
+            </button>
+            <button onClick={() => downloadReviewedTrainingTruth("csv")} type="button">
+              Download Truth CSV
+            </button>
+            <button onClick={() => downloadReviewedTrainingTruth("markdown")} type="button">
+              Download Truth MD
+            </button>
+            {layoutReviewStatus ? (
+              <span className="semantic-copy-status" role="status">
+                {layoutReviewStatus}
+              </span>
+            ) : null}
             {semanticCopyStatus ? (
               <span className="semantic-copy-status" role="status">
                 {semanticCopyStatus}

@@ -17,6 +17,18 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## DONE
 
+### Reviewed Layout Library training workflow - DONE
+
+**Completed:** 2026-06-05
+
+Kairo now has a human-approved truth layer on top of generated Layout Library training records. The viewer can export a blank review template JSON, import reviewed JSON with schema-safe validation, and export merged reviewed training truth as JSON, CSV, and Markdown.
+
+Merge rules are deterministic: accepted rows remain trainable as generated, corrected rows override type and/or geometry note/id, rejected rows are preserved but excluded from training, and uncertain rows remain review-only.
+
+**Docs:** See `docs/LAYOUT_REVIEW_TRAINING_WORKFLOW.md`.
+
+---
+
 ### Layout Library package foundation - DONE
 
 **Completed:** 2026-06-05
