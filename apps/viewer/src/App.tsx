@@ -92,6 +92,12 @@ import {
   exportSemanticQaReportMarkdown
 } from "./semantic/semanticQaReport";
 import {
+  buildSemanticReviewArtifact,
+  exportSemanticReviewArtifactJson,
+  parseSemanticReviewArtifactJson,
+  semanticOverridesFromReviewArtifact
+} from "./semantic/semanticReviewArtifact";
+import {
   collectTextItems,
   SceneTextOverlay,
   type LabelDensityMode,
@@ -982,6 +988,7 @@ function LayerPanel({
 
 export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const semanticReviewInputRef = useRef<HTMLInputElement | null>(null);
   const reviewPackInputRef = useRef<HTMLInputElement | null>(null);
   const trainingTruthInputRef = useRef<HTMLInputElement | null>(null);
   const sceneLoadSerialRef = useRef(0);
@@ -1132,6 +1139,10 @@ export function App() {
   const semanticQaReport = useMemo(
     () => buildSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path),
     [layoutSemantics, scenePackage.manifest.source.path]
+  );
+  const semanticReviewArtifact = useMemo(
+    () => buildSemanticReviewArtifact(detectedLayoutSemantics, semanticDeviceOverrides, scenePackage.manifest.source.path),
+    [detectedLayoutSemantics, semanticDeviceOverrides, scenePackage.manifest.source.path]
   );
   const advancedLayoutModel = useMemo(
     () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
@@ -1495,6 +1506,41 @@ export function App() {
     downloadTextFile(`kairo-semantic-qa-report.${extension}`, content, mime);
   };
 
+  const openSemanticReviewArtifactPicker = () => {
+    semanticReviewInputRef.current?.click();
+  };
+
+  const downloadSemanticReviewArtifact = () => {
+    downloadTextFile(
+      "kairo-semantic-review-artifact.json",
+      exportSemanticReviewArtifactJson(semanticReviewArtifact),
+      "application/json"
+    );
+  };
+
+  const importSemanticReviewArtifact = async (file: File) => {
+    try {
+      const content = await file.text();
+      const result = parseSemanticReviewArtifactJson(content, detectedLayoutSemantics);
+      if (!result.ok) {
+        const first = result.errors[0];
+        setSemanticCopyStatus(first ? `Semantic review import failed: ${first.path} ${first.message}` : "Semantic review import failed");
+        return;
+      }
+      const overrides = semanticOverridesFromReviewArtifact(result.artifact);
+      setSemanticDeviceOverrides(overrides);
+      setSemanticCopyStatus(`Imported semantic review: ${Object.keys(overrides).length} override(s)`);
+    } catch (error) {
+      setSemanticCopyStatus(error instanceof Error ? `Semantic review import failed: ${error.message}` : "Semantic review import failed");
+    }
+  };
+
+  const handleSemanticReviewArtifactInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) void importSemanticReviewArtifact(file);
+  };
+
   const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
     if (format === "json") return exportAdvancedLayoutJson(advancedLayoutModel);
     if (format === "csv") return exportAdvancedLayoutCsv(advancedLayoutModel);
@@ -1661,6 +1707,13 @@ export function App() {
               accept=".dxf,.kairo"
               className="file-input"
               onChange={handleLocalFileInputChange}
+              type="file"
+            />
+            <input
+              ref={semanticReviewInputRef}
+              accept=".json,application/json"
+              className="file-input"
+              onChange={handleSemanticReviewArtifactInputChange}
               type="file"
             />
             <input
@@ -2065,6 +2118,12 @@ export function App() {
             </button>
             <button onClick={() => downloadSemanticQaExport("json")} type="button">
               Download QA JSON
+            </button>
+            <button onClick={downloadSemanticReviewArtifact} type="button">
+              Download Semantic Review JSON
+            </button>
+            <button onClick={openSemanticReviewArtifactPicker} type="button">
+              Import Semantic Review JSON
             </button>
             <span className="semantic-action-divider" aria-hidden="true" />
             <button onClick={() => copyAdvancedLayoutExport("json")} type="button">

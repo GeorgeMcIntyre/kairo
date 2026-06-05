@@ -15,6 +15,9 @@ Current schema:
 
 The package is intended for deterministic review and future training data, not direct CAD authoring.
 
+Manual semantic corrections can be persisted separately before package generation through
+`kairo-semantic-review-artifact.json`. See `docs/SEMANTIC_REVIEW_ARTIFACT.md`.
+
 ## Top-Level Fields
 
 | Field | Purpose |

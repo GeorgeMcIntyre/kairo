@@ -5,17 +5,17 @@ Last updated: 2026-06-05
 ## Git
 
 - Branch: `codex/kairo-dxf-block-instances`
-- HEAD: pending current semantic QA export / viewer responsiveness commit
-- Working tree contains the current Advanced Engineering layout-intelligence MVP slice.
+- HEAD: includes current semantic review persistence work after commit.
+- Working tree contains the current semantic review artifact MVP slice until committed.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 316/316 passed |
+| `pnpm test` | 320/320 passed |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~929 kB, chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle ~938 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -63,7 +63,8 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Viewer semantic performance follow-up: semantic analysis is deferred after scene activation so geometry can become visible before the semantic pass completes. Semantic overlay rendering is capped for broad station/device/unknown lists while preserving the selected item.
 - Drawing-first panel controls: Layers, Semantics, and Inspector panels can be hidden independently from the toolbar and from each panel header without changing layer visibility, selection, or semantic overlay state. Local DXF opens with Layers/Inspector visible and Semantics collapsed by default.
 - Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
-- Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
+- Manual correction MVP: selected semantic devices can be overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
+- Semantic review artifact MVP: viewer can export/import `kairo-semantic-review-artifact.json` so manual semantic class, corrected geometry group, and unlink/reject decisions can be persisted as project-side JSON and reloaded against the current semantic extraction.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Semantic QA export MVP: deterministic Markdown/JSON exports include detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 checklist, unknown labels, duplicates, and missing/uncertain rows.
 - Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
@@ -93,7 +94,7 @@ Known visual issues still requiring work:
 - Direct raw DXF browser upload and `.kairo` package upload are implemented; staged public scenes are still useful for fixed demos.
 - Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
 - Protected P736 labels are currently exact-match code rules, not an external project configuration.
-- Manual semantic overrides are session-only and are not persisted to a project file yet.
+- Semantic review artifacts are keyed by current semantic device and geometry group IDs; stale artifacts fail import until reconciled.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable; CAD Exchanger is the temporary JT bridge direction only.
 - No CI pipeline; tests run locally only.
@@ -102,9 +103,9 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. Persist semantic QA review decisions and manual overrides in a project-side artifact.
-2. Export a real P736/Scott review template, complete the review pack, and save the reviewed training truth artifact as the first live-layout training fixture.
-3. Semantic association QA on the Scott DXF using the new QA Markdown/JSON/Layout Library exports.
+1. Export a real P736/Scott semantic review artifact, review/correct high-value labels, and check in the first project-side semantic truth fixture.
+2. Export a real P736/Scott Layout Library review template, complete the review pack, and save the reviewed training truth artifact as the first live-layout training fixture.
+3. Semantic association QA on the Scott DXF using the QA Markdown/JSON/Layout Library/reviewed library exports.
 4. Promote protected layout-specific labels into data/config.
 5. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
 6. Text visual QA / alignment polish

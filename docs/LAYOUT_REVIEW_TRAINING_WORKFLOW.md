@@ -8,28 +8,34 @@ This workflow turns generated Layout Library records into human-reviewed trainin
 
 No model training happens in this slice. The output is boring JSON/CSV/Markdown that can be inspected in Git.
 
+Semantic review corrections can now be persisted before the Layout Library package is generated. Use
+`kairo-semantic-review-artifact.json` when the viewer's manual class, geometry, or unlink decisions need to be reloaded
+against the same staged scene. See `docs/SEMANTIC_REVIEW_ARTIFACT.md`.
+
 ## Workflow
 
 1. Open a DXF or `.kairo` package in the viewer.
-2. Export `kairo-layout-library-package.json` for the generated package.
-3. Export `kairo-layout-review-template.json`.
-4. Review the template records and set each record to:
+2. If manual semantic corrections were made, export `kairo-semantic-review-artifact.json`.
+3. Import a saved semantic review artifact when corrections need to be reapplied.
+4. Export `kairo-layout-library-package.json` for the generated package.
+5. Export `kairo-layout-review-template.json`.
+6. Review the template records and set each record to:
    - `accepted`
    - `corrected`
    - `rejected`
    - `uncertain`
-5. Fill reviewer notes and any corrected type or geometry association note/id.
-6. Import the reviewed JSON back into the viewer.
-7. Export:
+7. Fill reviewer notes and any corrected type or geometry association note/id.
+8. Import the reviewed JSON back into the viewer.
+9. Export:
    - `reviewed-training-truth.json`
    - `reviewed-training-truth.csv`
    - `reviewed-training-summary.md`
-8. On a later layout extraction, import `reviewed-training-truth.json`.
-9. Export a comparison report:
+10. On a later layout extraction, import `reviewed-training-truth.json`.
+11. Export a comparison report:
    - `training-truth-comparison.json`
    - `training-truth-comparison.csv`
    - `training-truth-comparison.md`
-10. Export a reviewed reusable library:
+12. Export a reviewed reusable library:
    - `reviewed-layout-library.json`
    - `reviewed-layout-library.csv`
    - `reviewed-layout-library.md`

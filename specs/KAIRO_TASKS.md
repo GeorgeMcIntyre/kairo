@@ -17,6 +17,18 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## DONE
 
+### ISSUE-018: Persist reviewed semantic devices and overrides - DONE
+
+**Completed:** 2026-06-05
+
+Kairo now exports and imports `kairo-semantic-review-artifact.json` from the viewer semantic panel. The artifact persists generated semantic device records plus manual class overrides, corrected geometry group IDs, and rejected/unlinked associations. Import validates schema/version, current semantic device IDs, corrected geometry group IDs, and corrected/rejected row rules before reapplying overrides.
+
+This is the first project-side persistence layer for semantic review decisions. Next pass should use the real Scott/P736 staged scene to create the first checked-in reviewed artifact.
+
+**Docs:** See `docs/SEMANTIC_REVIEW_ARTIFACT.md`.
+
+---
+
 ### Reviewed Layout Library training workflow - DONE
 
 **Completed:** 2026-06-05
@@ -58,14 +70,6 @@ Exports are available as JSON, CSV, and Markdown through the semantic panel. P73
 **Goal:** Use `pack-scene` to create a `.kairo` package from the primary Scott import, open it through the viewer, and confirm it is practical for internal sharing without restaging public scene assets.
 
 **Not allowed:** Replace raw DXF import, add 7z/WASM tooling, or change the neutral scene schema unless package QA proves a missing field.
-
----
-
-### ISSUE-018: Persist reviewed semantic devices and overrides (P1)
-
-**Goal:** Save user-confirmed semantic device records, class overrides, geometry association overrides, and unlinked warnings to a project-level JSON model that can be reloaded with the staged scene.
-
-**Not allowed:** Replace the current staged scene format, make raw DXF upload a blocker, or treat automatic classification as final truth.
 
 ---
 
