@@ -569,6 +569,9 @@ function stationAssociationFor(
   if (parsed?.parentStationId && stationIds.has(parsed.parentStationId)) {
     return { stationId: parsed.parentStationId, method: "station-id", confidenceBoost: 0.08 };
   }
+  if (parsed?.parentStationId) {
+    return { stationId: parsed.parentStationId, method: "station-id", confidenceBoost: 0.03 };
+  }
 
   const directMatch = label.normalizedText.toUpperCase().match(STATION_REF_PATTERN);
   if (directMatch && stationIds.has(directMatch[1])) {

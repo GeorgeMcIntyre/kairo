@@ -1,6 +1,7 @@
 import { extractStrongDeviceTag, isLikelyAnnotationText } from "../textSafety";
 
 export type DeviceKind =
+  | "robot"
   | "robot_controller"
   | "pdp_panel"
   | "base_plate"
@@ -17,6 +18,7 @@ export type DeviceKind =
   | "station_device_tag";
 
 export const DEVICE_KINDS: readonly DeviceKind[] = [
+  "robot",
   "robot_controller",
   "pdp_panel",
   "base_plate",
@@ -44,7 +46,7 @@ export type DeviceDictionaryMatch = {
 export type ParsedStationDeviceTag = {
   parentStationId: string;
   suffix: string;
-  kind: "device_number" | "dunnage" | "nest" | "station_device_tag";
+  kind: "robot" | "device_number" | "dunnage" | "nest" | "station_device_tag";
 };
 
 export function normalizeDeviceText(text: string): string {
@@ -61,12 +63,24 @@ function match(kind: DeviceKind, confidence: number, evidence: string[]): Device
 
 const STATION_DEVICE_TAG_PATTERN = /^([A-Z0-9]+-\d{3}[LR])-([A-Z0-9]+)(?:\b|[\s(].*)?$/i;
 
+const KNOWN_STATION_DEVICE_LABELS = new Map<string, Pick<ParsedStationDeviceTag, "kind"> & { evidence: string }>([
+  ["7B-020L-04", { kind: "robot", evidence: "known P736 robot tag" }],
+  ["7B-070L-DN1", { kind: "dunnage", evidence: "known P736 dunnage station tag" }],
+  ["7B-070L-DN2", { kind: "dunnage", evidence: "known P736 dunnage station tag" }],
+  ["7B-060L-1N", { kind: "nest", evidence: "known P736 nest tag" }]
+]);
+
 export function parseStationDeviceTag(text: string): ParsedStationDeviceTag | undefined {
   const normalized = normalizeDeviceText(text);
   const tagMatch = normalized.match(STATION_DEVICE_TAG_PATTERN);
   if (!tagMatch) return undefined;
 
   const suffix = tagMatch[2];
+  const known = KNOWN_STATION_DEVICE_LABELS.get(`${tagMatch[1]}-${suffix}`);
+  if (known) {
+    return { parentStationId: tagMatch[1], suffix, kind: known.kind };
+  }
+
   if (/^\d+$/.test(suffix)) {
     return { parentStationId: tagMatch[1], suffix, kind: "device_number" };
   }
@@ -88,12 +102,14 @@ export function parseDeviceText(text: string): DeviceDictionaryMatch | undefined
 
   const stationDeviceTag = parseStationDeviceTag(normalized);
   if (stationDeviceTag) {
+    const known = KNOWN_STATION_DEVICE_LABELS.get(`${stationDeviceTag.parentStationId}-${stationDeviceTag.suffix}`);
     return {
       kind: stationDeviceTag.kind,
-      confidence: stationDeviceTag.kind === "station_device_tag" ? 0.7 : 0.88,
+      confidence: known ? 0.94 : stationDeviceTag.kind === "station_device_tag" ? 0.7 : 0.88,
       evidence: [
         `parent station ${stationDeviceTag.parentStationId}`,
         `suffix ${stationDeviceTag.suffix}`,
+        ...(known ? [known.evidence] : []),
         stationDeviceTag.kind === "device_number" ? "numeric suffix is a device tag, not a station" : "station-device suffix pattern"
       ],
       parentStationId: stationDeviceTag.parentStationId,

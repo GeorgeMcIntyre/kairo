@@ -1,11 +1,18 @@
 import {
+  computeEntityCentroid,
   computeRobustSceneBounds,
+  createJobSessionForScenePackage,
   flattenCurveEntities,
   geometryById,
+  layoutLocalToWorld,
   nodesById,
   parseSourceRef,
   sourceEntryForNode,
+  updateCoordinateReadout,
   type Bounds3,
+  type CoordinateReadout,
+  type KairoJobSession,
+  type LayoutPoint,
   type RobustSceneBounds
 } from "@kairo/core";
 import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/schema";
@@ -51,6 +58,11 @@ import {
   type SemanticDeviceOverride,
   type SemanticOverrideMap
 } from "./semantic/semanticSummary";
+import {
+  buildSemanticQaReport,
+  exportSemanticQaReportJson,
+  exportSemanticQaReportMarkdown
+} from "./semantic/semanticQaReport";
 import {
   collectTextItems,
   SceneTextOverlay,
@@ -319,9 +331,49 @@ function formatVec3(value: readonly [number, number, number]) {
   return value.map((entry) => entry.toFixed(2)).join(", ");
 }
 
+function formatLayoutPoint(value: LayoutPoint | null | undefined) {
+  if (!value) return "none";
+  return `${value.x.toFixed(2)}, ${value.y.toFixed(2)}`;
+}
+
 function formatBounds(bounds: Bounds3 | null) {
   if (!bounds) return "none";
   return `min[${formatVec3(bounds.min)}] max[${formatVec3(bounds.max)}]`;
+}
+
+function boundsCenterPoint(bounds: Bounds3): LayoutPoint {
+  return {
+    x: (bounds.min[0] + bounds.max[0]) / 2,
+    y: (bounds.min[1] + bounds.max[1]) / 2
+  };
+}
+
+function nodeTransformPoint(node: SceneNode): LayoutPoint {
+  return {
+    x: node.localTransform[12] ?? 0,
+    y: node.localTransform[13] ?? 0
+  };
+}
+
+function findDrawingEntity(scenePackage: ScenePackage, entityId: string): DrawingEntity | undefined {
+  for (const document of scenePackage.geometry) {
+    for (const geometry of document.geometries) {
+      if (geometry.kind !== "curve-set") continue;
+      const entity = geometry.entities.find((entry) => entry.id === entityId);
+      if (entity) return entity;
+    }
+  }
+  return undefined;
+}
+
+function pointFromEntity(entity: DrawingEntity): LayoutPoint {
+  const centroid = computeEntityCentroid(entity);
+  return { x: centroid[0], y: centroid[1] };
+}
+
+function sameLayoutPoint(left: LayoutPoint | null, right: LayoutPoint | null) {
+  if (!left || !right) return left === right;
+  return Math.abs(left.x - right.x) < 0.5 && Math.abs(left.y - right.y) < 0.5;
 }
 
 function formatConfidence(value: number | undefined) {
@@ -380,6 +432,7 @@ function Viewport({
   semanticOverlayEnabled,
   semanticOverlayModel,
   onSelectSemantic,
+  onCursorLayoutPoint,
   onViewportDiagnostics
 }: {
   scenePackage: ScenePackage;
@@ -395,6 +448,7 @@ function Viewport({
   semanticOverlayEnabled: boolean;
   semanticOverlayModel: SemanticOverlayModel;
   onSelectSemantic: (selection: SemanticSelection) => void;
+  onCursorLayoutPoint?: (point: LayoutPoint | null) => void;
   onViewportDiagnostics?: (diagnostics: ViewportDiagnostics) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -422,6 +476,8 @@ function Viewport({
   selectedNodeIdRef.current = selectedNodeId;
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onCursorLayoutPointRef = useRef(onCursorLayoutPoint);
+  onCursorLayoutPointRef.current = onCursorLayoutPoint;
   const onViewportDiagnosticsRef = useRef(onViewportDiagnostics);
   onViewportDiagnosticsRef.current = onViewportDiagnostics;
 
@@ -600,6 +656,11 @@ function Viewport({
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const pickableObjects = records.map((record) => record.object);
+    const cursorPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const cursorPoint = new THREE.Vector3();
+    let lastCursorReadoutAt = 0;
+    let lastCursorReadoutPoint: LayoutPoint | null = null;
 
     const setDynamicThreshold = () => {
       const pixelTolerance = 6;
@@ -646,10 +707,24 @@ function Viewport({
       pointer.set(ndc.x, ndc.y);
       setDynamicThreshold();
       raycaster.setFromCamera(pointer, camera);
-      return raycaster.intersectObjects(
-        records.flatMap((record) => [record.object, ...record.object.children]),
-        true
-      );
+      return raycaster.intersectObjects(pickableObjects, true);
+    };
+
+    const publishCursorLayoutPoint = (point: LayoutPoint | null, force = false) => {
+      const now = performance.now();
+      const roundedPoint = point
+        ? { x: Math.round(point.x * 10) / 10, y: Math.round(point.y * 10) / 10 }
+        : null;
+      const movedEnough =
+        !sameLayoutPoint(lastCursorReadoutPoint, roundedPoint) &&
+        (!lastCursorReadoutPoint ||
+          !roundedPoint ||
+          Math.hypot(lastCursorReadoutPoint.x - roundedPoint.x, lastCursorReadoutPoint.y - roundedPoint.y) >= 25);
+      if (!force && !movedEnough && now - lastCursorReadoutAt < 80) return;
+      if (!force && sameLayoutPoint(lastCursorReadoutPoint, roundedPoint)) return;
+      lastCursorReadoutAt = now;
+      lastCursorReadoutPoint = roundedPoint;
+      onCursorLayoutPointRef.current?.(roundedPoint);
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -660,7 +735,12 @@ function Viewport({
     };
 
     const onPointerMove = (event: PointerEvent) => {
-      const nodeId = resolveHitSelection(castRay(event))?.nodeId ?? "";
+      const intersections = castRay(event);
+      publishCursorLayoutPoint(
+        raycaster.ray.intersectPlane(cursorPlane, cursorPoint) ? { x: cursorPoint.x, y: cursorPoint.y } : null
+      );
+
+      const nodeId = resolveHitSelection(intersections)?.nodeId ?? "";
       if (nodeId !== hoveredNodeIdRef.current) {
         hoveredNodeIdRef.current = nodeId;
         renderer.domElement.style.cursor = nodeId ? "pointer" : "default";
@@ -668,8 +748,16 @@ function Viewport({
       }
     };
 
+    const onPointerLeave = () => {
+      publishCursorLayoutPoint(null, true);
+      hoveredNodeIdRef.current = "";
+      renderer.domElement.style.cursor = "default";
+      applyHighlight(records, selectedNodeIdRef.current);
+    };
+
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointermove", onPointerMove);
+    renderer.domElement.addEventListener("pointerleave", onPointerLeave);
 
     let frame = 0;
     let firstRenderPublished = false;
@@ -719,6 +807,7 @@ function Viewport({
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
+      renderer.domElement.removeEventListener("pointerleave", onPointerLeave);
       controls.removeEventListener("change", onCameraChange);
       for (const record of records) {
         record.object.traverse((child) => {
@@ -867,6 +956,7 @@ export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sceneLoadSerialRef = useRef(0);
   const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
+  const [jobSession, setJobSession] = useState<KairoJobSession>(() => createJobSessionForScenePackage(sampleScenePackage));
   const [sceneStatus, setSceneStatus] = useState("Bundled sample scene");
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
   const [activeSceneName, setActiveSceneName] = useState<string | undefined>();
@@ -895,6 +985,19 @@ export function App() {
   const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
   const [dxfDragActive, setDxfDragActive] = useState(false);
   const selectedNode = nodeMap.get(selectedNodeId) ?? scenePackage.scene.nodes[0];
+  const activeLayout = useMemo(
+    () => {
+      const layout =
+        jobSession.layoutMap.layouts.find((entry) => entry.layoutId === jobSession.layoutMap.activeLayoutId) ??
+        jobSession.layoutMap.layouts[0];
+      if (!layout) {
+        throw new Error("Kairo job session must contain at least one layout.");
+      }
+      return layout;
+    },
+    [jobSession]
+  );
+  const coordinateReadout = jobSession.layoutMap.coordinateReadout;
   const report = useMemo(() => validateScenePackage(scenePackage), [scenePackage]);
   const sceneStats = useMemo(() => computeSceneStats(scenePackage), [scenePackage]);
   const robustBounds = useMemo(
@@ -974,8 +1077,26 @@ export function App() {
     () => resolveSemanticSelection(layoutSemantics, selectedSemantic),
     [layoutSemantics, selectedSemantic]
   );
+  const selectedLayoutPoint = useMemo((): LayoutPoint | null => {
+    if (selectedEntity) {
+      const entity = findDrawingEntity(scenePackage, selectedEntity.entityId);
+      return entity ? pointFromEntity(entity) : null;
+    }
+    if (selectedSemanticDetails?.bounds) {
+      return boundsCenterPoint(selectedSemanticDetails.bounds);
+    }
+    return selectedNode ? nodeTransformPoint(selectedNode) : null;
+  }, [scenePackage, selectedEntity, selectedNode, selectedSemanticDetails]);
+  const selectedWorldPoint = useMemo(
+    () => (activeLayout && selectedLayoutPoint ? layoutLocalToWorld(selectedLayoutPoint, activeLayout) : null),
+    [activeLayout, selectedLayoutPoint]
+  );
   const semanticSummary = useMemo(
     () => buildSemanticSummary(layoutSemantics, scenePackage.manifest.source.path),
+    [layoutSemantics, scenePackage.manifest.source.path]
+  );
+  const semanticQaReport = useMemo(
+    () => buildSemanticQaReport(layoutSemantics, scenePackage.manifest.source.path),
     [layoutSemantics, scenePackage.manifest.source.path]
   );
   const advancedLayoutModel = useMemo(
@@ -1017,6 +1138,32 @@ export function App() {
   const unknownListCount = showingFirstLabel(visibleUnknownText.length, semanticValidation.unknownTextEntities.length);
   const sceneIsLoading = sceneStatus.startsWith("Loading ");
   const landingMode = !activeSceneName && !sceneLoadError;
+
+  const updateJobCoordinateReadout = useCallback((patch: Partial<CoordinateReadout>) => {
+    setJobSession((current) => updateCoordinateReadout(current, patch));
+  }, []);
+
+  const updateCursorLayoutPoint = useCallback(
+    (point: LayoutPoint | null) => {
+      const cursorWorld = activeLayout && point ? layoutLocalToWorld(point, activeLayout) : null;
+      setJobSession((current) => {
+        if (sameLayoutPoint(current.layoutMap.coordinateReadout.cursorWorld, cursorWorld)) {
+          return current;
+        }
+        return updateCoordinateReadout(current, { cursorWorld });
+      });
+    },
+    [activeLayout]
+  );
+
+  useEffect(() => {
+    updateJobCoordinateReadout({
+      selectedWorld: selectedWorldPoint,
+      selectedLayoutOrigin: activeLayout ? { x: activeLayout.originX, y: activeLayout.originY } : null,
+      activeLayoutId: activeLayout?.layoutId,
+      selectedLayoutId: activeLayout?.layoutId
+    });
+  }, [activeLayout, selectedWorldPoint, updateJobCoordinateReadout]);
 
   const requestFit = (target: FitTarget) => {
     setFitRequest((current) => ({ target, serial: current.serial + 1 }));
@@ -1075,6 +1222,7 @@ export function App() {
       }
     ) => {
       setScenePackage(loadedScenePackage);
+      setJobSession(createJobSessionForScenePackage(loadedScenePackage));
       setSelectedNodeId(loadedScenePackage.scene.rootNodeId);
       setSelectedEntity(undefined);
       setSelectedSemantic(undefined);
@@ -1281,6 +1429,14 @@ export function App() {
     downloadTextFile(`kairo-semantic-summary.${extension}`, content, mime);
   };
 
+  const downloadSemanticQaExport = (format: "json" | "markdown") => {
+    const content =
+      format === "json" ? exportSemanticQaReportJson(semanticQaReport) : exportSemanticQaReportMarkdown(semanticQaReport);
+    const extension = format === "json" ? "json" : "md";
+    const mime = format === "json" ? "application/json" : "text/markdown";
+    downloadTextFile(`kairo-semantic-qa-report.${extension}`, content, mime);
+  };
+
   const advancedLayoutExportContent = (format: AdvancedLayoutExportFormat) => {
     if (format === "json") return exportAdvancedLayoutJson(advancedLayoutModel);
     if (format === "csv") return exportAdvancedLayoutCsv(advancedLayoutModel);
@@ -1303,6 +1459,15 @@ export function App() {
     const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
     downloadTextFile(`kairo-advanced-layout.${extension}`, advancedLayoutExportContent(format), mime);
   };
+
+  const compactSelectionStatus = selectedSemanticDetails
+    ? `Semantic: ${selectedSemanticDetails.title}`
+    : selectedEntity
+    ? `Entity: ${selectedEntity.type} ${selectedEntity.entityId}`
+    : `Node: ${selectedNode.displayName}`;
+  const compactViewportStatus = viewportDiagnostics
+    ? `${viewportDiagnostics.containerWidth}x${viewportDiagnostics.containerHeight}px / zoom ${viewportDiagnostics.cameraZoom.toFixed(2)}`
+    : "Viewport pending";
 
   return (
     <main
@@ -1487,8 +1652,18 @@ export function App() {
           semanticOverlayEnabled={semanticOverlayEnabled}
           semanticOverlayModel={semanticOverlayModel}
           onSelectSemantic={selectSemantic}
+          onCursorLayoutPoint={updateCursorLayoutPoint}
           onViewportDiagnostics={setViewportDiagnostics}
         />
+        {!landingMode && !sceneIsLoading ? (
+          <div className="viewport-status-strip" aria-live="polite">
+            <span>{compactSelectionStatus}</span>
+            <span>{selectedLayerName ?? selectedLayerId ?? "No layer"}</span>
+            <span>{viewMode === "top2d" ? "Top 2D" : "3D"}</span>
+            <span>{compactViewportStatus}</span>
+            <span>{showOutliers ? "Outliers shown" : `${robustBounds.outlierEntityIds.length} outliers hidden`}</span>
+          </div>
+        ) : null}
       </section>
 
       {dxfDragActive ? (
@@ -1701,6 +1876,12 @@ export function App() {
             <button onClick={() => downloadSemanticExport("markdown")} type="button">
               Download MD
             </button>
+            <button onClick={() => downloadSemanticQaExport("markdown")} type="button">
+              Download QA MD
+            </button>
+            <button onClick={() => downloadSemanticQaExport("json")} type="button">
+              Download QA JSON
+            </button>
             <span className="semantic-action-divider" aria-hidden="true" />
             <button onClick={() => copyAdvancedLayoutExport("json")} type="button">
               Copy AE JSON
@@ -1871,6 +2052,17 @@ export function App() {
           <span>{selectedSemanticDetails?.subtitle ?? selectedLayerName ?? selectedLayerId ?? "No layer"}</span>
         </div>
         <dl>
+          <dt>Layout</dt>
+          <dd>
+            {activeLayout.fileName} / {activeLayout.type}
+            {activeLayout.locked ? " / locked" : ""}
+          </dd>
+          <dt>Layout origin</dt>
+          <dd>{formatLayoutPoint(coordinateReadout.selectedLayoutOrigin)}</dd>
+          <dt>Cursor world</dt>
+          <dd>{formatLayoutPoint(coordinateReadout.cursorWorld)}</dd>
+          <dt>Selection world</dt>
+          <dd>{formatLayoutPoint(coordinateReadout.selectedWorld)}</dd>
           {selectedSemanticDetails ? (
             <>
               <dt>Kind</dt>
@@ -2122,6 +2314,10 @@ export function App() {
               Semantics: {layoutSemantics.stations.length} stations / {layoutSemantics.devices.length} device candidates from{" "}
               {layoutSemantics.textEntities.length} text labels
               {semanticAnalysisTiming ? ` / ${formatTimingMs(semanticAnalysisTiming.ms)}` : ""}
+            </span>
+            <span>
+              Layout map: {jobSession.layoutMap.layouts.length} layout(s), active {jobSession.layoutMap.activeLayoutId}, origin{" "}
+              {formatLayoutPoint(coordinateReadout.selectedLayoutOrigin)}
             </span>
             {sceneLoadTiming.length > 0 ? (
               <span>

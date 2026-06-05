@@ -34,6 +34,17 @@ Picking converts pointer coordinates with the canvas DOM rectangle:
 
 This keeps picking independent of browser zoom and high-DPR backing-buffer size.
 
+## Pointer-Move Performance
+
+Large DXF scenes use one batched `LineSegments` object per geometry document. Hover and picking must preserve that batching:
+
+- cache the pickable object list during Three.js setup
+- raycast against cached objects instead of allocating a flattened object list on every pointer move
+- reuse scratch plane/vector objects for cursor coordinate readout
+- throttle coordinate readout state updates so mouse movement does not force React rerenders for every pixel
+
+This keeps the first and second selection/property updates responsive without changing the viewer layout.
+
 ## Diagnostics
 
 The diagnostics panel reports:
@@ -49,6 +60,7 @@ The diagnostics panel reports:
 
 - Manual browser zoom should be checked visually at 80%, 90%, 100%, 110%, 125%, and 150% because browser resize event timing differs by browser.
 - The viewer still uses line raycasting thresholds for curve selection; dense overlapping DXF curves can still select the front-most or nearest batched segment rather than a semantic object.
+- Cursor coordinate readout is throttled for responsiveness, so it is a practical inspection readout rather than a every-pixel stream.
 
 ## Next Recommended Work
 

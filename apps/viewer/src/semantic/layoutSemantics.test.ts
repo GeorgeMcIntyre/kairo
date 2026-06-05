@@ -257,10 +257,10 @@ describe("parseDeviceText", () => {
     expect(parseStationDeviceTag("7B-020L-04")).toEqual({
       parentStationId: "7B-020L",
       suffix: "04",
-      kind: "device_number"
+      kind: "robot"
     });
     expect(parseDeviceText("7B-020L-04")).toMatchObject({
-      kind: "device_number",
+      kind: "robot",
       parentStationId: "7B-020L",
       tagSuffix: "04"
     });
@@ -269,7 +269,7 @@ describe("parseDeviceText", () => {
 
   it("parses descriptive robot/device tags without treating them as stations", () => {
     expect(parseDeviceText("7B-020L-04 (RIVET) BASE PLATE")).toMatchObject({
-      kind: "device_number",
+      kind: "robot",
       parentStationId: "7B-020L",
       tagSuffix: "04"
     });
@@ -288,6 +288,29 @@ describe("parseDeviceText", () => {
     expect(parseStationDeviceTag("7B-060L-1N")).toMatchObject({
       parentStationId: "7B-060L",
       kind: "nest"
+    });
+  });
+
+  it("classifies known P736 labels with protected device meanings", () => {
+    expect(parseDeviceText("7B-020L-04")).toMatchObject({
+      kind: "robot",
+      parentStationId: "7B-020L",
+      tagSuffix: "04"
+    });
+    expect(parseDeviceText("7B-070L-DN1")).toMatchObject({
+      kind: "dunnage",
+      parentStationId: "7B-070L",
+      tagSuffix: "DN1"
+    });
+    expect(parseDeviceText("7B-070L-DN2")).toMatchObject({
+      kind: "dunnage",
+      parentStationId: "7B-070L",
+      tagSuffix: "DN2"
+    });
+    expect(parseDeviceText("7B-060L-1N")).toMatchObject({
+      kind: "nest",
+      parentStationId: "7B-060L",
+      tagSuffix: "1N"
     });
   });
 
@@ -418,8 +441,50 @@ describe("computeLayoutSemantics", () => {
     )?.id;
     const targetIdWithEarlier = withEarlier.devices.find((device) => device.sourceTextEntityIds.includes("target-label"))?.id;
 
-    expect(targetIdWithoutEarlier).toBe("semantic-device-device_number-target-label");
+    expect(targetIdWithoutEarlier).toBe("semantic-device-robot-target-label");
     expect(targetIdWithEarlier).toBe(targetIdWithoutEarlier);
+  });
+
+  it("detects known P736 device labels end to end with nearby geometry associations", () => {
+    const semantics = computeLayoutSemantics(
+      scenePackageWithEntities([
+        textDrawingEntity("p736-robot-label", "7B-020L-04", 0, 0),
+        lineDrawingEntity("p736-robot-geom", 120, 0, "src-dxf-insert-R1-block-robot-child-L1"),
+        textDrawingEntity("p736-dn1-label", "7B-070L-DN1", 5000, 0),
+        lineDrawingEntity("p736-dn1-geom", 5120, 0, "src-dxf-insert-DN1-block-dunnage-child-L1"),
+        textDrawingEntity("p736-dn2-label", "7B-070L-DN2", 10000, 0),
+        lineDrawingEntity("p736-dn2-geom", 10120, 0, "src-dxf-insert-DN2-block-dunnage-child-L1"),
+        textDrawingEntity("p736-nest-label", "7B-060L-1N", 15000, 0),
+        lineDrawingEntity("p736-nest-geom", 15120, 0, "src-dxf-insert-N1-block-nest-child-L1")
+      ])
+    );
+
+    const byLabel = new Map(semantics.devices.map((device) => [device.labelText, device]));
+
+    expect(byLabel.get("7B-020L-04")).toMatchObject({
+      kind: "robot",
+      stationId: "7B-020L",
+      associationStatus: "linked",
+      linkedEntityIds: ["p736-robot-geom"]
+    });
+    expect(byLabel.get("7B-070L-DN1")).toMatchObject({
+      kind: "dunnage",
+      stationId: "7B-070L",
+      associationStatus: "linked",
+      linkedEntityIds: ["p736-dn1-geom"]
+    });
+    expect(byLabel.get("7B-070L-DN2")).toMatchObject({
+      kind: "dunnage",
+      stationId: "7B-070L",
+      associationStatus: "linked",
+      linkedEntityIds: ["p736-dn2-geom"]
+    });
+    expect(byLabel.get("7B-060L-1N")).toMatchObject({
+      kind: "nest",
+      stationId: "7B-060L",
+      associationStatus: "linked",
+      linkedEntityIds: ["p736-nest-geom"]
+    });
   });
 
   it("classifies long notes as unknown annotations while preserving raw and display text", () => {

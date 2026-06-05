@@ -81,7 +81,7 @@ describe("label-to-geometry association", () => {
     expect(association.status).toBe("linked");
     expect(association.group?.entityIds).toEqual(["robot-line"]);
     expect(association.confidence).toBeGreaterThan(0.7);
-    expect(association.reason.join(" ")).toContain("numeric suffix is a device tag");
+    expect(association.reason.join(" ")).toContain("known P736 robot tag");
   });
 
   it("marks a label between two similarly scored groups as ambiguous", () => {

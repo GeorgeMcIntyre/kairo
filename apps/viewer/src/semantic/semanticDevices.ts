@@ -227,7 +227,10 @@ function labelKindHint(parsed: DeviceDictionaryMatch | undefined, group: Semanti
   const reasons: string[] = [];
   let boost = 0;
 
-  if ((parsed.kind === "device_number" || parsed.kind === "robot_model") && /\b(ROBOT|RBT|GENRO|FANUC)\b/.test(haystack)) {
+  if (
+    (parsed.kind === "robot" || parsed.kind === "device_number" || parsed.kind === "robot_model") &&
+    /\b(ROBOT|RBT|GENRO|FANUC)\b/.test(haystack)
+  ) {
     boost += 0.08;
     reasons.push("robot layer/block hint");
   }

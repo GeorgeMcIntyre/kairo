@@ -9,6 +9,7 @@ import type {
 } from "@kairo/schema";
 
 export * from "./kairoPackage";
+export * from "./layoutMap";
 
 export type { DrawingEntity, Geometry, GeometryDocument, Layer, SceneNode, ScenePackage, SourceMapDocument };
 

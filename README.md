@@ -47,7 +47,9 @@ Planned later:
 
 ```bash
 pnpm install
+pnpm typecheck
 pnpm test
+pnpm build
 pnpm dev
 pnpm --filter @kairo/cli build
 node packages/cli/dist/index.js validate examples/example-scene
@@ -58,6 +60,13 @@ node packages/cli/dist/index.js stage-viewer-scene imported-scene imported-scene
 ```
 
 `pnpm dev` launches the viewer. It loads the included sample scene, shows validation status, and lets you select scene tree nodes to highlight their geometry and inspect metadata/source paths.
+
+The viewer Semantics panel includes export-first review actions:
+
+- `Download QA MD`
+- `Download QA JSON`
+
+These QA exports list detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 labels, unknown labels, duplicates, and missing/uncertain items.
 
 To view a generated exploded scene in the dev viewer, stage it into the ignored viewer public scenes directory and open it by query string:
 

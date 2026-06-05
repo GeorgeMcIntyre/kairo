@@ -34,7 +34,7 @@ button:hover {
 .app-shell {
   position: relative;
   height: 100vh;
-  min-height: 620px;
+  min-height: 560px;
   overflow: hidden;
   background: #111927;
 }
@@ -58,9 +58,10 @@ button:hover {
 .properties-panel {
   position: absolute;
   z-index: 4;
-  top: 58px;
-  max-height: calc(100vh - 74px);
-  background: #161e2e;
+  top: 50px;
+  bottom: 36px;
+  max-height: none;
+  background: rgba(22, 30, 46, 0.96);
   border: 1px solid #29344a;
   border-radius: 6px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
@@ -69,22 +70,22 @@ button:hover {
 }
 
 .layers-shell {
-  left: 12px;
-  width: min(300px, calc(34vw - 18px));
+  left: 10px;
+  width: min(260px, calc(30vw - 14px));
 }
 
 .properties-panel {
-  right: 12px;
-  width: min(360px, calc(36vw - 18px));
+  right: 10px;
+  width: min(320px, calc(32vw - 14px));
 }
 
 .semantic-validation-panel {
   position: absolute;
   z-index: 5;
-  top: 58px;
-  left: 324px;
-  width: clamp(320px, 28vw, 420px);
-  max-height: min(640px, calc(100vh - 90px));
+  left: 10px;
+  bottom: 36px;
+  width: min(360px, calc(40vw - 14px));
+  max-height: min(440px, 44vh);
   overflow: auto;
   border: 1px solid #29344a;
   border-radius: 6px;
@@ -97,12 +98,12 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 14px;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
   border-bottom: 1px solid #29344a;
   color: #6a8499;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -110,7 +111,7 @@ button:hover {
 .panel-heading strong,
 .viewport-toolbar span {
   color: #c9d4df;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: none;
 }
 
@@ -123,9 +124,9 @@ button:hover {
 }
 
 .panel-hide-button {
-  min-height: 24px;
+  min-height: 22px;
   border-radius: 4px;
-  padding: 0 8px;
+  padding: 0 7px;
   font-size: 11px;
   font-weight: 800;
 }
@@ -163,7 +164,7 @@ button:hover {
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-rows: 48px 1fr;
+  grid-template-rows: 40px 1fr;
   background: #111927;
 }
 
@@ -218,10 +219,10 @@ button:hover {
 
 .scene-summary {
   display: flex;
-  min-width: 260px;
+  min-width: 210px;
   flex-direction: column;
   gap: 2px;
-  padding-right: 14px;
+  padding-right: 10px;
   border-right: 1px solid #29344a;
 }
 
@@ -248,17 +249,17 @@ button:hover {
   display: flex;
   flex: 1;
   align-items: center;
-  gap: 8px;
-  padding-left: 10px;
+  gap: 5px;
+  padding-left: 8px;
   white-space: nowrap;
 }
 
 .toolbar-actions button,
 .section-heading button {
-  min-height: 28px;
+  min-height: 24px;
   border-radius: 4px;
-  padding: 0 10px;
-  font-size: 12px;
+  padding: 0 8px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -285,18 +286,18 @@ button:hover {
 .toolbar-divider {
   display: inline-block;
   width: 1px;
-  height: 20px;
-  margin: 0 4px;
+  height: 18px;
+  margin: 0 2px;
   padding: 0;
   border: 0;
   background: #29344a;
 }
 
 .toolbar-label {
-  padding: 0 4px;
+  padding: 0 2px;
   border: 0;
   color: #5a7a95;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -306,7 +307,7 @@ button:hover {
 .dxf-drop-overlay {
   position: absolute;
   z-index: 20;
-  inset: 58px 12px 12px;
+  inset: 50px 10px 36px;
   display: grid;
   place-items: center;
   border: 2px dashed #6ab4e8;
@@ -682,8 +683,8 @@ button:hover {
 
 .text-overlay-diagnostics {
   position: absolute;
-  top: 56px;
-  right: 8px;
+  top: 48px;
+  right: 10px;
   z-index: 2;
   display: grid;
   grid-auto-rows: min-content;
@@ -707,17 +708,18 @@ button:hover {
 
 .properties-panel dl {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 10px 12px;
-  padding: 14px;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 7px 10px;
+  padding: 10px;
   margin: 0;
   border-bottom: 1px solid #29344a;
+  font-size: 12px;
 }
 
 .selection-summary {
   display: grid;
   gap: 4px;
-  padding: 14px;
+  padding: 10px;
   border-bottom: 1px solid #29344a;
   background: #111927;
 }
@@ -726,7 +728,7 @@ button:hover {
   min-width: 0;
   overflow-wrap: anywhere;
   color: #f4a51c;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .selection-summary span {
@@ -740,7 +742,7 @@ button:hover {
 
 .properties-panel dt {
   color: #6a8499;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -752,22 +754,22 @@ button:hover {
 }
 
 .metadata {
-  padding: 16px;
+  padding: 10px;
 }
 
 .metadata h2,
 .section-heading h2 {
-  margin: 0 0 12px;
-  font-size: 14px;
+  margin: 0 0 8px;
+  font-size: 12px;
 }
 
 .metadata-row {
   display: grid;
-  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.2fr);
-  gap: 12px;
-  padding: 8px 0;
+  grid-template-columns: minmax(78px, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  padding: 6px 0;
   border-top: 1px solid #1e2a3a;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .metadata-row span {
@@ -781,7 +783,7 @@ button:hover {
 }
 
 .layer-panel {
-  padding: 0 14px 14px;
+  padding: 0 10px 10px;
 }
 
 .section-heading {
@@ -792,7 +794,7 @@ button:hover {
 }
 
 .layer-list {
-  max-height: calc(100vh - 168px);
+  max-height: calc(100vh - 132px);
   overflow: auto;
   border: 1px solid #29344a;
   border-radius: 4px;
@@ -800,14 +802,14 @@ button:hover {
 
 .layer-row {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 58px;
-  gap: 8px;
+  grid-template-columns: 20px minmax(0, 1fr) 48px;
+  gap: 6px;
   align-items: center;
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: 28px;
+  padding: 5px 7px;
   border-bottom: 1px solid #1e2a3a;
   color: #b3c4d4;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .layer-row:last-child {
@@ -835,16 +837,16 @@ button:hover {
 .semantic-filter-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px;
   border-bottom: 1px solid #29344a;
 }
 
 .semantic-summary-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px;
   border-bottom: 1px solid #29344a;
 }
 
@@ -852,7 +854,7 @@ button:hover {
   display: grid;
   gap: 2px;
   min-width: 0;
-  padding: 8px;
+  padding: 6px;
   border: 1px solid #29344a;
   border-radius: 4px;
   background: #111927;
@@ -864,15 +866,15 @@ button:hover {
 
 .semantic-summary-grid strong {
   color: #f4f8fc;
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1;
 }
 
 .semantic-overlay-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 9px 12px;
+  gap: 6px 10px;
+  padding: 8px 10px;
   border-bottom: 1px solid #29344a;
   color: #8aa2b6;
   font-size: 11px;
@@ -918,7 +920,7 @@ button:hover {
 .semantic-filter-grid input,
 .semantic-filter-grid select {
   min-width: 0;
-  height: 30px;
+  height: 26px;
   border: 1px solid #34445c;
   border-radius: 4px;
   background: #111927;
@@ -948,16 +950,16 @@ button:hover {
 .semantic-panel-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid #29344a;
 }
 
 .semantic-panel-actions button {
-  min-height: 28px;
+  min-height: 24px;
   border-radius: 4px;
-  padding: 0 10px;
-  font-size: 12px;
+  padding: 0 8px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -981,8 +983,8 @@ button:hover {
 
 .semantic-validation-lists {
   display: grid;
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
 }
 
 .semantic-validation-lists section {
@@ -994,7 +996,7 @@ button:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .semantic-validation-lists h3 {
@@ -1021,8 +1023,8 @@ button:hover {
 
 .semantic-validation-lists ol {
   display: grid;
-  gap: 6px;
-  max-height: 220px;
+  gap: 5px;
+  max-height: 150px;
   margin: 0;
   padding: 0;
   overflow: auto;
@@ -1036,9 +1038,9 @@ button:hover {
 .semantic-validation-lists li button {
   display: grid;
   width: 100%;
-  min-height: 44px;
+  min-height: 36px;
   gap: 3px;
-  padding: 8px;
+  padding: 7px;
   border-radius: 4px;
   text-align: left;
 }
@@ -1133,7 +1135,7 @@ button:hover {
 .semantic-outlier-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .semantic-outlier-grid strong {
@@ -1180,7 +1182,7 @@ button:hover {
 
 .semantic-override-controls select {
   min-width: 0;
-  height: 30px;
+  height: 26px;
   border: 1px solid #34445c;
   border-radius: 4px;
   background: #111927;
@@ -1190,23 +1192,23 @@ button:hover {
 }
 
 .semantic-override-controls button {
-  min-height: 28px;
+  min-height: 24px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
 .diagnostics {
   position: absolute;
   z-index: 6;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
+  left: 10px;
+  right: 10px;
+  bottom: 36px;
   display: grid;
   grid-template-columns: minmax(220px, 300px) minmax(260px, 1fr) minmax(220px, 340px);
-  gap: 18px;
-  max-height: min(360px, calc(100vh - 92px));
-  padding: 14px;
+  gap: 10px;
+  max-height: min(300px, 34vh);
+  padding: 10px;
   border: 1px solid #29344a;
   border-radius: 6px;
   background: rgba(22, 30, 46, 0.97);
@@ -1225,13 +1227,13 @@ button:hover {
 .diagnostics-summary {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .diagnostics span,
 .diagnostics li {
   color: #6a8499;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .diagnostics ol {
@@ -1251,9 +1253,9 @@ button:hover {
 
 .bounds-diagnostics p,
 .semantic-diagnostics p {
-  margin: 12px;
+  margin: 10px;
   color: #6a8499;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .semantic-diagnostics h3 {
@@ -1265,12 +1267,12 @@ button:hover {
 
 .bounds-diagnostics ol,
 .semantic-diagnostics ol {
-  padding: 10px 14px 10px 28px;
+  padding: 8px 12px 8px 24px;
 }
 
 .bounds-diagnostics li,
 .semantic-diagnostics li {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   overflow-wrap: anywhere;
 }
 
@@ -1286,6 +1288,38 @@ button:hover {
   background: #161e2e;
 }
 
+.viewport-status-strip {
+  position: absolute;
+  z-index: 4;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid rgba(41, 52, 74, 0.86);
+  border-radius: 4px;
+  background: rgba(9, 17, 29, 0.78);
+  color: #8aa2b6;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.viewport-status-strip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewport-status-strip span:first-child {
+  max-width: 32vw;
+  color: #d7e4ee;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     height: 100vh;
@@ -1299,8 +1333,8 @@ button:hover {
   .viewport-toolbar {
     align-items: flex-start;
     flex-direction: column;
-    min-height: 92px;
-    padding: 8px 10px;
+    min-height: 82px;
+    padding: 6px 10px;
   }
 
   .scene-summary {
@@ -1324,9 +1358,9 @@ button:hover {
   .properties-panel,
   .semantic-validation-panel {
     top: auto;
-    bottom: 12px;
+    bottom: 36px;
     width: calc(50vw - 18px);
-    max-height: min(48vh, 420px);
+    max-height: min(42vh, 380px);
   }
 
   .layers-shell {
@@ -1340,15 +1374,16 @@ button:hover {
   .semantic-validation-panel {
     left: 12px;
     right: 12px;
-    bottom: calc(48vh + 22px);
+    bottom: calc(42vh + 46px);
     width: auto;
-    max-height: min(38vh, 360px);
+    max-height: min(34vh, 320px);
   }
 
   .diagnostics {
-    top: 104px;
-    bottom: 12px;
+    top: auto;
+    bottom: 36px;
     grid-template-columns: 1fr;
+    max-height: min(52vh, 420px);
   }
 }
 
@@ -1359,20 +1394,20 @@ button:hover {
     left: 12px;
     right: 12px;
     width: auto;
-    max-height: 36vh;
+    max-height: 32vh;
   }
 
   .layers-shell {
-    bottom: calc(36vh + 20px);
+    bottom: calc(32vh + 44px);
   }
 
   .properties-panel {
-    bottom: 12px;
+    bottom: 36px;
   }
 
   .semantic-validation-panel {
-    bottom: calc(72vh + 28px);
-    max-height: min(30vh, 300px);
+    bottom: calc(64vh + 54px);
+    max-height: min(28vh, 260px);
   }
 
   .diagnostics {
@@ -1383,5 +1418,14 @@ button:hover {
   .semantic-summary-grid,
   .semantic-outlier-grid {
     grid-template-columns: 1fr;
+  }
+
+  .viewport-status-strip {
+    gap: 6px;
+    font-size: 10px;
+  }
+
+  .viewport-status-strip span:first-child {
+    max-width: 46vw;
   }
 }
