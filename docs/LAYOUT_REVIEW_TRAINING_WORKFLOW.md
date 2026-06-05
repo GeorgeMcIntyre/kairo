@@ -24,6 +24,11 @@ No model training happens in this slice. The output is boring JSON/CSV/Markdown 
    - `reviewed-training-truth.json`
    - `reviewed-training-truth.csv`
    - `reviewed-training-summary.md`
+8. On a later layout extraction, import `reviewed-training-truth.json`.
+9. Export a comparison report:
+   - `training-truth-comparison.json`
+   - `training-truth-comparison.csv`
+   - `training-truth-comparison.md`
 
 ## Review Pack
 
@@ -74,9 +79,26 @@ Validation checks include:
 
 The viewer reports the first validation error in the semantic panel status area.
 
+## Truth Reuse
+
+Reviewed truth can be imported back into the viewer and compared against the current generated Layout Library package.
+
+Comparison statuses:
+
+| Status | Meaning |
+|---|---|
+| `matched` | Generated label/type/geometry matches trainable reviewed truth. |
+| `missing` | A trainable reviewed truth record is not present in the generated package. |
+| `type-mismatch` | The generated device type does not match the reviewed final type. |
+| `geometry-mismatch` | The generated geometry association does not match reviewed truth geometry. |
+| `excluded` | Reviewed truth says the record is rejected and not trainable. |
+| `review-only` | Reviewed truth keeps the record for manual review only. |
+| `extra` | Generated package contains a record not present in reviewed truth. |
+
 ## Current Limits
 
 - Review packs are session imports; they are not persisted in a project database yet.
 - Reviewer editing is done in JSON outside the viewer.
 - Corrected geometry is captured as an id/note; it does not rewrite CAD geometry.
 - Training truth is a data artifact only. No AI/model logic consumes it yet.
+- Comparison reports are deterministic QA gates, not automatic correction logic.

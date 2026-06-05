@@ -5,12 +5,17 @@ import { computeLayoutSemantics } from "../semantic/layoutSemantics";
 import { buildLayoutPackage, type LayoutPackage } from "./layoutPackage";
 import {
   buildBlankLayoutReviewPack,
+  compareLayoutPackageToTrainingTruth,
   exportLayoutReviewPackJson,
   exportReviewedTrainingSummaryMarkdown,
   exportReviewedTrainingTruthCsv,
   exportReviewedTrainingTruthJson,
+  exportTrainingTruthComparisonCsv,
+  exportTrainingTruthComparisonJson,
+  exportTrainingTruthComparisonMarkdown,
   mergeReviewedTrainingTruth,
   parseLayoutReviewPackJson,
+  parseReviewedTrainingTruthJson,
   type LayoutReviewPack
 } from "./layoutReviewPack";
 
@@ -256,5 +261,106 @@ describe("layout review pack", () => {
     expect(csv).toContain('"7B-070L-DN1","dunnage","dunnage","rejected","excluded"');
     expect(markdown).toContain("# Kairo Reviewed Training Summary");
     expect(markdown).toContain("| trainable | corrected | 7B-020L-04 | robot | robot_model | manual-robot-geometry |");
+  });
+
+  it("imports reviewed training truth for reuse in later layout checks", () => {
+    const layoutPackage = p736LayoutPackage();
+    const trainingTruth = mergeReviewedTrainingTruth(layoutPackage, reviewedPack(layoutPackage));
+    const parsed = parseReviewedTrainingTruthJson(exportReviewedTrainingTruthJson(trainingTruth));
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok ? parsed.trainingTruth.summary : undefined).toMatchObject({
+      totalRecords: 4,
+      trainableRecords: 2,
+      excludedRecords: 1,
+      reviewOnlyRecords: 1
+    });
+  });
+
+  it("fails invalid reviewed training truth with clear validation errors", () => {
+    const layoutPackage = p736LayoutPackage();
+    const trainingTruth = mergeReviewedTrainingTruth(layoutPackage, reviewedPack(layoutPackage));
+    const invalid = {
+      ...trainingTruth,
+      records: [
+        {
+          ...trainingTruth.records[0],
+          finalDeviceType: "not-a-device-kind",
+          trainingUse: "maybe"
+        }
+      ],
+      summary: {
+        ...trainingTruth.summary,
+        totalRecords: 99
+      }
+    };
+    const parsed = parseReviewedTrainingTruthJson(JSON.stringify(invalid));
+
+    expect(parsed.ok).toBe(false);
+    expect(parsed.ok ? [] : parsed.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "records[0].finalDeviceType",
+          message: "finalDeviceType must be a known Kairo device kind."
+        }),
+        expect.objectContaining({
+          path: "records[0].trainingUse",
+          message: "trainingUse must be trainable, excluded, or review-only."
+        }),
+        expect.objectContaining({
+          path: "summary.totalRecords",
+          message: "summary.totalRecords must match records length."
+        })
+      ])
+    );
+  });
+
+  it("compares a generated package to reviewed training truth", () => {
+    const layoutPackage = p736LayoutPackage();
+    const trainingTruth = mergeReviewedTrainingTruth(layoutPackage, reviewedPack(layoutPackage));
+    const comparison = compareLayoutPackageToTrainingTruth(layoutPackage, trainingTruth);
+    const byLabel = new Map(comparison.records.map((record) => [record.detectedLabel, record]));
+
+    expect(byLabel.get("7B-020L-04")).toMatchObject({
+      status: "type-mismatch",
+      truthDeviceType: "robot_model",
+      generatedDeviceType: "robot"
+    });
+    expect(byLabel.get("7B-070L-DN1")).toMatchObject({
+      status: "excluded",
+      truthTrainingUse: "excluded"
+    });
+    expect(byLabel.get("7B-070L-DN2")).toMatchObject({
+      status: "review-only",
+      truthTrainingUse: "review-only"
+    });
+    expect(byLabel.get("7B-060L-1N")).toMatchObject({
+      status: "matched",
+      truthDeviceType: "nest",
+      generatedDeviceType: "nest"
+    });
+    expect(comparison.summary).toMatchObject({
+      totalRecords: 4,
+      matched: 1,
+      typeMismatches: 1,
+      excluded: 1,
+      reviewOnly: 1
+    });
+  });
+
+  it("exports training truth comparison JSON, CSV, and Markdown", () => {
+    const layoutPackage = p736LayoutPackage();
+    const comparison = compareLayoutPackageToTrainingTruth(
+      layoutPackage,
+      mergeReviewedTrainingTruth(layoutPackage, reviewedPack(layoutPackage))
+    );
+    const json = JSON.parse(exportTrainingTruthComparisonJson(comparison));
+    const csv = exportTrainingTruthComparisonCsv(comparison);
+    const markdown = exportTrainingTruthComparisonMarkdown(comparison);
+
+    expect(json.schema).toBe("kairo-training-truth-comparison");
+    expect(csv).toContain('"type-mismatch","7B-020L-04","robot_model","robot"');
+    expect(markdown).toContain("# Kairo Training Truth Comparison");
+    expect(markdown).toContain("| type-mismatch | 7B-020L-04 | robot_model | robot |");
   });
 });

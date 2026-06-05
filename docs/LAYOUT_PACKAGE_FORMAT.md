@@ -127,6 +127,35 @@ Merge behavior:
 - `rejected` records are retained but marked `excluded`.
 - `uncertain` records are retained as `review-only`.
 
+## Training Truth Comparison
+
+Comparison export names:
+
+- `training-truth-comparison.json`
+- `training-truth-comparison.csv`
+- `training-truth-comparison.md`
+
+Schema:
+
+```json
+{
+  "schema": "kairo-training-truth-comparison",
+  "schemaVersion": 1
+}
+```
+
+Comparison records use these statuses:
+
+- `matched`
+- `missing`
+- `type-mismatch`
+- `geometry-mismatch`
+- `excluded`
+- `review-only`
+- `extra`
+
+This report lets Kairo check a new/generated Layout Package against a saved reviewed truth package without introducing model logic.
+
 ## Example
 
 See `docs/examples/p736-layout-library-package.sample.json` for a compact package example using the known P736 labels.

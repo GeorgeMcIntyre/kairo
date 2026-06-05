@@ -13,9 +13,9 @@ Last updated: 2026-06-05
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 310/310 passed |
+| `pnpm test` | 314/314 passed |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~911 kB, chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle ~923 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -67,7 +67,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Semantic QA export MVP: deterministic Markdown/JSON exports include detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 checklist, unknown labels, duplicates, and missing/uncertain rows.
 - Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
-- Reviewed training workflow MVP: viewer can export a blank review template JSON, import a reviewed review-pack JSON with schema validation, and export merged reviewed training truth as JSON/CSV/Markdown. Corrected rows become trainable truth, rejected rows are excluded, and uncertain rows remain review-only.
+- Reviewed training workflow MVP: viewer can export a blank review template JSON, import a reviewed review-pack JSON with schema validation, and export merged reviewed training truth as JSON/CSV/Markdown. Corrected rows become trainable truth, rejected rows are excluded, and uncertain rows remain review-only. Saved reviewed truth can be imported later and compared against the current generated package with JSON/CSV/Markdown comparison exports.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.

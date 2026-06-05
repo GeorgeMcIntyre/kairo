@@ -45,13 +45,19 @@ import {
 } from "./layoutLibrary/layoutPackage";
 import {
   buildBlankLayoutReviewPack,
+  compareLayoutPackageToTrainingTruth,
   exportLayoutReviewPackJson,
   exportReviewedTrainingSummaryMarkdown,
   exportReviewedTrainingTruthCsv,
   exportReviewedTrainingTruthJson,
+  exportTrainingTruthComparisonCsv,
+  exportTrainingTruthComparisonJson,
+  exportTrainingTruthComparisonMarkdown,
   mergeReviewedTrainingTruth,
   parseLayoutReviewPackJson,
-  type LayoutReviewPack
+  parseReviewedTrainingTruthJson,
+  type LayoutReviewPack,
+  type ReviewedTrainingTruthPackage
 } from "./layoutLibrary/layoutReviewPack";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics, type LayoutSemantics } from "./semantic/layoutSemantics";
@@ -971,6 +977,7 @@ function LayerPanel({
 export function App() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const reviewPackInputRef = useRef<HTMLInputElement | null>(null);
+  const trainingTruthInputRef = useRef<HTMLInputElement | null>(null);
   const sceneLoadSerialRef = useRef(0);
   const [scenePackage, setScenePackage] = useState<ScenePackage>(sampleScenePackage);
   const [jobSession, setJobSession] = useState<KairoJobSession>(() => createJobSessionForScenePackage(sampleScenePackage));
@@ -998,6 +1005,8 @@ export function App() {
   });
   const [semanticCopyStatus, setSemanticCopyStatus] = useState<string | undefined>();
   const [importedLayoutReviewPack, setImportedLayoutReviewPack] = useState<LayoutReviewPack | undefined>();
+  const [importedReviewedTrainingTruth, setImportedReviewedTrainingTruth] =
+    useState<ReviewedTrainingTruthPackage | undefined>();
   const [layoutReviewStatus, setLayoutReviewStatus] = useState<string | undefined>();
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
@@ -1133,6 +1142,11 @@ export function App() {
   const reviewedTrainingTruth = useMemo(
     () => mergeReviewedTrainingTruth(layoutLibraryPackage, importedLayoutReviewPack ?? blankLayoutReviewPack),
     [layoutLibraryPackage, importedLayoutReviewPack, blankLayoutReviewPack]
+  );
+  const activeReviewedTrainingTruth = importedReviewedTrainingTruth ?? reviewedTrainingTruth;
+  const trainingTruthComparison = useMemo(
+    () => compareLayoutPackageToTrainingTruth(layoutLibraryPackage, activeReviewedTrainingTruth),
+    [layoutLibraryPackage, activeReviewedTrainingTruth]
   );
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
@@ -1418,6 +1432,7 @@ export function App() {
   useEffect(() => {
     setSemanticDeviceOverrides({});
     setImportedLayoutReviewPack(undefined);
+    setImportedReviewedTrainingTruth(undefined);
     setLayoutReviewStatus(undefined);
   }, [scenePackage]);
 
@@ -1509,6 +1524,10 @@ export function App() {
     reviewPackInputRef.current?.click();
   };
 
+  const openReviewedTrainingTruthPicker = () => {
+    trainingTruthInputRef.current?.click();
+  };
+
   const downloadLayoutReviewTemplate = () => {
     downloadTextFile("kairo-layout-review-template.json", exportLayoutReviewPackJson(blankLayoutReviewPack), "application/json");
   };
@@ -1524,6 +1543,7 @@ export function App() {
         return;
       }
       setImportedLayoutReviewPack(result.reviewPack);
+      setImportedReviewedTrainingTruth(undefined);
       setLayoutReviewStatus(`Imported review pack: ${result.reviewPack.records.length} record(s)`);
     } catch (error) {
       setImportedLayoutReviewPack(undefined);
@@ -1535,6 +1555,31 @@ export function App() {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (file) void importLayoutReviewPack(file);
+  };
+
+  const importReviewedTrainingTruth = async (file: File) => {
+    try {
+      const content = await file.text();
+      const result = parseReviewedTrainingTruthJson(content);
+      if (!result.ok) {
+        const first = result.errors[0];
+        setImportedReviewedTrainingTruth(undefined);
+        setLayoutReviewStatus(first ? `Truth import failed: ${first.path} ${first.message}` : "Truth import failed");
+        return;
+      }
+      setImportedReviewedTrainingTruth(result.trainingTruth);
+      setImportedLayoutReviewPack(undefined);
+      setLayoutReviewStatus(`Imported training truth: ${result.trainingTruth.records.length} record(s)`);
+    } catch (error) {
+      setImportedReviewedTrainingTruth(undefined);
+      setLayoutReviewStatus(error instanceof Error ? `Truth import failed: ${error.message}` : "Truth import failed");
+    }
+  };
+
+  const handleReviewedTrainingTruthInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) void importReviewedTrainingTruth(file);
   };
 
   const reviewedTrainingTruthContent = (format: AdvancedLayoutExportFormat) => {
@@ -1549,6 +1594,18 @@ export function App() {
     const baseName =
       format === "markdown" ? "reviewed-training-summary" : format === "csv" ? "reviewed-training-truth" : "reviewed-training-truth";
     downloadTextFile(`${baseName}.${extension}`, reviewedTrainingTruthContent(format), mime);
+  };
+
+  const trainingTruthComparisonContent = (format: AdvancedLayoutExportFormat) => {
+    if (format === "json") return exportTrainingTruthComparisonJson(trainingTruthComparison);
+    if (format === "csv") return exportTrainingTruthComparisonCsv(trainingTruthComparison);
+    return exportTrainingTruthComparisonMarkdown(trainingTruthComparison);
+  };
+
+  const downloadTrainingTruthComparison = (format: AdvancedLayoutExportFormat) => {
+    const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
+    const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
+    downloadTextFile(`training-truth-comparison.${extension}`, trainingTruthComparisonContent(format), mime);
   };
 
   const compactSelectionStatus = selectedSemanticDetails
@@ -1589,6 +1646,13 @@ export function App() {
               accept=".json,application/json"
               className="file-input"
               onChange={handleLayoutReviewPackInputChange}
+              type="file"
+            />
+            <input
+              ref={trainingTruthInputRef}
+              accept=".json,application/json"
+              className="file-input"
+              onChange={handleReviewedTrainingTruthInputChange}
               type="file"
             />
             <button onClick={openLocalFilePicker} type="button">
@@ -2024,6 +2088,18 @@ export function App() {
             </button>
             <button onClick={() => downloadReviewedTrainingTruth("markdown")} type="button">
               Download Truth MD
+            </button>
+            <button onClick={openReviewedTrainingTruthPicker} type="button">
+              Import Truth JSON
+            </button>
+            <button onClick={() => downloadTrainingTruthComparison("json")} type="button">
+              Download Compare JSON
+            </button>
+            <button onClick={() => downloadTrainingTruthComparison("csv")} type="button">
+              Download Compare CSV
+            </button>
+            <button onClick={() => downloadTrainingTruthComparison("markdown")} type="button">
+              Download Compare MD
             </button>
             {layoutReviewStatus ? (
               <span className="semantic-copy-status" role="status">
