@@ -13,9 +13,9 @@ Last updated: 2026-06-05
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 275/275 passed |
+| `pnpm test` | 305/305 passed |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~860 kB, chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle ~898 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
 
@@ -66,6 +66,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Manual correction MVP: selected semantic devices can be session-overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Semantic QA export MVP: deterministic Markdown/JSON exports include detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 checklist, unknown labels, duplicates, and missing/uncertain rows.
+- Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
@@ -101,10 +102,11 @@ Known visual issues still requiring work:
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
 1. Persist semantic QA review decisions and manual overrides in a project-side artifact.
-2. Semantic association QA on the Scott DXF using the new QA Markdown/JSON exports.
-3. Promote protected layout-specific labels into data/config.
-4. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
-5. Text visual QA / alignment polish
+2. Export a real P736/Scott Layout Library package and save a reviewed fixture from George's accepted/corrected/rejected rows.
+3. Semantic association QA on the Scott DXF using the new QA Markdown/JSON/Layout Library exports.
+4. Promote protected layout-specific labels into data/config.
+5. **ISSUE-004** - Drawing-first viewer UI (maximize canvas, toolbar)
+6. Text visual QA / alignment polish
 
 ## Phase 10R-A: Transform Complexity Audit Findings (Scott DXF2013)
 

@@ -37,6 +37,12 @@ import {
   exportAdvancedLayoutJson,
   exportAdvancedLayoutMarkdown
 } from "./advancedEngineering/advancedLayout";
+import {
+  buildLayoutPackage,
+  exportLayoutPackageCsv,
+  exportLayoutPackageJson,
+  exportLayoutPackageMarkdown
+} from "./layoutLibrary/layoutPackage";
 import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
 import { computeLayoutSemantics, type LayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
@@ -1103,6 +1109,10 @@ export function App() {
     () => buildAdvancedLayoutModel(scenePackage, layoutSemantics),
     [scenePackage, layoutSemantics]
   );
+  const layoutLibraryPackage = useMemo(
+    () => buildLayoutPackage(scenePackage, layoutSemantics, advancedLayoutModel),
+    [scenePackage, layoutSemantics, advancedLayoutModel]
+  );
   const outlierSummary = useMemo(() => computeOutlierSummary(robustBounds), [robustBounds]);
   const hiddenOutlierEntityIds = useMemo(
     () => (showOutliers ? new Set<string>() : new Set(robustBounds.outlierEntityIds)),
@@ -1458,6 +1468,18 @@ export function App() {
     const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
     const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
     downloadTextFile(`kairo-advanced-layout.${extension}`, advancedLayoutExportContent(format), mime);
+  };
+
+  const layoutLibraryExportContent = (format: AdvancedLayoutExportFormat) => {
+    if (format === "json") return exportLayoutPackageJson(layoutLibraryPackage);
+    if (format === "csv") return exportLayoutPackageCsv(layoutLibraryPackage);
+    return exportLayoutPackageMarkdown(layoutLibraryPackage);
+  };
+
+  const downloadLayoutLibraryExport = (format: AdvancedLayoutExportFormat) => {
+    const extension = format === "json" ? "json" : format === "csv" ? "csv" : "md";
+    const mime = format === "json" ? "application/json" : format === "csv" ? "text/csv" : "text/markdown";
+    downloadTextFile(`kairo-layout-library-package.${extension}`, layoutLibraryExportContent(format), mime);
   };
 
   const compactSelectionStatus = selectedSemanticDetails
@@ -1900,6 +1922,16 @@ export function App() {
             </button>
             <button onClick={() => downloadAdvancedLayoutExport("markdown")} type="button">
               Download AE MD
+            </button>
+            <span className="semantic-action-divider" aria-hidden="true" />
+            <button onClick={() => downloadLayoutLibraryExport("json")} type="button">
+              Download Library JSON
+            </button>
+            <button onClick={() => downloadLayoutLibraryExport("csv")} type="button">
+              Download Library CSV
+            </button>
+            <button onClick={() => downloadLayoutLibraryExport("markdown")} type="button">
+              Download Library MD
             </button>
             {semanticCopyStatus ? (
               <span className="semantic-copy-status" role="status">

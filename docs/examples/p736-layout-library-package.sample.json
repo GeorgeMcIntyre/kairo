@@ -1,0 +1,56 @@
+{
+  "schema": "kairo-layout-library-package",
+  "schemaVersion": 1,
+  "source": {
+    "format": "dxf",
+    "path": "C:\\layouts\\p736-layout.dxf",
+    "displayName": "p736-layout.dxf",
+    "units": "millimeter",
+    "axisUp": "Z",
+    "handedness": "right"
+  },
+  "deviceClassifications": [
+    {
+      "detectedLabel": "7B-020L-04",
+      "classifiedDeviceType": "robot",
+      "equipmentTypeId": "robot.generic",
+      "reviewStatus": "accepted"
+    },
+    {
+      "detectedLabel": "7B-070L-DN1",
+      "classifiedDeviceType": "dunnage",
+      "equipmentTypeId": "dunnage.station",
+      "reviewStatus": "accepted"
+    },
+    {
+      "detectedLabel": "7B-070L-DN2",
+      "classifiedDeviceType": "dunnage",
+      "equipmentTypeId": "dunnage.station",
+      "reviewStatus": "accepted"
+    },
+    {
+      "detectedLabel": "7B-060L-1N",
+      "classifiedDeviceType": "nest",
+      "equipmentTypeId": "nest.station",
+      "reviewStatus": "accepted"
+    }
+  ],
+  "trainingPack": [
+    {
+      "detectedLabel": "7B-020L-04",
+      "detectedItemType": "robot",
+      "expectedItemType": "robot",
+      "reviewerStatus": "accepted"
+    }
+  ],
+  "summary": {
+    "extractedLabels": 4,
+    "classifiedDevices": 4,
+    "geometryAssociations": 4,
+    "stationCellCandidates": 3,
+    "libraryItemCandidates": 4,
+    "trainingRecords": 4,
+    "acceptedTrainingRecords": 4,
+    "uncertainTrainingRecords": 0
+  }
+}

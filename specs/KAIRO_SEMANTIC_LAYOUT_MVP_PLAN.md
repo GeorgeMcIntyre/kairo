@@ -34,6 +34,7 @@ Already present:
 - `apps/viewer/src/advancedEngineering`: line/station/device/annotation export model.
 - Viewer export actions for semantic summary, semantic QA, and Advanced Engineering JSON/CSV/Markdown.
 - Advanced Engineering exports now include deterministic BOM rows with station, equipment type, device kind, labels, quantity, linked entity IDs, confidence, and review status. Markdown splits ready rows from rows needing review.
+- Layout Library exports now package source metadata, extracted labels, classifications, geometry associations, station/cell candidates, reusable library item candidates, training records, and BOM rows for future live-layout review.
 
 Keep the next implementation inside these boundaries unless a shared model clearly belongs in `packages/core`.
 
@@ -48,6 +49,7 @@ DXF / .kairo package
   -> EquipmentMapping
   -> SemanticLayoutModel
   -> ValidationReport + BomRows + QA exports
+  -> LayoutPackage + TrainingPack exports
 ```
 
 Recommended package/module split for the next slices:
@@ -56,6 +58,7 @@ Recommended package/module split for the next slices:
 - `apps/viewer/src/equipment`: add the first equipment library and mapping rules here first.
 - `apps/viewer/src/layoutValidation`: add envelope and rule checks here first.
 - `apps/viewer/src/advancedEngineering`: consume the semantic layout model for exports.
+- `apps/viewer/src/layoutLibrary`: package extracted layout intelligence into reusable item candidates and training records.
 - Promote stable types/helpers to `packages/core` only after the data shape survives one review pass.
 
 Do not add a database, server, solver, or new renderer for the MVP.

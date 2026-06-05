@@ -17,6 +17,18 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## DONE
 
+### Layout Library package foundation - DONE
+
+**Completed:** 2026-06-05
+
+Kairo now exports a reusable Layout Library package from the existing semantic and Advanced Engineering pipeline. The package includes source DXF metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows.
+
+Exports are available as JSON, CSV, and Markdown through the semantic panel. P736 regression coverage confirms `7B-020L-04` as robot, `7B-070L-DN1` and `7B-070L-DN2` as dunnage, and `7B-060L-1N` as nest in the package/training records.
+
+**Docs:** See `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
+
+---
+
 ### ISSUE-021: Large DXF performance diagnostics and semantic deferral QA (P1)
 
 **Goal:** Validate the new deferred semantic-analysis load path on the primary Scott DXF and record file read, DXF parse, geometry batch, semantic analysis, first render, and first interactive timings.
