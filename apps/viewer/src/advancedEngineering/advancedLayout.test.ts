@@ -13,6 +13,8 @@ function bounds(x: number, y: number, size = 100): Bounds3 {
   return { min: [x, y, 0], max: [x + size, y + size, 0] };
 }
 
+const linkedGeometryBounds: Bounds3 = { min: [1000, 2000, 0], max: [2000, 3000, 0] };
+
 function scenePackage(): ScenePackage {
   return {
     manifest: {
@@ -117,7 +119,22 @@ function device(
     associationStatus,
     associationConfidence: associationStatus === "linked" ? 0.86 : 0.2,
     associationReason: [associationStatus === "linked" ? "nearby geometry cluster" : "no nearby geometry group found"],
-    associationCandidates: [],
+    associationCandidates:
+      associationStatus === "linked"
+        ? [
+            {
+              groupId: `group-${id}`,
+              source: "cluster",
+              entityIds: [`geom-${id}`],
+              bounds: linkedGeometryBounds,
+              centroid: [1500, 2500, 0],
+              distanceToBounds: 0,
+              distanceToCentroid: 0,
+              confidence: 0.86,
+              reason: ["nearby geometry cluster"]
+            }
+          ]
+        : [],
     ...patch
   };
 }
@@ -192,7 +209,12 @@ describe("advanced engineering layout model", () => {
       equipmentTypeId: "robot.generic",
       equipmentDisplayName: "Generic industrial robot",
       bomCategory: "robot",
-      equipmentRequiresReview: true
+      equipmentRequiresReview: true,
+      footprintSource: "geometry-bounds",
+      footprintBounds: linkedGeometryBounds,
+      clearanceBounds: { min: [0, 1000, 0], max: [3000, 4000, 0] },
+      paddedBounds: { min: [-250, 750, 0], max: [3250, 4250, 0] },
+      paddingMm: 250
     });
     expect(model.summary.devicesByEquipmentType).toEqual({
       "robot.generic": 4
@@ -234,9 +256,9 @@ describe("advanced engineering layout model", () => {
     });
     expect(csv).toContain('"Fence ""Panel"", 1424mm x 2388mm with install risk | by others"');
     expect(markdown).toContain("Fence \"Panel\", 1424mm x 2388mm with install risk \\| by others");
-    expect(csv).toContain('"robot.generic","robot"');
+    expect(csv).toContain('"robot.generic","robot","geometry-bounds","250"');
     expect(markdown).toContain("## Equipment Library Types");
-    expect(markdown).toContain("| 7B-010L-04 | device_number | robot.generic | 7B-010L |");
+    expect(markdown).toContain("| 7B-010L-04 | device_number | robot.generic | geometry-bounds | 250 | 7B-010L |");
   });
 
   it("retains strong-tag long device text as annotation context without changing the primary device label", () => {

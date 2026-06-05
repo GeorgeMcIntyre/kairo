@@ -5,6 +5,7 @@ import type { DeviceKind } from "../semantic/deviceDictionary";
 import type { DeviceGeometryAssociationStatus } from "../semantic/semanticDevices";
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity } from "../semantic/layoutSemantics";
 import { findEquipmentForDeviceKind, type EquipmentBomCategory } from "../equipment/equipmentLibrary";
+import { buildEquipmentEnvelope, type EquipmentFootprintSource } from "../equipment/equipmentEnvelope";
 
 export type AdvancedLayoutModelVersion = "0.1";
 export type FoundationItemCategory =
@@ -62,6 +63,12 @@ export type Device = {
   geometryGroupId?: string;
   bounds: Bounds3;
   centroid: Vec3;
+  footprintBounds: Bounds3;
+  clearanceBounds: Bounds3;
+  paddedBounds: Bounds3;
+  footprintSource: EquipmentFootprintSource;
+  clearanceReason?: string;
+  paddingMm: number;
   associationStatus: DeviceGeometryAssociationStatus;
   confidence: number;
   evidence: string[];
@@ -248,6 +255,7 @@ function buildDevices(semantics: LayoutSemantics): Device[] {
   return semantics.devices
     .map((device) => {
       const equipment = findEquipmentForDeviceKind(device.kind);
+      const envelope = buildEquipmentEnvelope(device, equipment);
       return {
         id: device.id,
         kind: device.kind,
@@ -264,9 +272,20 @@ function buildDevices(semantics: LayoutSemantics): Device[] {
         geometryGroupId: device.geometryGroupId,
         bounds: device.bounds,
         centroid: device.centroid,
+        footprintBounds: envelope.footprintBounds,
+        clearanceBounds: envelope.clearanceBounds,
+        paddedBounds: envelope.paddedBounds,
+        footprintSource: envelope.footprintSource,
+        clearanceReason: envelope.clearanceReason,
+        paddingMm: envelope.paddingMm,
         associationStatus: device.associationStatus,
         confidence: device.confidence,
-        evidence: [...device.evidence, ...device.associationReason, ...(equipment?.reason ?? ["no equipment library match"])]
+        evidence: [
+          ...device.evidence,
+          ...device.associationReason,
+          ...(equipment?.reason ?? ["no equipment library match"]),
+          ...envelope.evidence
+        ]
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -512,9 +531,37 @@ export function exportAdvancedLayoutJson(model: AdvancedLayoutModel): string {
 
 export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
   const rows = [
-    csvRow(["section", "id", "parent", "type", "equipment_type", "bom_category", "status", "confidence", "source_ids", "label", "notes"]),
+    csvRow([
+      "section",
+      "id",
+      "parent",
+      "type",
+      "equipment_type",
+      "bom_category",
+      "footprint_source",
+      "padding_mm",
+      "status",
+      "confidence",
+      "source_ids",
+      "label",
+      "notes"
+    ]),
     ...model.lines.map((line) =>
-      csvRow(["line", line.id, "", line.linePrefix, "", "", "", line.confidence.toFixed(2), line.stationIds, line.name, line.evidence.join("; ")])
+      csvRow([
+        "line",
+        line.id,
+        "",
+        line.linePrefix,
+        "",
+        "",
+        "",
+        "",
+        "",
+        line.confidence.toFixed(2),
+        line.stationIds,
+        line.name,
+        line.evidence.join("; ")
+      ])
     ),
     ...model.stations.map((station) =>
       csvRow([
@@ -522,6 +569,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         station.id,
         station.lineId,
         station.side,
+        "",
+        "",
         "",
         "",
         "",
@@ -539,6 +588,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         device.kind,
         device.equipmentTypeId ?? "",
         device.bomCategory ?? "",
+        device.footprintSource,
+        device.paddingMm,
         device.associationStatus,
         device.confidence.toFixed(2),
         [...device.sourceTextIds, ...device.linkedEntityIds],
@@ -556,6 +607,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         "",
         "",
+        "",
+        "",
         annotation.sourceTextIds,
         annotation.rawText,
         annotation.evidence.join("; ")
@@ -567,6 +620,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         item.id,
         item.stationId ?? "",
         item.category,
+        "",
+        "",
         "",
         "",
         item.installRisk,
@@ -584,6 +639,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         warning.category,
         "",
         "",
+        "",
+        "",
         warning.severity,
         "",
         warning.sourceIds,
@@ -597,6 +654,8 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         item.id,
         "",
         item.category,
+        "",
+        "",
         "",
         "",
         item.status,
@@ -656,13 +715,15 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     "",
     "## Devices",
     "",
-    markdownRow(["Label", "Type", "Equipment", "Station", "Confidence", "Association", "Linked entities"]),
-    "|---|---|---|---|---:|---|---:|",
+    markdownRow(["Label", "Type", "Equipment", "Footprint", "Padding", "Station", "Confidence", "Association", "Linked entities"]),
+    "|---|---|---|---|---:|---|---:|---|---:|",
     ...model.devices.map((device) =>
       markdownRow([
         device.primaryLabel,
         device.kind,
         device.equipmentTypeId ?? "unmapped",
+        device.footprintSource,
+        device.paddingMm,
         device.stationId ?? "-",
         device.confidence.toFixed(2),
         device.associationStatus,
