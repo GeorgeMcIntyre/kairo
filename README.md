@@ -137,3 +137,5 @@ High-risk areas are JT export, direct DWG parsing, loss of engineering metadata,
 Controls are a read-only POC first, schema validation, source mapping, import/export reports, golden sample files, no silent data loss, and tight vertical slices.
 
 See [specs/FORMAT_OVERVIEW.md](specs/FORMAT_OVERVIEW.md), [specs/ROADMAP.md](specs/ROADMAP.md), and [specs/RISK_ASSESSMENT.md](specs/RISK_ASSESSMENT.md).
+
+For the current DXF-to-semantic-layout MVP planning pass, see [specs/KAIRO_SEMANTIC_LAYOUT_MVP_PLAN.md](specs/KAIRO_SEMANTIC_LAYOUT_MVP_PLAN.md).

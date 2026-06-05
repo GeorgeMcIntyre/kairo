@@ -41,6 +41,8 @@ POC readiness: ~89%.
 
 ## Recommended Priority Order
 
+Use `specs/KAIRO_SEMANTIC_LAYOUT_MVP_PLAN.md` as the coder-facing plan for the DXF-to-semantic-layout MVP. It defines the smallest useful scope for DXF import, object detection, equipment metadata, footprint/clearance/padding, validation rules, BOM extraction, and future auto-layout scoring inputs.
+
 ### 1 - ISSUE-020: `.kairo` package QA and sharing workflow (P1, NEXT)
 
 Create a `.kairo` package from the primary Scott import, open it through the viewer on the shared test port, and confirm other domain users can load the package without staged public scene assets.

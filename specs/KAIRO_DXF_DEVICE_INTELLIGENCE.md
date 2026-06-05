@@ -67,7 +67,7 @@ Known text classifications:
 - `FENCE PANEL`, `FENCE` -> `fence`
 - `CABLE TRAY` -> `cable_tray`
 - `DROP` -> `service_drop`
-- `7B-020L-04` -> `device_number`, parent station `7B-020L`
+- `7B-020L-04` -> `robot`, parent station `7B-020L`
 - `7B-070L-DN1`, `7B-070L-DN2` -> `dunnage`, parent station `7B-070L`
 - `7B-060L-1N` -> `nest`, parent station `7B-060L`
 - other `station-suffix` tags -> `station_device_tag`
@@ -150,4 +150,4 @@ The viewer semantic panel also exposes session-only overrides for device class a
 
 ## Next Recommended Work
 
-Manually QA semantic associations on the Scott DXF, then persist reviewed overrides and confirmed device records to a project-level semantic model.
+Manually QA semantic associations on the Scott DXF, then follow `specs/KAIRO_SEMANTIC_LAYOUT_MVP_PLAN.md` to add equipment library metadata, footprint/clearance validation, and BOM-oriented exports in small slices.
