@@ -33,6 +33,7 @@ Already present:
 - `apps/viewer/src/semantic`: text extraction, station parsing, device classification, geometry association, semantic QA report.
 - `apps/viewer/src/advancedEngineering`: line/station/device/annotation export model.
 - Viewer export actions for semantic summary, semantic QA, and Advanced Engineering JSON/CSV/Markdown.
+- Advanced Engineering exports now include deterministic BOM rows with station, equipment type, device kind, labels, quantity, linked entity IDs, confidence, and review status.
 
 Keep the next implementation inside these boundaries unless a shared model clearly belongs in `packages/core`.
 
@@ -296,10 +297,11 @@ Use synthetic scene/semantic fixtures first. Add Scott-layout golden expectation
 1. Add `apps/viewer/src/equipment/equipmentLibrary.ts` with static MVP entries and mapping tests. Done in `apps/viewer/src/equipment`.
 2. Add envelope helpers for footprint, clearance, and padding using `Bounds3`. Done in `apps/viewer/src/equipment/equipmentEnvelope.ts`.
 3. Add `apps/viewer/src/layoutValidation/layoutRules.ts` with the deterministic rules above. Done in `apps/viewer/src/layoutValidation/layoutRules.ts`.
-4. Add `buildSemanticLayoutModel(scenePackage, layoutSemantics)` that joins devices to equipment metadata and validation issues.
-5. Extend Advanced Engineering export with `bomRows`, `validationIssues`, and envelope source fields.
-6. Add export tests for P736 labels: robot, dunnage, dunnage, nest.
-7. Only then expose a viewer download/copy action if the JSON/Markdown is useful in tests.
+4. Add `buildSemanticLayoutModel(scenePackage, layoutSemantics)` that joins devices to equipment metadata and validation issues. Covered by `buildAdvancedLayoutModel(...)` for the current viewer MVP.
+5. Extend Advanced Engineering export with `bomRows`, `validationIssues`, and envelope source fields. Done in `apps/viewer/src/advancedEngineering/advancedLayout.ts`.
+6. Add export tests for P736 labels: robot, dunnage, dunnage, nest. Done in `apps/viewer/src/advancedEngineering/advancedLayout.test.ts`.
+7. Next recommended slice: add a small reviewed-export fixture from a real P736/Scott DXF once George confirms the expected row counts visually.
+8. Only then expose any extra viewer download/copy actions if the JSON/Markdown is useful in tests.
 
 ## Non-Goals For This MVP
 
@@ -311,6 +313,14 @@ Use synthetic scene/semantic fixtures first. Add Scott-layout golden expectation
 - No broad DXF importer rewrite.
 - No rotated polygon collision engine.
 - No persistent reviewed overrides until the export shape is proven.
+
+## Known Limitations After BOM Rows
+
+- BOM rows are count/review rows, not purchasing records.
+- Grouping is by station, equipment type, device kind, and fallback normalized label; it does not infer vendor/model/part numbers.
+- `ready` means mapped, linked, and above the current confidence threshold. It is not a release or purchasing approval.
+- Geometry remains axis-aligned bounds from linked DXF geometry or library fallback footprints.
+- P736 coverage is still synthetic regression coverage until a manually reviewed real-layout fixture is added.
 
 ## Done Criteria
 

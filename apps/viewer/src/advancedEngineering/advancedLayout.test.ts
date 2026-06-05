@@ -1,6 +1,7 @@
 import type { Bounds3, Vec3 } from "@kairo/core";
-import type { ScenePackage } from "@kairo/schema";
+import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { describe, expect, it } from "vitest";
+import { computeLayoutSemantics } from "../semantic/layoutSemantics";
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity, StationSemantic } from "../semantic/layoutSemantics";
 import {
   buildAdvancedLayoutModel,
@@ -42,6 +43,54 @@ function scenePackage(): ScenePackage {
     materials: { materials: [] },
     sourceMap: { sources: [] },
     geometry: []
+  };
+}
+
+function textDrawingEntity(id: string, text: string, x: number, y: number): DrawingEntity {
+  return {
+    id,
+    type: "text",
+    text,
+    position: [x, y, 0],
+    rotationDeg: 0,
+    height: 100,
+    origin: "TEXT",
+    layerId: "layer-text"
+  };
+}
+
+function lineDrawingEntity(id: string, x: number, y: number, sourceRef?: string): DrawingEntity {
+  return {
+    id,
+    type: "line",
+    start: [x - 100, y - 100, 0],
+    end: [x + 100, y + 100, 0],
+    layerId: "layer-equipment",
+    sourceRef
+  };
+}
+
+function scenePackageWithEntities(entities: DrawingEntity[]): ScenePackage {
+  return {
+    ...scenePackage(),
+    geometry: [
+      {
+        geometries: [
+          {
+            id: "curves",
+            kind: "curve-set",
+            layerId: "layer-equipment",
+            entities
+          }
+        ]
+      }
+    ],
+    layers: {
+      layers: [
+        { id: "layer-text", name: "G-ANNO-TEXT", visible: true },
+        { id: "layer-equipment", name: "0-Q-EQUIP", visible: true }
+      ]
+    }
   };
 }
 
@@ -243,9 +292,14 @@ describe("advanced engineering layout model", () => {
       devices: 4,
       annotations: 2,
       foundationItems: 0,
+      bomRows: 3,
       ambiguousDevices: 1,
       unlinkedDevices: 1,
       devicesMissingStation: 1
+    });
+    expect(model.summary.bomRowsByStatus).toEqual({
+      "needs-review": 2,
+      ready: 1
     });
     expect(model.summary.counts.validationIssues).toBeGreaterThan(0);
     expect(model.summary.validationByRule).toMatchObject({
@@ -278,9 +332,58 @@ describe("advanced engineering layout model", () => {
     expect(markdown).toContain("Fence \"Panel\", 1424mm x 2388mm with install risk \\| by others");
     expect(csv).toContain('"robot.generic","robot","geometry-bounds","250"');
     expect(markdown).toContain("## Equipment Library Types");
+    expect(markdown).toContain("## BOM Rows");
     expect(markdown).toContain("## Validation Issues");
     expect(markdown).toContain("| 7B-010L-04 | device_number | robot.generic | geometry-bounds | 250 | 7B-010L |");
+    expect(csv).toContain('"bom","bom-7b-010l-robot.generic-robot.generic"');
     expect(csv).toContain('"validation","layout-device-unlinked-device-unlinked"');
+  });
+
+  it("exports P736 robot, dunnage, and nest labels as deterministic BOM rows", () => {
+    const scene = scenePackageWithEntities([
+      textDrawingEntity("p736-robot-label", "7B-020L-04", 0, 0),
+      lineDrawingEntity("p736-robot-geom", 120, 0, "src-dxf-insert-R1-block-robot-child-L1"),
+      textDrawingEntity("p736-dn1-label", "7B-070L-DN1", 5000, 0),
+      lineDrawingEntity("p736-dn1-geom", 5120, 0, "src-dxf-insert-DN1-block-dunnage-child-L1"),
+      textDrawingEntity("p736-dn2-label", "7B-070L-DN2", 10000, 0),
+      lineDrawingEntity("p736-dn2-geom", 10120, 0, "src-dxf-insert-DN2-block-dunnage-child-L1"),
+      textDrawingEntity("p736-nest-label", "7B-060L-1N", 15000, 0),
+      lineDrawingEntity("p736-nest-geom", 15120, 0, "src-dxf-insert-N1-block-nest-child-L1")
+    ]);
+    const model = buildAdvancedLayoutModel(scene, computeLayoutSemantics(scene));
+    const byEquipment = new Map(model.bomRows.map((row) => [row.equipmentTypeId, row]));
+    const deviceKindByLabel = new Map(model.devices.map((entry) => [entry.primaryLabel, entry.kind]));
+
+    expect(Object.fromEntries(deviceKindByLabel)).toEqual({
+      "7B-020L-04": "robot",
+      "7B-060L-1N": "nest",
+      "7B-070L-DN1": "dunnage",
+      "7B-070L-DN2": "dunnage"
+    });
+    expect(byEquipment.get("robot.generic")).toMatchObject({
+      stationId: "7B-020L",
+      bomCategory: "robot",
+      quantity: 1,
+      reviewStatus: "ready",
+      labels: ["7B-020L-04"],
+      linkedEntityIds: ["p736-robot-geom"]
+    });
+    expect(byEquipment.get("dunnage.station")).toMatchObject({
+      stationId: "7B-070L",
+      bomCategory: "dunnage",
+      quantity: 2,
+      reviewStatus: "ready",
+      labels: ["7B-070L-DN1", "7B-070L-DN2"],
+      linkedEntityIds: ["p736-dn1-geom", "p736-dn2-geom"]
+    });
+    expect(byEquipment.get("nest.station")).toMatchObject({
+      stationId: "7B-060L",
+      bomCategory: "nest",
+      quantity: 1,
+      reviewStatus: "ready",
+      labels: ["7B-060L-1N"],
+      linkedEntityIds: ["p736-nest-geom"]
+    });
   });
 
   it("retains strong-tag long device text as annotation context without changing the primary device label", () => {
@@ -314,10 +417,12 @@ describe("advanced engineering layout model", () => {
     expect(model.foundationItems).toEqual([]);
     expect(model.reviewItems).toEqual([]);
     expect(model.validationIssues).toEqual([]);
+    expect(model.bomRows).toEqual([]);
     expect(model.summary.counts).toMatchObject({
       lines: 0,
       stations: 0,
       devices: 0,
+      bomRows: 0,
       annotations: 0
     });
   });

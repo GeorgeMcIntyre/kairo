@@ -125,6 +125,25 @@ export type ReviewItem = {
   suggestedAction: string;
 };
 
+export type BomRowReviewStatus = "ready" | "needs-review";
+
+export type BomRow = {
+  id: string;
+  stationId?: string;
+  equipmentTypeId?: string;
+  equipmentDisplayName?: string;
+  bomCategory?: EquipmentBomCategory;
+  deviceKind: DeviceKind;
+  normalizedLabel: string;
+  labels: string[];
+  quantity: number;
+  confidence: number;
+  sourceDeviceIds: string[];
+  linkedEntityIds: string[];
+  reviewStatus: BomRowReviewStatus;
+  reviewReasons: string[];
+};
+
 export type ConceptQuoteSummary = {
   counts: {
     lines: number;
@@ -139,9 +158,12 @@ export type ConceptQuoteSummary = {
     unlinkedDevices: number;
     devicesMissingStation: number;
     validationIssues: number;
+    bomRows: number;
   };
   devicesByKind: Record<string, number>;
   devicesByEquipmentType: Record<string, number>;
+  bomRowsByCategory: Record<string, number>;
+  bomRowsByStatus: Record<string, number>;
   validationByRule: Record<string, number>;
   validationBySeverity: Record<string, number>;
   foundationByCategory: Record<string, number>;
@@ -157,6 +179,7 @@ export type AdvancedLayoutModel = {
   devices: Device[];
   annotations: Annotation[];
   foundationItems: FoundationItem[];
+  bomRows: BomRow[];
   validationIssues: LayoutValidationIssue[];
   warnings: Warning[];
   reviewItems: ReviewItem[];
@@ -214,6 +237,10 @@ function countBy<T>(items: readonly T[], keyFor: (item: T) => string | undefined
     counts[key] = (counts[key] ?? 0) + 1;
   }
   return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
 function stationIdFromText(text: string, stationIds: ReadonlySet<string>): string | undefined {
@@ -472,6 +499,65 @@ function buildWarningsAndReviewItems(
   };
 }
 
+function normalizedBomLabel(label: string): string {
+  return label.replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+function bomGroupingKey(device: Device): string {
+  return [
+    device.stationId ?? "unassigned",
+    device.equipmentTypeId ?? "unmapped",
+    device.kind,
+    device.equipmentTypeId ? "mapped" : normalizedBomLabel(device.primaryLabel)
+  ].join("|");
+}
+
+function bomReviewReasons(devices: readonly Device[]): string[] {
+  const reasons: string[] = [];
+  if (devices.some((device) => !device.equipmentTypeId)) reasons.push("missing equipment library mapping");
+  if (devices.some((device) => device.associationStatus === "unlinked")) reasons.push("one or more devices have no linked geometry");
+  if (devices.some((device) => device.associationStatus === "ambiguous")) reasons.push("one or more devices have ambiguous geometry");
+  if (devices.some((device) => device.confidence < 0.72)) reasons.push("one or more devices are below confidence threshold");
+  return reasons;
+}
+
+function buildBomRows(devices: readonly Device[]): BomRow[] {
+  const groups = new Map<string, Device[]>();
+  for (const device of devices) {
+    const entries = groups.get(bomGroupingKey(device)) ?? [];
+    entries.push(device);
+    groups.set(bomGroupingKey(device), entries);
+  }
+
+  return [...groups.values()]
+    .map((group): BomRow => {
+      const sortedDevices = [...group].sort((left, right) => left.id.localeCompare(right.id));
+      const first = sortedDevices[0];
+      const reviewReasons = bomReviewReasons(sortedDevices);
+      const confidence = Math.min(...sortedDevices.map((device) => device.confidence));
+      const normalizedLabel = first.equipmentTypeId
+        ? first.equipmentTypeId
+        : normalizedBomLabel(sortedDevices.map((device) => device.primaryLabel).join(" / "));
+      return {
+        id: `bom-${slug(first.stationId ?? "unassigned")}-${slug(first.equipmentTypeId ?? first.kind)}-${slug(normalizedLabel)}`,
+        stationId: first.stationId,
+        equipmentTypeId: first.equipmentTypeId,
+        equipmentDisplayName: first.equipmentDisplayName,
+        bomCategory: first.bomCategory,
+        deviceKind: first.kind,
+        normalizedLabel,
+        labels: uniqueSorted(sortedDevices.map((device) => device.primaryLabel)),
+        quantity: sortedDevices.length,
+        confidence,
+        sourceDeviceIds: sortedDevices.map((device) => device.id),
+        linkedEntityIds: uniqueSorted(sortedDevices.flatMap((device) => device.linkedEntityIds)),
+        reviewStatus: reviewReasons.length === 0 ? "ready" : "needs-review",
+        reviewReasons
+      };
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+}
+
 function buildSummary(model: Omit<AdvancedLayoutModel, "summary">): ConceptQuoteSummary {
   return {
     counts: {
@@ -486,10 +572,13 @@ function buildSummary(model: Omit<AdvancedLayoutModel, "summary">): ConceptQuote
       ambiguousDevices: model.devices.filter((device) => device.associationStatus === "ambiguous").length,
       unlinkedDevices: model.devices.filter((device) => device.associationStatus === "unlinked").length,
       devicesMissingStation: model.devices.filter((device) => !device.stationId).length,
-      validationIssues: model.validationIssues.length
+      validationIssues: model.validationIssues.length,
+      bomRows: model.bomRows.length
     },
     devicesByKind: countBy(model.devices, (device) => device.kind),
     devicesByEquipmentType: countBy(model.devices, (device) => device.equipmentTypeId ?? "unmapped"),
+    bomRowsByCategory: countBy(model.bomRows, (row) => row.bomCategory ?? "unknown"),
+    bomRowsByStatus: countBy(model.bomRows, (row) => row.reviewStatus),
     validationByRule: countBy(model.validationIssues, (issue) => issue.ruleId),
     validationBySeverity: countBy(model.validationIssues, (issue) => issue.severity),
     foundationByCategory: countBy(model.foundationItems, (item) => item.category),
@@ -505,6 +594,7 @@ export function buildAdvancedLayoutModel(scenePackage: ScenePackage, semantics: 
   const stations = buildStations(semantics, annotations);
   const lines = buildLines(stations);
   const foundationItems: FoundationItem[] = [];
+  const bomRows = buildBomRows(devices);
   const validationIssues = buildLayoutValidationIssues(devices, stations);
   const { warnings, reviewItems } = buildWarningsAndReviewItems(devices, annotations);
   const modelWithoutSummary = {
@@ -515,6 +605,7 @@ export function buildAdvancedLayoutModel(scenePackage: ScenePackage, semantics: 
     devices,
     annotations,
     foundationItems,
+    bomRows,
     validationIssues,
     warnings,
     reviewItems
@@ -552,6 +643,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
       "padding_mm",
       "status",
       "confidence",
+      "quantity",
       "source_ids",
       "label",
       "notes"
@@ -568,6 +660,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         "",
         line.confidence.toFixed(2),
+        "",
         line.stationIds,
         line.name,
         line.evidence.join("; ")
@@ -585,6 +678,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         "",
         station.confidence.toFixed(2),
+        "",
         station.anchorTextIds,
         station.processName,
         station.evidence.join("; ")
@@ -602,6 +696,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         device.paddingMm,
         device.associationStatus,
         device.confidence.toFixed(2),
+        "",
         [...device.sourceTextIds, ...device.linkedEntityIds],
         device.primaryLabel,
         device.evidence.join("; ")
@@ -613,6 +708,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         annotation.id,
         annotation.stationId ?? annotation.linkedDeviceId ?? "",
         annotation.noteKind,
+        "",
         "",
         "",
         "",
@@ -636,9 +732,28 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         item.installRisk,
         item.confidence.toFixed(2),
+        "",
         item.sourceEntityIds,
         item.label,
         item.evidence.join("; ")
+      ])
+    ),
+    ...model.bomRows.map((row) =>
+      csvRow([
+        "bom",
+        row.id,
+        row.stationId ?? "",
+        row.deviceKind,
+        row.equipmentTypeId ?? "",
+        row.bomCategory ?? "",
+        "",
+        "",
+        row.reviewStatus,
+        row.confidence.toFixed(2),
+        row.quantity,
+        [...row.sourceDeviceIds, ...row.linkedEntityIds],
+        row.labels,
+        row.reviewReasons.join("; ")
       ])
     ),
     ...model.warnings.map((warning) =>
@@ -652,6 +767,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         "",
         warning.severity,
+        "",
         "",
         warning.sourceIds,
         warning.message,
@@ -670,6 +786,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         issue.severity,
         "",
+        "",
         [...issue.entityIds, ...issue.deviceIds],
         issue.message,
         issue.suggestedAction
@@ -686,6 +803,7 @@ export function exportAdvancedLayoutCsv(model: AdvancedLayoutModel): string {
         "",
         "",
         item.status,
+        "",
         "",
         [...item.sourceIds, ...item.linkedIds],
         item.title,
@@ -722,6 +840,7 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     `- Devices: ${model.summary.counts.devices}`,
     `- Annotations: ${model.summary.counts.annotations}`,
     `- Foundation items: ${model.summary.counts.foundationItems}`,
+    `- BOM rows: ${model.summary.counts.bomRows}`,
     `- Validation issues: ${model.summary.counts.validationIssues}`,
     `- Review items: ${model.summary.counts.reviewItems}`,
     "",
@@ -732,6 +851,24 @@ export function exportAdvancedLayoutMarkdown(model: AdvancedLayoutModel): string
     "## Equipment Library Types",
     "",
     ...Object.entries(model.summary.devicesByEquipmentType).map(([typeId, count]) => `- ${typeId}: ${count}`),
+    "",
+    "## BOM Rows",
+    "",
+    markdownRow(["Station", "Equipment", "Type", "Category", "Qty", "Confidence", "Status", "Labels", "Review reasons"]),
+    "|---|---|---|---|---:|---:|---|---|---|",
+    ...model.bomRows.map((row) =>
+      markdownRow([
+        row.stationId ?? "-",
+        row.equipmentTypeId ?? "unmapped",
+        row.deviceKind,
+        row.bomCategory ?? "unknown",
+        row.quantity,
+        row.confidence.toFixed(2),
+        row.reviewStatus,
+        row.labels.join(", "),
+        row.reviewReasons.join("; ")
+      ])
+    ),
     "",
     "## Validation Issues",
     "",
