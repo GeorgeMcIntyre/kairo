@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (Cloudflare slim build and package QA)
+Last updated: 2026-06-06 (CAD Exchanger GLB probe)
 
 ## Git
 
@@ -17,6 +17,8 @@ Last updated: 2026-06-06 (Cloudflare slim build and package QA)
 | `pnpm run build:cloudflare` | Clean; prepared `apps/viewer/dist` with `index.html`, `assets/`, `_redirects`; `dist/scenes` pruned |
 | `node packages\cli\dist\index.js pack-scene apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-dxf2013-import.kairo` | Passed; package size 9,884,877 bytes |
 | `node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json` | Passed; 29 nodes, 28 geometry documents, 0 findings |
+| `node tools\glb-probes\build-probe.mjs` | Passed; wrote `tools\glb-probes\probe-output.glb` with 10 nodes, 10 meshes, 3 materials |
+| `node tools\glb-probes\inspect-glb-probe.mjs` | Passed; GLB 2.0 header/chunks valid, modes 1/3/4/5 present, far-origin and 0.1 mm line detected |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -80,6 +82,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets.
+- CAD Exchanger GLB probe: `tools/glb-probes/build-probe.mjs` writes `tools/glb-probes/probe-output.glb`, covering native `LINES`, `LINE_STRIP`, `TRIANGLES`, `TRIANGLE_STRIP`, a ribbon mesh fallback, red/green/blue material groups, named nodes/meshes, extras metadata, a 0.1 mm line, and a far-origin line near `[110000, 90000, 0]`. `inspect-glb-probe.mjs` validates GLB structure and probe feature presence. Manual CAD Exchanger/JT results still need to be recorded in `docs/CAD_EXCHANGER_GLB_PROBE.md`.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 

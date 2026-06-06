@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (Cloudflare slim build and package QA)
+Last updated: 2026-06-06 (CAD Exchanger GLB probe)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -149,9 +149,11 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 
 ---
 
-### ISSUE-017: CAD Exchanger GLB primitive probe (P2 - research only)
+### ISSUE-017: CAD Exchanger GLB primitive probe (P2 - research only) — partial
 
 **Goal:** Create or plan only a small GLB compatibility probe for CAD Exchanger covering LINES, LINE_STRIP, TRIANGLES, TRIANGLE_STRIP, mesh ribbon fallback, material/layer metadata, and coordinate precision.
+
+**Done so far:** Added `tools/glb-probes/build-probe.mjs`, `cad-exchanger-probe.mjs`, `inspect-glb-probe.mjs`, and generated `tools/glb-probes/probe-output.glb`. The probe covers native `LINES`, `LINE_STRIP`, `TRIANGLES`, `TRIANGLE_STRIP`, ribbon mesh fallback, named objects, red/green/blue material groups, extras metadata, a 0.1 mm line, and a far-origin line near `[110000, 90000, 0]`. Local inspector confirms valid GLB 2.0 header/chunks, primitive modes 1/3/4/5, metadata presence, far-origin coordinate, and 0.1 mm line. Findings and manual result matrix live in `docs/CAD_EXCHANGER_GLB_PROBE.md`. Remaining: George imports `probe-output.glb` into CAD Exchanger, exports/converts to JT, and fills in the result matrix before any exporter direction is chosen.
 
 **Not allowed:** Do not implement a production GLB/JT exporter.
 
