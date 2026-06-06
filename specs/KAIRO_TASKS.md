@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06
+Last updated: 2026-06-06 (Workbench MVP added)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -16,6 +16,20 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### Project / Library Workbench MVP - DONE
+
+**Completed:** 2026-06-06
+
+Kairo now has a Project / Library Workbench panel (toolbar → Workbench). Clicking **Build Project Package** activates in-app review editing from the current layout package. The review table shows all detected records with label, detected type, station, confidence, geometry status, review status, library match, and validation issue count. Per-row actions let reviewers mark records as accepted, corrected (with a device-type dropdown), rejected, or uncertain. The library preview shows trainable/excluded/review-only counts and a breakdown by type.
+
+A new `kairo-project` schema v1 (`KairoProject`) bundles source metadata, semantic summary, layout package, semantic review artifact, layout review pack, and reviewed library into a single portable JSON. Export writes `kairo-project.json`; import restores review state. `editableReviewPack` slots into the pipeline at lower priority than an explicitly imported pack — zero-edit output is byte-identical to prior behavior.
+
+9 new tests in `apps/viewer/src/project/kairoProject.test.ts` cover: schema/version, round-trip determinism, status-change propagation, rejected/uncertain exclusion from the reviewed library, parse error cases, and optional-field omission.
+
+**Docs:** `docs/FRONTEND_PROJECT_WORKBENCH.md`, updated `docs/LAYOUT_REVIEW_TRAINING_WORKFLOW.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
+
+---
 
 ### Scott/P736 protected-label semantic fixture - DONE
 
@@ -99,9 +113,11 @@ Exports are available as JSON, CSV, and Markdown through the semantic panel. P73
 
 ---
 
-### ISSUE-004: Viewer UI drawing-first review mode (P1)
+### ISSUE-004: Viewer UI drawing-first review mode (P1) — partial
 
 **Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers/Semantics/Inspector are now hideable; next pass should make the layout more intentional without a full redesign.
+
+**Done so far:** Project Workbench panel added (toolbar → Workbench). Provides in-app review table and library preview. Next: clean up toolbar density, consider collapsing export buttons from semantic panel now that Workbench covers them.
 
 **Not allowed:** Touch importer/schema/GLB/JT/export. Remove sample scene support.
 

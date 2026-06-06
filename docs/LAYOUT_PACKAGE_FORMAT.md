@@ -185,6 +185,33 @@ The reviewed library includes:
 
 This is the first durable shape for a human-approved Kairo object library extracted from DXF layout intelligence.
 
+## KairoProject Format
+
+Schema `kairo-project` v1 is a single portable JSON that bundles all pipeline artifacts for a session.
+
+```json
+{
+  "schema": "kairo-project",
+  "schemaVersion": 1,
+  "source": { "...": "SourceDxfMetadata — no ScenePackage blob; scene must be reloaded separately" },
+  "semanticSummary": { "...": "SemanticSummary counts and per-kind breakdown" },
+  "layoutPackage": { "...": "Full LayoutPackage (kairo-layout-library-package v1)" },
+  "semanticReviewArtifact": { "...": "optional: SemanticReviewArtifact (kairo-semantic-review-artifact v1)" },
+  "layoutReviewPack": { "...": "optional: LayoutReviewPack (kairo-layout-review-pack v1)" },
+  "reviewedLayoutLibrary": { "...": "optional: ReviewedLayoutLibraryPackage (kairo-reviewed-layout-library v1)" },
+  "createdAt": "1970-01-01T00:00:00.000Z",
+  "updatedAt": "1970-01-01T00:00:00.000Z"
+}
+```
+
+**Design decisions:**
+- The `ScenePackage` (raw geometry, 246k entities) is NOT embedded — it is too large for Git-friendly storage, and re-import requires the original DXF or `.kairo` file.
+- Timestamps use the epoch constant `"1970-01-01T00:00:00.000Z"` for fully deterministic, Git-friendly output.
+- Optional fields are omitted when not populated (no `null` keys).
+- `parseKairoProjectJson()` validates schema, version, and required fields before returning a typed result.
+
+The project file is written by the **Workbench** panel's "Export Project JSON" button and imported by "Import Project JSON". See `docs/LAYOUT_REVIEW_TRAINING_WORKFLOW.md` for the in-app workflow.
+
 ## Example
 
 See `docs/examples/p736-layout-library-package.sample.json` for a compact package example using the known P736 labels.

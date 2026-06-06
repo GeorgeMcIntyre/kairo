@@ -69,7 +69,8 @@ import {
   buildLayoutPackage,
   exportLayoutPackageCsv,
   exportLayoutPackageJson,
-  exportLayoutPackageMarkdown
+  exportLayoutPackageMarkdown,
+  type ReviewStatus
 } from "./layoutLibrary/layoutPackage";
 import {
   buildReviewedLayoutLibrary,
@@ -93,6 +94,8 @@ import {
   type LayoutReviewPack,
   type ReviewedTrainingTruthPackage
 } from "./layoutLibrary/layoutReviewPack";
+import { ProjectWorkbenchPanel } from "./project/ProjectWorkbenchPanel";
+import { buildKairoProject, exportKairoProjectJson, parseKairoProjectJson } from "./project/kairoProject";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
 import {
   collectTextItems,
@@ -1017,6 +1020,9 @@ export function App() {
   const [importedReviewedTrainingTruth, setImportedReviewedTrainingTruth] =
     useState<ReviewedTrainingTruthPackage | undefined>();
   const [layoutReviewStatus, setLayoutReviewStatus] = useState<string | undefined>();
+  const [editableReviewPack, setEditableReviewPack] = useState<LayoutReviewPack | undefined>();
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
+  const projectInputRef = useRef<HTMLInputElement | null>(null);
   const [viewportDiagnostics, setViewportDiagnostics] = useState<ViewportDiagnostics | null>(null);
   const [sceneLoadTiming, setSceneLoadTiming] = useState<DxfImportTimingStage[]>([]);
   const [semanticAnalysisTiming, setSemanticAnalysisTiming] = useState<DxfImportTimingStage | undefined>();
@@ -1153,8 +1159,8 @@ export function App() {
     [layoutLibraryPackage]
   );
   const reviewedTrainingTruth = useMemo(
-    () => mergeReviewedTrainingTruth(layoutLibraryPackage, importedLayoutReviewPack ?? blankLayoutReviewPack),
-    [layoutLibraryPackage, importedLayoutReviewPack, blankLayoutReviewPack]
+    () => mergeReviewedTrainingTruth(layoutLibraryPackage, importedLayoutReviewPack ?? editableReviewPack ?? blankLayoutReviewPack),
+    [layoutLibraryPackage, importedLayoutReviewPack, editableReviewPack, blankLayoutReviewPack]
   );
   const activeReviewedTrainingTruth = importedReviewedTrainingTruth ?? reviewedTrainingTruth;
   const reviewedLayoutLibrary = useMemo(
@@ -1672,6 +1678,85 @@ export function App() {
     downloadTextFile(`reviewed-layout-library.${extension}`, reviewedLayoutLibraryContent(format), mime);
   };
 
+  const handleBuildProject = () => {
+    setEditableReviewPack(blankLayoutReviewPack);
+    setImportedLayoutReviewPack(undefined);
+    setImportedReviewedTrainingTruth(undefined);
+    setLayoutReviewStatus("In-app review activated");
+  };
+
+  const handleRecordStatusChange = (recordId: string, status: ReviewStatus) => {
+    setEditableReviewPack((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        records: current.records.map((r) => (r.id === recordId ? { ...r, reviewStatus: status } : r))
+      };
+    });
+  };
+
+  const handleRecordTypeCorrection = (recordId: string, correctedType: DeviceKind) => {
+    setEditableReviewPack((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        records: current.records.map((r) =>
+          r.id === recordId ? { ...r, correctedDeviceType: correctedType, reviewStatus: "corrected" as const } : r
+        )
+      };
+    });
+  };
+
+  const handleExportProjectJson = () => {
+    const project = buildKairoProject({
+      source: layoutLibraryPackage.source,
+      semanticSummary,
+      layoutPackage: layoutLibraryPackage,
+      semanticReviewArtifact,
+      layoutReviewPack: importedLayoutReviewPack ?? editableReviewPack,
+      reviewedLayoutLibrary
+    });
+    downloadTextFile("kairo-project.json", exportKairoProjectJson(project), "application/json");
+  };
+
+  const handleImportProjectJson = async (file: File) => {
+    try {
+      const content = await file.text();
+      const result = parseKairoProjectJson(content);
+      if (!result.ok) {
+        const first = result.errors[0];
+        setLayoutReviewStatus(first ? `Project import failed: ${first.path} ${first.message}` : "Project import failed");
+        return;
+      }
+      const { project } = result;
+      if (project.layoutReviewPack) {
+        const packJson = exportLayoutReviewPackJson(project.layoutReviewPack);
+        const packResult = parseLayoutReviewPackJson(packJson, layoutLibraryPackage);
+        if (!packResult.ok) {
+          const first = packResult.errors[0];
+          setLayoutReviewStatus(
+            first
+              ? `Imported project: ${project.source.displayName} (review pack skipped — ${first.path} ${first.message})`
+              : `Imported project: ${project.source.displayName} (review pack skipped — not valid for current scene)`
+          );
+          return;
+        }
+        setEditableReviewPack(packResult.reviewPack);
+        setImportedLayoutReviewPack(undefined);
+        setImportedReviewedTrainingTruth(undefined);
+      }
+      setLayoutReviewStatus(`Imported project: ${project.source.displayName}`);
+    } catch (error) {
+      setLayoutReviewStatus(error instanceof Error ? `Project import failed: ${error.message}` : "Project import failed");
+    }
+  };
+
+  const handleProjectInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (file) void handleImportProjectJson(file);
+  };
+
   const compactSelectionStatus = selectedSemanticDetails
     ? `Semantic: ${selectedSemanticDetails.title}`
     : selectedEntity
@@ -1724,6 +1809,13 @@ export function App() {
               accept=".json,application/json"
               className="file-input"
               onChange={handleReviewedTrainingTruthInputChange}
+              type="file"
+            />
+            <input
+              ref={projectInputRef}
+              accept=".json,application/json"
+              className="file-input"
+              onChange={handleProjectInputChange}
               type="file"
             />
             <button onClick={openLocalFilePicker} type="button">
@@ -1858,6 +1950,15 @@ export function App() {
               type="button"
             >
               Inspector
+            </button>
+            <button
+              aria-pressed={workbenchOpen}
+              className={workbenchOpen ? "active" : ""}
+              onClick={() => setWorkbenchOpen((current) => !current)}
+              title="Project package, semantic review table, and library preview"
+              type="button"
+            >
+              Workbench
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <button
@@ -2323,6 +2424,27 @@ export function App() {
             </section>
           </div>
         </section>
+      ) : null}
+
+      {workbenchOpen && !landingMode && !sceneIsLoading ? (
+        <ProjectWorkbenchPanel
+          layoutPackage={layoutLibraryPackage}
+          activeReviewPack={importedLayoutReviewPack ?? editableReviewPack ?? blankLayoutReviewPack}
+          reviewedLibrary={reviewedLayoutLibrary}
+          validationIssues={advancedLayoutModel.validationIssues}
+          isEditingLive={editableReviewPack !== undefined && importedLayoutReviewPack === undefined}
+          onClose={() => setWorkbenchOpen(false)}
+          onBuildProject={handleBuildProject}
+          onExportProjectJson={handleExportProjectJson}
+          onImportProjectJson={() => projectInputRef.current?.click()}
+          onExportReviewArtifact={downloadSemanticReviewArtifact}
+          onImportReviewArtifact={openSemanticReviewArtifactPicker}
+          onBuildTrainingTruth={() => downloadReviewedTrainingTruth("json")}
+          onExportReviewedLibrary={downloadReviewedLayoutLibrary}
+          onExportQaReport={() => downloadSemanticQaExport("json")}
+          onRecordStatusChange={handleRecordStatusChange}
+          onRecordTypeCorrection={handleRecordTypeCorrection}
+        />
       ) : null}
 
       {inspectorPanelOpen && !landingMode && !sceneIsLoading ? (

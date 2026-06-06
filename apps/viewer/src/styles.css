@@ -49,6 +49,7 @@ button:hover {
 .layers-shell,
 .properties-panel,
 .semantic-validation-panel,
+.workbench-panel,
 .viewport-panel,
 .diagnostics {
   min-width: 0;
@@ -1428,4 +1429,225 @@ button:hover {
   .viewport-status-strip span:first-child {
     max-width: 46vw;
   }
+}
+
+/* ── Project / Library Workbench ─────────────────────────── */
+
+.workbench-panel {
+  position: absolute;
+  z-index: 5;
+  right: 10px;
+  bottom: 36px;
+  width: min(700px, calc(80vw - 20px));
+  max-height: min(520px, 55vh);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #29344a;
+  border-radius: 6px;
+  background: rgba(22, 30, 46, 0.97);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.36);
+}
+
+.workbench-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid #1e2a3a;
+}
+
+.workbench-action-divider {
+  width: 1px;
+  background: #29344a;
+  align-self: stretch;
+  margin: 0 2px;
+}
+
+.workbench-hint {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #6a8499;
+  border-bottom: 1px solid #1e2a3a;
+  margin: 0;
+}
+
+.workbench-review-section,
+.workbench-library-section {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+  padding: 8px 10px;
+}
+
+.workbench-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+
+.workbench-section-heading h3 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6a8499;
+  margin: 0;
+}
+
+.workbench-section-heading span {
+  font-size: 11px;
+  color: #8aa0b5;
+}
+
+.workbench-table-scroll {
+  overflow-x: auto;
+}
+
+.review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  color: #c9d4df;
+}
+
+.review-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6a8499;
+  padding: 3px 6px;
+  border-bottom: 1px solid #29344a;
+  white-space: nowrap;
+}
+
+.review-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #1e2a3a;
+  vertical-align: middle;
+}
+
+.review-row:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.review-cell-label strong {
+  color: #e0eaf5;
+}
+
+.review-row--rejected td {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.review-row--rejected .review-action-bar td,
+.review-row--rejected td:last-child {
+  opacity: 1;
+  text-decoration: none;
+}
+
+.review-status--accepted { color: #4caf7e; }
+.review-status--corrected { color: #6fa0d8; }
+.review-status--rejected { color: #c06060; }
+.review-status--uncertain { color: #b8a040; }
+
+.geom-status--linked { color: #4caf7e; }
+.geom-status--ambiguous { color: #b8a040; }
+.geom-status--unlinked { color: #c06060; }
+
+.issue-count {
+  display: inline-block;
+  background: #7a3030;
+  color: #ffd0d0;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.review-action-bar {
+  white-space: nowrap;
+}
+
+.review-action-bar button {
+  padding: 2px 6px;
+  font-size: 10px;
+  margin-right: 2px;
+  border-radius: 3px;
+}
+
+.review-action-bar button.active {
+  background: #1e5a8a;
+  color: #c9e8ff;
+  border-color: #2a6fa0;
+}
+
+.review-action-bar select {
+  font-size: 10px;
+  padding: 1px 3px;
+  background: #1a2438;
+  color: #c9d4df;
+  border: 1px solid #29344a;
+  border-radius: 3px;
+}
+
+.library-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.library-preview-grid > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.library-preview-grid strong {
+  color: #6a8499;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.library-preview-grid span {
+  color: #e0eaf5;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.library-type-breakdown {
+  margin-bottom: 8px;
+}
+
+.library-type-breakdown strong {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #6a8499;
+  margin-bottom: 4px;
+}
+
+.library-type-breakdown ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: #c9d4df;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.workbench-library-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }

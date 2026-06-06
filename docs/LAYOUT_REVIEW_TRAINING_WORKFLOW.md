@@ -1,6 +1,6 @@
 # Layout Review Training Workflow
 
-Last updated: 2026-06-06
+Last updated: 2026-06-06 (Workbench MVP added)
 
 ## Purpose
 
@@ -129,11 +129,44 @@ Schema:
 }
 ```
 
+## Project Workbench
+
+The **Project / Library Workbench** panel (toolbar → Workbench) provides an in-app front-end for the review pipeline. It replaces the need to edit JSON files externally for basic accept/correct/reject/uncertain decisions.
+
+### Workbench workflow
+
+1. Open a DXF or `.kairo` file in the viewer.
+2. Click **Workbench** in the toolbar to open the panel.
+3. Click **Build Project Package** — this activates in-app review editing from the current layout package.
+4. The **Semantic Review Table** shows all detected records with label, type, station, confidence, geometry status, review status, library match, and validation issue count.
+5. Use the per-row action buttons to mark records: **Accept**, **Correct** (shows a device-type dropdown), **Reject**, or **Uncertain**.
+6. Click **Export Project JSON** to save the full project (source metadata, semantic summary, layout package, review state, and reviewed library) as `kairo-project.json`.
+7. Click **Import Project JSON** to restore a saved project — the review pack is restored and in-app editing continues from that state.
+8. Click **Build Training Truth** to download the merged `reviewed-training-truth.json`.
+9. The **Library Preview** section shows the current reviewed library counts by type/status.
+
+### `editableReviewPack` precedence
+
+In the viewer pipeline, the active review pack is resolved in priority order:
+
+```
+importedLayoutReviewPack ?? editableReviewPack ?? blankLayoutReviewPack
+```
+
+- An explicitly imported review pack JSON always wins.
+- In-app edits (from Build Project Package) are used when no import is active.
+- The blank (auto-generated) pack is the fallback when no editing has been done.
+
+With zero edits, the pipeline output is byte-identical to the pre-Workbench behavior.
+
+### KairoProject format
+
+See `docs/LAYOUT_PACKAGE_FORMAT.md` for the `kairo-project` schema reference.
+
 ## Current Limits
 
-- Review packs are session imports; they are not persisted in a project database yet.
-- Reviewer editing is done in JSON outside the viewer.
 - Corrected geometry is captured as an id/note; it does not rewrite CAD geometry.
 - Training truth is a data artifact only. No AI/model logic consumes it yet.
 - Comparison reports are deterministic QA gates, not automatic correction logic.
 - The current Scott/P736 semantic seed fixture is classification-focused; ambiguous geometry rows still need visual CAD review before they are trainable truth.
+- Reviewer note editing is supported in the JSON schema but does not yet have a text input in the workbench UI.
