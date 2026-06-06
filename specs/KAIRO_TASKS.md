@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (CAD Exchanger JT bridge part probe)
+Last updated: 2026-06-06 (coordinate precision audit)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -18,6 +18,14 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-015: Coordinate precision audit - DONE
+
+**Completed:** 2026-06-06
+
+Added `tools/precision-audit/scene-float32-precision-audit.mjs` and documented findings in `docs/COORDINATE_PRECISION_AUDIT.md`. Current Scott scene p99 coordinate magnitude is ~106,758 mm with Float32 spacing 0.0078125 mm, but far outliers reach ~955,434 mm with 0.0625 mm spacing. Decision: no viewer-space rebasing is required before current drawing-first UI, layer isolate, semantic review, Workbench, public demo, or `.kairo` package smoke work; plan viewer-only render-origin rebasing before high-zoom sub-millimeter inspection, outlier-geometry review, or production CAD-review claims.
+
+---
 
 ### ISSUE-010: Fast viewer QA workflow documentation - DONE
 
@@ -142,12 +150,6 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 **Goal:** Manually compare Scott labels against CAD/reference screenshots and fix only proven viewer/import text placement issues.
 
 **Not allowed:** Redesign the viewer, add rich MTEXT formatting, or change importer/schema unless a specific mismatch is proven.
-
----
-
-### ISSUE-015: Coordinate precision audit (P2)
-
-**Goal:** Audit high-zoom precision with current world coordinates and Float32 viewer buffers; document whether rebasing is needed.
 
 ---
 

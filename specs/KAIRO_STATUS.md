@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (CAD Exchanger JT bridge part probe)
+Last updated: 2026-06-06 (coordinate precision audit)
 
 ## Git
 
@@ -24,6 +24,7 @@ Last updated: 2026-06-06 (CAD Exchanger JT bridge part probe)
 | `node tools\glb-probes\inspect-glb-probe.mjs` | Passed; GLB 2.0 header/chunks valid, modes 1/3/4/5 present, far-origin and 0.1 mm line detected |
 | `node tools\glb-probes\build-jt-bridge-part-probe.mjs` | Passed; wrote `tools\glb-probes\jt-bridge-part-output.glb` with one named red 100 x 50 x 25 mm mesh part |
 | `node tools\glb-probes\inspect-jt-bridge-part-probe.mjs` | Passed; GLB 2.0 header/chunks valid, one node/mesh/material, 12 triangles, normals, dimensions, material color, and metadata detected |
+| `node tools\precision-audit\scene-float32-precision-audit.mjs` | Passed; Scott p99 coordinate magnitude ~106,758 mm gives 0.0078125 mm Float32 spacing, but far outliers near 955,434 mm give 0.0625 mm spacing |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -85,6 +86,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Drawing-first toolbar/workbench consolidation: top toolbar is grouped as file/demo, fit controls, view/orbit controls, Layers/Text, and Semantics/Inspector/Workbench. Text density/readable-label controls are collapsed into a compact Text menu. Semantic panel now keeps only summary/filter lists, device overlay toggle, and semantic-review artifact import/export. Bulk exports for semantic summary/QA, Advanced Layout, Layout Library, review templates, training truth, training comparison, and reviewed library now live in the Workbench.
 - Layer isolate workflow: Layers panel has case-insensitive name/id filtering, match counts, clear filter, Show all, Hide all, and per-layer Show only controls. Active isolate state is highlighted when exactly one layer is visible. Entity counts remain visible per layer, and visibility changes still use the existing `hiddenLayerIds` object-visible path without importer/schema changes.
 - Viewer QA workflow: `specs/VIEWER_QA_WORKFLOW.md` now tracks the current Scott scene counts, known import warning buckets, drawing-first toolbar checks, exact picking, zoom-to-cursor, layer filter/isolate, text/MTEXT density modes, Diagnostics, Workbench fixture smoke, and `.kairo` package smoke.
+- Coordinate precision audit: `docs/COORDINATE_PRECISION_AUDIT.md` records current Scott Float32 spacing. Rebase is not required before current drawing-first/manual review work, but viewer-only render-origin rebasing should be planned before high-zoom sub-millimeter inspection, outlier-geometry review, or production CAD-review claims.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. The deployed branch alias is `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev`; the latest immutable deployment is `https://b5859425.kairo-viewer-6lh.pages.dev`. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets. The viewer demo action loads the bundled sample scene so the Pages URL has a working demo path without staged public scene assets. Manual public-demo and `.kairo` upload gates are listed in `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md`.
