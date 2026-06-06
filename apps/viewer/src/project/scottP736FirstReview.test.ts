@@ -8,6 +8,8 @@ import { exportKairoProjectJson, parseKairoProjectJson } from "./kairoProject";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 const fixturePath = join(repoRoot, "docs/examples/scott-p736-first-review.kairo-project.json");
+const reviewQueueMarkdownPath = join(repoRoot, "docs/examples/scott-p736-first-review-queue.md");
+const reviewQueueCsvPath = join(repoRoot, "docs/examples/scott-p736-first-review-queue.csv");
 
 describe.skipIf(!existsSync(fixturePath))("Scott P736 first-review project fixture", () => {
   it("parses the fixture and produces a stable reviewed library", () => {
@@ -46,5 +48,38 @@ describe.skipIf(!existsSync(fixturePath))("Scott P736 first-review project fixtu
     expect(second.ok).toBe(true);
     if (!second.ok) throw new Error("re-parse failed");
     expect(second.project).toEqual(first.project);
+  });
+
+  it("keeps the generated human-review queue aligned with the fixture", () => {
+    expect(existsSync(reviewQueueMarkdownPath)).toBe(true);
+    expect(existsSync(reviewQueueCsvPath)).toBe(true);
+
+    const markdown = readFileSync(reviewQueueMarkdownPath, "utf8");
+    const csv = readFileSync(reviewQueueCsvPath, "utf8");
+
+    expect(markdown).toContain("- Total review records: 116");
+    expect(markdown).toContain("- Records still needing human review: 88");
+    expect(markdown).toContain("| 7B-020L-04 | uncertain | robot | ambiguous |");
+    expect(markdown).toContain("| 7B-060L-1N | accepted | nest | linked |");
+
+    const markdownQueueRows = markdown.match(/^\| \d+ \|/gm) ?? [];
+    expect(markdownQueueRows).toHaveLength(88);
+
+    const csvRows = csv.trimEnd().split(/\r?\n/);
+    expect(csvRows).toHaveLength(89);
+    expect(csvRows[0]).toBe(
+      [
+        "index",
+        "reviewStatus",
+        "detectedLabel",
+        "detectedDeviceType",
+        "station",
+        "confidence",
+        "geometryStatus",
+        "geometryCenterXY",
+        "sourceEntityIds",
+        "evidence"
+      ].map((value) => `"${value}"`).join(",")
+    );
   });
 });

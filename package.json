@@ -7,6 +7,7 @@
     "dev": "pnpm --filter @kairo/viewer dev",
     "build": "pnpm -r build",
     "build:cloudflare": "pnpm --filter @kairo/viewer build && node scripts/prepare-cloudflare-pages-dist.mjs",
+    "review:first-queue": "node scripts/export-first-review-queue.mjs",
     "smoke:pages": "node scripts/smoke-pages-demo.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
