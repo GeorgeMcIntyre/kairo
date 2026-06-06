@@ -48,6 +48,20 @@ pnpm dlx wrangler pages deploy apps/viewer/dist --project-name kairo-viewer
 
 Use direct upload only after the local verification commands pass.
 
+## Current Deployment
+
+2026-06-06 direct upload:
+
+```text
+Project: kairo-viewer
+Immutable URL: https://b5859425.kairo-viewer-6lh.pages.dev
+Branch alias: https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev
+```
+
+HTTP smoke checks passed for the immutable URL, branch alias, SPA fallback route, JS bundle, and CSS bundle. Browser/canvas smoke still needs a real browser pass.
+
+If `wrangler pages project list` queries the wrong account, remove the stale local cache files under `node_modules/.cache/wrangler/` and retry. In this repo the stale files were `wrangler-account.json` and `pages.json`.
+
 ## Scott Sharing
 
 Do not deploy the staged Scott scene payload to Pages. Create a portable package instead:

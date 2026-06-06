@@ -112,7 +112,7 @@ import {
 } from "./viewerMath";
 
 const DEV_MODE = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
-const DEMO_SCENE_NAME = "scott-dxf2013-import";
+const BUNDLED_DEMO_SCENE_NAME = "bundled-sample";
 const APP_VERSION = viewerPackage.version;
 
 const EMPTY_LAYOUT_SEMANTICS: LayoutSemantics = {
@@ -1422,6 +1422,23 @@ export function App() {
     }
   }, [activateScenePackage, isCurrentSceneLoad, startSceneLoad]);
 
+  const loadBundledDemoScene = useCallback(
+    (options?: { updateUrl?: boolean }) => {
+      startSceneLoad();
+      activateScenePackage(sampleScenePackage, {
+        activeName: BUNDLED_DEMO_SCENE_NAME,
+        status: "Loaded bundled sample scene"
+      });
+
+      if (options?.updateUrl) {
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.delete("scene");
+        window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+      }
+    },
+    [activateScenePackage, startSceneLoad]
+  );
+
   const loadLocalSceneFile = useCallback(
     async (file: File) => {
       const loadSerial = startSceneLoad();
@@ -1867,7 +1884,7 @@ export function App() {
             <button onClick={openLocalFilePicker} type="button">
               Open DXF / Kairo
             </button>
-            <button onClick={() => loadPublicScene(DEMO_SCENE_NAME, { updateUrl: true })} type="button">
+            <button onClick={() => loadBundledDemoScene({ updateUrl: true })} type="button">
               Load Demo Layout
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
@@ -2053,6 +2070,9 @@ export function App() {
             </p>
             <button onClick={openLocalFilePicker} type="button">
               Open DXF / Kairo
+            </button>
+            <button onClick={() => loadBundledDemoScene({ updateUrl: true })} type="button">
+              Load Demo Layout
             </button>
           </div>
           <div className="demo-metrics" aria-label="Demo scene highlights">

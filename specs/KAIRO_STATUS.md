@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (CAD Exchanger GLB probe)
+Last updated: 2026-06-06 (Cloudflare Pages deploy)
 
 ## Git
 
@@ -15,6 +15,9 @@ Last updated: 2026-06-06 (CAD Exchanger GLB probe)
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle ~951 kB, chunk size warning only) |
 | `pnpm run build:cloudflare` | Clean; prepared `apps/viewer/dist` with `index.html`, `assets/`, `_redirects`; `dist/scenes` pruned |
+| `npx wrangler pages project list` | Passed after clearing stale local Wrangler account cache; `kairo-viewer` exists at `kairo-viewer-6lh.pages.dev` |
+| `npx wrangler pages deploy apps/viewer/dist --project-name kairo-viewer --commit-dirty=true` | Passed; immutable URL `https://b5859425.kairo-viewer-6lh.pages.dev`, branch alias `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev` |
+| Pages HTTP smoke | Passed; immutable URL, branch alias, SPA fallback route, JS bundle, and CSS bundle returned 200. Browser/canvas smoke still pending. |
 | `node packages\cli\dist\index.js pack-scene apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-dxf2013-import.kairo` | Passed; package size 9,884,877 bytes |
 | `node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json` | Passed; 29 nodes, 28 geometry documents, 0 findings |
 | `node tools\glb-probes\build-probe.mjs` | Passed; wrote `tools\glb-probes\probe-output.glb` with 10 nodes, 10 meshes, 3 materials |
@@ -81,7 +84,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Layer isolate workflow: Layers panel has case-insensitive name/id filtering, match counts, clear filter, Show all, Hide all, and per-layer Show only controls. Active isolate state is highlighted when exactly one layer is visible. Entity counts remain visible per layer, and visibility changes still use the existing `hiddenLayerIds` object-visible path without importer/schema changes.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
-- Cloudflare Pages deploy config: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets.
+- Cloudflare Pages deploy: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. The deployed branch alias is `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev`; the latest immutable deployment is `https://b5859425.kairo-viewer-6lh.pages.dev`. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets. The viewer demo action loads the bundled sample scene so the Pages URL has a working demo path without staged public scene assets.
 - CAD Exchanger GLB probe: `tools/glb-probes/build-probe.mjs` writes `tools/glb-probes/probe-output.glb`, covering native `LINES`, `LINE_STRIP`, `TRIANGLES`, `TRIANGLE_STRIP`, a ribbon mesh fallback, red/green/blue material groups, named nodes/meshes, extras metadata, a 0.1 mm line, and a far-origin line near `[110000, 90000, 0]`. `inspect-glb-probe.mjs` validates GLB structure and probe feature presence. Manual CAD Exchanger/JT results still need to be recorded in `docs/CAD_EXCHANGER_GLB_PROBE.md`.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
