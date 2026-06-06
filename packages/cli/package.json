@@ -16,6 +16,7 @@
   "dependencies": {
     "@kairo/core": "workspace:*",
     "@kairo/importer-dxf": "workspace:*",
+    "@kairo/semantic": "workspace:*",
     "@kairo/schema": "workspace:*",
     "@kairo/validator": "workspace:*"
   },

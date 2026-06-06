@@ -1,4 +1,4 @@
-import { extractStrongDeviceTag, isLikelyAnnotationText } from "../textSafety";
+import { extractStrongDeviceTag, isLikelyAnnotationText } from "./textSafety";
 
 export type DeviceKind =
   | "robot"

@@ -1,6 +1,6 @@
 import type { Bounds3 } from "@kairo/core";
 import { findEquipmentForDeviceKind, type EquipmentBomCategory } from "../equipment/equipmentLibrary";
-import type { DeviceKind } from "../semantic/deviceDictionary";
+import type { DeviceKind } from "@kairo/semantic";
 import type { LayoutLibraryItem, LayoutPackage, ReviewStatus } from "./layoutPackage";
 import type { ReviewedTrainingTruthPackage, ReviewedTrainingTruthRecord, SourceLayoutIdentity, TrainingUseStatus } from "./layoutReviewPack";
 

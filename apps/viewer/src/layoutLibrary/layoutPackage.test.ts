@@ -1,7 +1,7 @@
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { describe, expect, it } from "vitest";
 import { buildAdvancedLayoutModel } from "../advancedEngineering/advancedLayout";
-import { computeLayoutSemantics } from "../semantic/layoutSemantics";
+import { computeLayoutSemantics } from "@kairo/semantic";
 import {
   buildLayoutPackage,
   exportLayoutPackageCsv,

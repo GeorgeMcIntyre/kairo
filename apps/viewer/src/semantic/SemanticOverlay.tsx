@@ -2,7 +2,7 @@ import type { Bounds3, Vec3 } from "@kairo/core";
 import type { MouseEvent } from "react";
 import * as THREE from "three";
 import type { TextOverlayCamera } from "../SceneTextOverlay";
-import type { SemanticOverlayModel, SemanticSelection } from "./semanticValidation";
+import type { SemanticOverlayModel, SemanticSelection } from "@kairo/semantic";
 
 type ProjectedPoint = {
   x: number;

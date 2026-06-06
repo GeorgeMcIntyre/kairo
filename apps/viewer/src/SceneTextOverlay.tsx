@@ -1,7 +1,7 @@
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { MAX_TEXT_OVERLAY_CHARS, safeDisplayText } from "./textSafety";
+import { MAX_TEXT_OVERLAY_CHARS, safeDisplayText } from "@kairo/semantic";
 
 export type TextOverlayItem = {
   entityId: string;

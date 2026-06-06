@@ -1,5 +1,5 @@
 import type { Bounds3, EntityBounds, RobustSceneBounds, Vec3 } from "@kairo/core";
-import { MAX_SEMANTIC_OVERLAY_CHARS, safeDisplayText, type SemanticNoteKind } from "../textSafety";
+import { MAX_SEMANTIC_OVERLAY_CHARS, safeDisplayText, type SemanticNoteKind } from "./textSafety";
 import type { DeviceKind } from "./deviceDictionary";
 import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity, StationSemantic } from "./layoutSemantics";
 import type { DeviceGeometryAssociationCandidate, DeviceGeometryAssociationStatus } from "./semanticDevices";

@@ -1,5 +1,5 @@
 import type { Bounds3, Vec3 } from "@kairo/core";
-import type { SemanticNoteKind } from "../textSafety";
+import type { SemanticNoteKind } from "./textSafety";
 import type { DeviceKind } from "./deviceDictionary";
 import type { DeviceSemantic, LayoutSemantics } from "./layoutSemantics";
 

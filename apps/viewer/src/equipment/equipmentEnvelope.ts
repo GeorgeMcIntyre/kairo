@@ -1,5 +1,5 @@
 import type { Bounds3 } from "@kairo/core";
-import type { DeviceSemantic } from "../semantic/layoutSemantics";
+import type { DeviceSemantic } from "@kairo/semantic";
 import type { EquipmentLibraryMatch } from "./equipmentLibrary";
 
 export type EquipmentFootprintSource = "geometry-bounds" | "candidate-geometry-bounds" | "library-default" | "label-bounds";

@@ -1,8 +1,7 @@
 import type { Bounds3 } from "@kairo/core";
 import type { ScenePackage } from "@kairo/schema";
 import type { AdvancedLayoutModel, BomRow, Device, Line, Station } from "../advancedEngineering/advancedLayout";
-import type { DeviceKind } from "../semantic/deviceDictionary";
-import type { LayoutSemantics, SemanticTextEntity } from "../semantic/layoutSemantics";
+import type { DeviceKind, LayoutSemantics, SemanticTextEntity } from "@kairo/semantic";
 
 export type LayoutPackageSchema = "kairo-layout-library-package";
 export type LayoutPackageSchemaVersion = 1;

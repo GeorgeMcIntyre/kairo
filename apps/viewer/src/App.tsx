@@ -18,6 +18,34 @@ import {
 import type { DrawingEntity, Geometry, SceneNode, ScenePackage } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
 import type { DxfImportTimingStage } from "@kairo/importer-dxf/browser";
+import {
+  DEVICE_KINDS,
+  DEFAULT_SEMANTIC_VALIDATION_FILTERS,
+  applySemanticDeviceOverrides,
+  buildSemanticOverlayModel,
+  buildSemanticQaReport,
+  buildSemanticReviewArtifact,
+  buildSemanticSummary,
+  computeLayoutSemantics,
+  computeOutlierSummary,
+  exportSemanticQaReportJson,
+  exportSemanticQaReportMarkdown,
+  exportSemanticReviewArtifactJson,
+  exportSemanticSummaryJson,
+  exportSemanticSummaryMarkdown,
+  filterSemanticValidation,
+  parseSemanticReviewArtifactJson,
+  resolveSemanticSelection,
+  safeDisplayText,
+  semanticOverridesFromReviewArtifact,
+  type DeviceKind,
+  type LayoutSemantics,
+  type SemanticDeviceOverride,
+  type SemanticOverrideMap,
+  type SemanticOverlayModel,
+  type SemanticSelection,
+  type SemanticValidationFilters
+} from "@kairo/semantic";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -65,38 +93,7 @@ import {
   type LayoutReviewPack,
   type ReviewedTrainingTruthPackage
 } from "./layoutLibrary/layoutReviewPack";
-import { DEVICE_KINDS, type DeviceKind } from "./semantic/deviceDictionary";
-import { computeLayoutSemantics, type LayoutSemantics } from "./semantic/layoutSemantics";
 import { SemanticOverlay } from "./semantic/SemanticOverlay";
-import {
-  DEFAULT_SEMANTIC_VALIDATION_FILTERS,
-  buildSemanticOverlayModel,
-  computeOutlierSummary,
-  filterSemanticValidation,
-  resolveSemanticSelection,
-  type SemanticSelection,
-  type SemanticOverlayModel,
-  type SemanticValidationFilters
-} from "./semantic/semanticValidation";
-import {
-  applySemanticDeviceOverrides,
-  buildSemanticSummary,
-  exportSemanticSummaryJson,
-  exportSemanticSummaryMarkdown,
-  type SemanticDeviceOverride,
-  type SemanticOverrideMap
-} from "./semantic/semanticSummary";
-import {
-  buildSemanticQaReport,
-  exportSemanticQaReportJson,
-  exportSemanticQaReportMarkdown
-} from "./semantic/semanticQaReport";
-import {
-  buildSemanticReviewArtifact,
-  exportSemanticReviewArtifactJson,
-  parseSemanticReviewArtifactJson,
-  semanticOverridesFromReviewArtifact
-} from "./semantic/semanticReviewArtifact";
 import {
   collectTextItems,
   SceneTextOverlay,
@@ -104,7 +101,6 @@ import {
   type TextOverlayCamera,
   type TextOverlayMetrics
 } from "./SceneTextOverlay";
-import { safeDisplayText } from "./textSafety";
 import {
   computeOrthographicFitView,
   pointerClientToNdc,

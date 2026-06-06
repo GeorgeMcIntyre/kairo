@@ -1,4 +1,4 @@
-import type { DeviceKind } from "../semantic/deviceDictionary";
+import type { DeviceKind } from "@kairo/semantic";
 
 export type EquipmentBomCategory = "robot" | "dunnage" | "nest" | "panel" | "fence" | "tooling" | "unknown";
 

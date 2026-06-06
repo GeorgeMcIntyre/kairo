@@ -1,8 +1,13 @@
 import type { Bounds3, Vec3 } from "@kairo/core";
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
+import {
+  computeLayoutSemantics,
+  type DeviceSemantic,
+  type LayoutSemantics,
+  type SemanticTextEntity,
+  type StationSemantic
+} from "@kairo/semantic";
 import { describe, expect, it } from "vitest";
-import { computeLayoutSemantics } from "../semantic/layoutSemantics";
-import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity, StationSemantic } from "../semantic/layoutSemantics";
 import {
   buildAdvancedLayoutModel,
   exportAdvancedLayoutCsv,

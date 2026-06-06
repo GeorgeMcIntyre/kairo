@@ -1,6 +1,6 @@
 import { computeEntityBounds, computeEntityCentroid, type Bounds3, type RobustSceneBounds, type Vec3 } from "@kairo/core";
 import type { DrawingEntity, ScenePackage } from "@kairo/schema";
-import { normalizeDxfText, safeDisplayText, textSafetyProfile, type SemanticNoteKind } from "../textSafety";
+import { normalizeDxfText, safeDisplayText, textSafetyProfile, type SemanticNoteKind } from "./textSafety";
 import { parseDeviceText, type DeviceDictionaryMatch, type DeviceKind } from "./deviceDictionary";
 import {
   associateLabelToGeometry,

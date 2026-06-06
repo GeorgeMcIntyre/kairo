@@ -45,6 +45,9 @@ importers:
       '@kairo/schema':
         specifier: workspace:*
         version: link:../../packages/schema
+      '@kairo/semantic':
+        specifier: workspace:*
+        version: link:../../packages/semantic
       '@kairo/validator':
         specifier: workspace:*
         version: link:../../packages/validator
@@ -88,6 +91,9 @@ importers:
       '@kairo/schema':
         specifier: workspace:*
         version: link:../schema
+      '@kairo/semantic':
+        specifier: workspace:*
+        version: link:../semantic
       '@kairo/validator':
         specifier: workspace:*
         version: link:../validator
@@ -142,6 +148,15 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+
+  packages/semantic:
+    dependencies:
+      '@kairo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@kairo/schema':
+        specifier: workspace:*
+        version: link:../schema
 
   packages/validator:
     dependencies:

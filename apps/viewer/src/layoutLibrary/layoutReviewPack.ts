@@ -1,4 +1,4 @@
-import { DEVICE_KINDS, type DeviceKind } from "../semantic/deviceDictionary";
+import { DEVICE_KINDS, type DeviceKind } from "@kairo/semantic";
 import type { GeometryAssociation, LayoutPackage, LayoutTrainingRecord, ReviewStatus } from "./layoutPackage";
 
 export type LayoutReviewPackSchema = "kairo-layout-review-pack";

@@ -2,6 +2,8 @@
 
 The semantic review artifact persists George's viewer-side semantic review decisions as a small JSON file.
 
+The semantic detector and review artifact model live in `@kairo/semantic`, so the viewer and CLI use the same package boundary.
+
 It sits before the Layout Library review/training workflow:
 
 1. Kairo extracts semantic devices from the DXF or `.kairo` scene.

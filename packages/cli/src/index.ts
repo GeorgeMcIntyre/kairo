@@ -1,13 +1,13 @@
 import { computeRobustSceneBounds, createKairoPackage, flattenGeometry, readKairoPackage } from "@kairo/core";
 import { analyzeDxfBlocks, importDxfToKairo, writeDxfBlockInventoryReports, writeScenePackage } from "@kairo/importer-dxf";
+import {
+  buildSemanticReviewArtifact,
+  computeLayoutSemantics,
+  exportSemanticReviewArtifactJson
+} from "@kairo/semantic";
 import type { GeometryDocument, ScenePackage, ValidationReport } from "@kairo/schema";
 import { scenePackageSchema } from "@kairo/schema";
 import { validateScenePackage } from "@kairo/validator";
-import { computeLayoutSemantics } from "../../../apps/viewer/src/semantic/layoutSemantics";
-import {
-  buildSemanticReviewArtifact,
-  exportSemanticReviewArtifactJson
-} from "../../../apps/viewer/src/semantic/semanticReviewArtifact";
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

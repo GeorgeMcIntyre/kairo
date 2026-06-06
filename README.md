@@ -28,6 +28,7 @@ Implemented:
 - pnpm workspace scaffold.
 - TypeScript schema package with Zod validation.
 - Core scene helpers.
+- Shared semantic package for DXF text/device detection, semantic QA, semantic review artifacts, and text-safety helpers.
 - Validator with deterministic reports.
 - Format hardening with golden scene assertions, invalid fixtures, stable validation codes, and unsupported-version checks.
 - CLI validation with human-readable and JSON output.
@@ -103,6 +104,7 @@ apps/
 
 packages/
   core/
+  semantic/
   schema/
   validator/
   cli/

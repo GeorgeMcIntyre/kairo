@@ -1,9 +1,14 @@
 import type { Bounds3, Vec3 } from "@kairo/core";
 import type { ScenePackage } from "@kairo/schema";
-import { safeDisplayText, type SemanticNoteKind } from "../textSafety";
-import type { DeviceKind } from "../semantic/deviceDictionary";
-import type { DeviceGeometryAssociationStatus } from "../semantic/semanticDevices";
-import type { DeviceSemantic, LayoutSemantics, SemanticTextEntity } from "../semantic/layoutSemantics";
+import {
+  safeDisplayText,
+  type DeviceGeometryAssociationStatus,
+  type DeviceKind,
+  type DeviceSemantic,
+  type LayoutSemantics,
+  type SemanticNoteKind,
+  type SemanticTextEntity
+} from "@kairo/semantic";
 import { findEquipmentForDeviceKind, type EquipmentBomCategory } from "../equipment/equipmentLibrary";
 import { buildEquipmentEnvelope, type EquipmentFootprintSource } from "../equipment/equipmentEnvelope";
 import { buildLayoutValidationIssues, type LayoutValidationIssue } from "../layoutValidation/layoutRules";

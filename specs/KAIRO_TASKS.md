@@ -23,7 +23,7 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 Kairo now exports and imports `kairo-semantic-review-artifact.json` from the viewer semantic panel. The artifact persists generated semantic device records plus manual class overrides, corrected geometry group IDs, and rejected/unlinked associations. Import validates schema/version, current semantic device IDs, corrected geometry group IDs, and corrected/rejected row rules before reapplying overrides.
 
-The CLI can also export a blank semantic review artifact from an exploded scene or `.kairo` package with `kairo export-semantic-review <scene-path|package.kairo> <output.json>`. The staged Scott/P736 scene smoke test produced 116 devices, 14 stations, 948 unknown labels, 36 accepted rows, and 80 uncertain rows.
+The CLI can also export a blank semantic review artifact from an exploded scene or `.kairo` package with `kairo export-semantic-review <scene-path|package.kairo> <output.json>`. This path now uses the shared `@kairo/semantic` package instead of importing viewer-only modules. The staged Scott/P736 scene smoke test produced 116 devices, 14 stations, 948 unknown labels, 36 accepted rows, and 80 uncertain rows.
 
 This is the first project-side persistence layer for semantic review decisions. Next pass should use the real Scott/P736 staged scene to create the first checked-in reviewed artifact.
 

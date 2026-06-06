@@ -1,6 +1,6 @@
 import type { Bounds3 } from "@kairo/core";
 import { describe, expect, it } from "vitest";
-import type { DeviceSemantic } from "../semantic/layoutSemantics";
+import type { DeviceSemantic } from "@kairo/semantic";
 import { findEquipmentForDeviceKind } from "./equipmentLibrary";
 import { buildEquipmentEnvelope } from "./equipmentEnvelope";
 
