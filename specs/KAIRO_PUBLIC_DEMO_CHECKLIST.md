@@ -41,6 +41,14 @@ Expected `_redirects`:
 
 ## Public Pages Smoke
 
+Run the non-browser HTTP smoke first:
+
+```powershell
+pnpm smoke:pages
+```
+
+This verifies the Pages app shell, linked JS/CSS assets, SPA fallback route, and that the heavy Scott staged manifest is not deployed as public JSON. It does not verify canvas rendering, toolbar interaction, file-picker upload, or browser console state.
+
 Run in Chrome or Edge.
 
 | Check | Expected Result | Pass / Fail / Notes |
