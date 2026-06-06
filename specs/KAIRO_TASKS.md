@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (Cloudflare Pages deploy)
+Last updated: 2026-06-06 (viewer QA workflow refresh)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -16,6 +16,14 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-010: Fast viewer QA workflow documentation - DONE
+
+**Completed:** 2026-06-06
+
+Updated `specs/VIEWER_QA_WORKFLOW.md` for the current Scott scene and drawing-first viewer. The workflow now includes baseline commands, expected Scott counts, known import warning buckets, 1280 px toolbar QA, panel open/close checks, fit/view/navigation checks, exact picking, zoom-to-cursor, layer filter/isolate terms, text/MTEXT density modes, Diagnostics expectations, Workbench fixture smoke, and `.kairo` package smoke.
+
+---
 
 ### Project / Library Workbench MVP - DONE
 
@@ -168,12 +176,6 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 **Done so far:** Layers panel now has case-insensitive name/id filtering, match count, clear button, Show all, Hide all, per-layer Show only, active isolate highlight, and per-layer entity counts. Filter logic is covered in `apps/viewer/src/sceneStats.test.ts`; `pnpm typecheck`, `pnpm test --run`, and `pnpm --filter @kairo/viewer build` pass. Remaining: browser visual QA on the Scott scene for real layer terms such as `7B`/`FOOTPRINT` and isolate/show-all behavior. Note: current staged Scott `layers.json` has 160 layers and 0 `ROBOT` layer names, so `ROBOT` is not a valid verification term for this asset.
 
 **Not allowed:** Change importer, redesign full viewer.
-
----
-
-### ISSUE-010: Fast viewer QA workflow documentation (P1)
-
-**Goal:** Update `specs/VIEWER_QA_WORKFLOW.md` to include text/MTEXT checklist items, density modes, exact picking, zoom-to-cursor, expected warning counts, and current entity counts.
 
 ---
 
