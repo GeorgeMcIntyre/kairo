@@ -239,7 +239,7 @@ pnpm build
 
 ## ISSUE-006 — Layer controls and isolate workflow
 
-- **Status:** LATER
+- **Status:** DONE
 - **Priority:** P1
 
 **Goal:**
@@ -306,6 +306,9 @@ Investigate remaining 14 nested INSERTs that hit the depth-3+ guard, and plan sa
 - Tests planned before implementation
 - `pnpm test`, `pnpm typecheck`, `pnpm build` pass
 
+**Completed 2026-06-06:**
+Planning audit documented in `docs/NESTED_INSERT_DEPTH_AUDIT.md`. No importer behavior changed.
+
 **Verification commands:**
 ```
 pnpm test
@@ -319,7 +322,7 @@ pnpm build
 
 ## ISSUE-008 — Complex POLYLINE / spline-fit policy
 
-- **Status:** LATER
+- **Status:** DONE
 - **Priority:** P2
 
 **Goal:**
@@ -343,6 +346,9 @@ Phase 10N-B handles spline-fit POLYLINEs using pre-sampled fitting vertices. The
 - Unsupported count explained
 - Approximation warnings deterministic and stable
 - `pnpm test`, `pnpm typecheck`, `pnpm build` pass
+
+**Completed 2026-06-06:**
+Policy documented in `docs/DXF_POLYLINE_POLICY.md`. No importer behavior changed.
 
 **Verification commands:**
 ```
@@ -652,7 +658,7 @@ Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB pro
 | ISSUE-006 | Layer controls and isolate workflow | LATER | P1 |
 | ISSUE-010 | Fast viewer QA workflow documentation | LATER | P1 |
 | ISSUE-012 | Claude skills for Kairo | LATER | P2 |
-| ISSUE-007 | Nested INSERT investigation | LATER | P2 |
-| ISSUE-008 | Complex POLYLINE / spline-fit policy | LATER | P2 |
+| ISSUE-007 | Nested INSERT investigation | DONE | P2 |
+| ISSUE-008 | Complex POLYLINE / spline-fit policy | DONE | P2 |
 | ISSUE-009 | Render performance / batching baseline | LATER | P2 |
 | ISSUE-013 | JT export future roadmap | LATER (PARKED) | P3 |
