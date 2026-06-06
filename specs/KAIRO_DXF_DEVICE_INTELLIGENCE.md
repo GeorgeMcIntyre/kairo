@@ -138,7 +138,7 @@ The diagnostics panel reports:
 - association status
 - association candidates
 
-The viewer semantic panel also exposes session-only overrides for device class and geometry association, plus JSON/Markdown summary exports.
+The viewer semantic panel also exposes session-only overrides for device class and geometry association. JSON/Markdown summary exports live in the Project / Library Workbench.
 
 ## Known Limitations
 

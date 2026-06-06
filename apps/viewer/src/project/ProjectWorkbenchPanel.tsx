@@ -5,21 +5,32 @@ import type { LayoutPackage, ReviewStatus } from "../layoutLibrary/layoutPackage
 import type { LayoutReviewPack } from "../layoutLibrary/layoutReviewPack";
 import type { ReviewedLayoutLibraryPackage } from "../layoutLibrary/reviewedLayoutLibrary";
 
+type ExportFormat = "json" | "csv" | "markdown";
+type DocumentFormat = "json" | "markdown";
+
 export type ProjectWorkbenchPanelProps = {
   layoutPackage: LayoutPackage;
   activeReviewPack: LayoutReviewPack;
   reviewedLibrary: ReviewedLayoutLibraryPackage;
   validationIssues: LayoutValidationIssue[];
   isEditingLive: boolean;
+  statusMessage?: string;
   onClose: () => void;
   onBuildProject: () => void;
   onExportProjectJson: () => void;
   onImportProjectJson: () => void;
   onExportReviewArtifact: () => void;
   onImportReviewArtifact: () => void;
-  onBuildTrainingTruth: () => void;
-  onExportReviewedLibrary: (format: "json" | "csv" | "markdown") => void;
-  onExportQaReport: () => void;
+  onExportSemanticSummary: (format: DocumentFormat) => void;
+  onExportQaReport: (format: DocumentFormat) => void;
+  onExportAdvancedLayout: (format: ExportFormat) => void;
+  onExportLayoutLibrary: (format: ExportFormat) => void;
+  onExportReviewTemplate: () => void;
+  onImportReviewPack: () => void;
+  onExportTrainingTruth: (format: ExportFormat) => void;
+  onImportTrainingTruth: () => void;
+  onExportTrainingTruthComparison: (format: ExportFormat) => void;
+  onExportReviewedLibrary: (format: ExportFormat) => void;
   onRecordStatusChange: (recordId: string, status: ReviewStatus) => void;
   onRecordTypeCorrection: (recordId: string, correctedType: DeviceKind) => void;
 };
@@ -44,15 +55,23 @@ export function ProjectWorkbenchPanel({
   reviewedLibrary,
   validationIssues,
   isEditingLive,
+  statusMessage,
   onClose,
   onBuildProject,
   onExportProjectJson,
   onImportProjectJson,
   onExportReviewArtifact,
   onImportReviewArtifact,
-  onBuildTrainingTruth,
-  onExportReviewedLibrary,
+  onExportSemanticSummary,
   onExportQaReport,
+  onExportAdvancedLayout,
+  onExportLayoutLibrary,
+  onExportReviewTemplate,
+  onImportReviewPack,
+  onExportTrainingTruth,
+  onImportTrainingTruth,
+  onExportTrainingTruthComparison,
+  onExportReviewedLibrary,
   onRecordStatusChange,
   onRecordTypeCorrection
 }: ProjectWorkbenchPanelProps) {
@@ -118,8 +137,115 @@ export function ProjectWorkbenchPanel({
         <button type="button" onClick={onImportReviewArtifact} title="Import a semantic review artifact">
           Import Review Artifact
         </button>
-        <button type="button" onClick={onBuildTrainingTruth} title="Build and download the reviewed training truth JSON">
-          Build Training Truth
+      </div>
+
+      <div className="workbench-export-groups" aria-label="Workbench exports">
+        <section className="workbench-export-group">
+          <h3>Semantic</h3>
+          <div>
+            <button type="button" onClick={() => onExportSemanticSummary("json")}>
+              Summary JSON
+            </button>
+            <button type="button" onClick={() => onExportSemanticSummary("markdown")}>
+              Summary MD
+            </button>
+            <button type="button" onClick={() => onExportQaReport("json")}>
+              QA JSON
+            </button>
+            <button type="button" onClick={() => onExportQaReport("markdown")}>
+              QA MD
+            </button>
+          </div>
+        </section>
+        <section className="workbench-export-group">
+          <h3>Advanced Layout</h3>
+          <div>
+            <button type="button" onClick={() => onExportAdvancedLayout("json")}>
+              JSON
+            </button>
+            <button type="button" onClick={() => onExportAdvancedLayout("csv")}>
+              CSV
+            </button>
+            <button type="button" onClick={() => onExportAdvancedLayout("markdown")}>
+              MD
+            </button>
+          </div>
+        </section>
+        <section className="workbench-export-group">
+          <h3>Layout Library</h3>
+          <div>
+            <button type="button" onClick={() => onExportLayoutLibrary("json")}>
+              JSON
+            </button>
+            <button type="button" onClick={() => onExportLayoutLibrary("csv")}>
+              CSV
+            </button>
+            <button type="button" onClick={() => onExportLayoutLibrary("markdown")}>
+              MD
+            </button>
+          </div>
+        </section>
+        <section className="workbench-export-group">
+          <h3>Review Pack</h3>
+          <div>
+            <button type="button" onClick={onExportReviewTemplate}>
+              Template JSON
+            </button>
+            <button type="button" onClick={onImportReviewPack}>
+              Import JSON
+            </button>
+          </div>
+        </section>
+        <section className="workbench-export-group">
+          <h3>Training Truth</h3>
+          <div>
+            <button type="button" onClick={() => onExportTrainingTruth("json")}>
+              JSON
+            </button>
+            <button type="button" onClick={() => onExportTrainingTruth("csv")}>
+              CSV
+            </button>
+            <button type="button" onClick={() => onExportTrainingTruth("markdown")}>
+              MD
+            </button>
+            <button type="button" onClick={onImportTrainingTruth}>
+              Import JSON
+            </button>
+          </div>
+        </section>
+        <section className="workbench-export-group">
+          <h3>Comparison</h3>
+          <div>
+            <button type="button" onClick={() => onExportTrainingTruthComparison("json")}>
+              JSON
+            </button>
+            <button type="button" onClick={() => onExportTrainingTruthComparison("csv")}>
+              CSV
+            </button>
+            <button type="button" onClick={() => onExportTrainingTruthComparison("markdown")}>
+              MD
+            </button>
+          </div>
+        </section>
+        <section className="workbench-export-group">
+          <h3>Reviewed Library</h3>
+          <div>
+            <button type="button" onClick={() => onExportReviewedLibrary("json")}>
+              JSON
+            </button>
+            <button type="button" onClick={() => onExportReviewedLibrary("csv")}>
+              CSV
+            </button>
+            <button type="button" onClick={() => onExportReviewedLibrary("markdown")}>
+              MD
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <div className="workbench-actions workbench-view-actions">
+        <button type="button" onClick={() => onExportQaReport("json")} title="Export the semantic QA report">
+          Export QA Report
         </button>
         <button
           type="button"
@@ -128,9 +254,11 @@ export function ProjectWorkbenchPanel({
         >
           Export Reviewed Library
         </button>
-        <button type="button" onClick={onExportQaReport} title="Export the semantic QA report">
-          Export QA Report
-        </button>
+        {statusMessage ? (
+          <span className="workbench-status" role="status">
+            {statusMessage}
+          </span>
+        ) : null}
       </div>
 
       {!isEditingLive ? (

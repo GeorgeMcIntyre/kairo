@@ -90,7 +90,7 @@ Validation checks include:
 - duplicate review records
 - detected item IDs that do not exist in the generated training pack
 
-The viewer reports the first validation error in the semantic panel status area.
+The viewer reports the first validation error in the Workbench status area.
 
 ## Truth Reuse
 

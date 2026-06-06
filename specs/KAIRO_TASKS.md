@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (first reviewed layout library fixture)
+Last updated: 2026-06-06 (drawing-first toolbar/workbench consolidation)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -79,7 +79,7 @@ Merge rules are deterministic: accepted rows remain trainable as generated, corr
 
 Kairo now exports a reusable Layout Library package from the existing semantic and Advanced Engineering pipeline. The package includes source DXF metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows.
 
-Exports are available as JSON, CSV, and Markdown through the semantic panel. P736 regression coverage confirms `7B-020L-04` as robot, `7B-070L-DN1` and `7B-070L-DN2` as dunnage, and `7B-060L-1N` as nest in the package/training records.
+Exports are available as JSON, CSV, and Markdown through the Project / Library Workbench. P736 regression coverage confirms `7B-020L-04` as robot, `7B-070L-DN1` and `7B-070L-DN2` as dunnage, and `7B-060L-1N` as nest in the package/training records.
 
 **Docs:** See `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
 
@@ -119,7 +119,7 @@ Exports are available as JSON, CSV, and Markdown through the semantic panel. P73
 
 **Goal:** Maximize canvas space by default. Toolbar: Fit / Top2D / 3D / Fit-selected / Layers / Text / Diagnostics. Layers/Semantics/Inspector are now hideable; next pass should make the layout more intentional without a full redesign.
 
-**Done so far:** Project Workbench panel added (toolbar → Workbench). Provides in-app review table and library preview. Next: clean up toolbar density, consider collapsing export buttons from semantic panel now that Workbench covers them.
+**Done so far:** Project Workbench panel added (toolbar → Workbench). Provides in-app review table and library preview. Toolbar is now grouped into file/demo, fit, view/orbit, Layers/Text, and Semantics/Inspector/Workbench controls; text density/readable-label controls are collapsed into a compact Text menu. Semantic panel has been pruned back to semantic summary/filter UI plus device overlay and semantic-review artifact import/export. Bulk semantic, Advanced Layout, Layout Library, review-pack, training truth, comparison, and reviewed-library exports now live in Workbench. Remaining: visual browser QA at 1280px and any polish found there.
 
 **Not allowed:** Touch importer/schema/GLB/JT/export. Remove sample scene support.
 
@@ -228,7 +228,7 @@ Kairo now builds semantic device records from DXF text labels and nearby geometr
 
 Protected BIW rules are covered by tests: `7B-020L-04` is a robot/device tag, not a station; `7B-070L-DN1` and `7B-070L-DN2` classify as dunnage; `7B-060L-1N` classifies as nest. Association tests cover close link, ambiguous middle label, far unlinked label, and distance-based confidence drop.
 
-The viewer semantic panel now shows summary counts, device association details, linked geometry IDs, candidate groups, session-only class/geometry/unlink overrides, and JSON/Markdown summary copy/download actions.
+The viewer semantic panel now shows summary counts, device association details, linked geometry IDs, candidate groups, and session-only class/geometry/unlink overrides. JSON/Markdown summary exports now live in the Project / Library Workbench.
 
 Verification: 245/245 tests pass with `pnpm.cmd test -- --minWorkers=1 --maxWorkers=1`; `pnpm.cmd typecheck` and `pnpm.cmd build` pass; `validate apps/viewer/public/scenes/scott-dxf2013-import` passes with 0 errors / 0 warnings.
 

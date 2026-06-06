@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (first reviewed layout library fixture)
+Last updated: 2026-06-06 (drawing-first toolbar/workbench consolidation)
 
 ## Git
 
@@ -13,7 +13,7 @@ Last updated: 2026-06-06 (first reviewed layout library fixture)
 |---|---|
 | `pnpm test` | 334/334 passed (1 skipped: generator) |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~938 kB, chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle ~950 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -67,11 +67,12 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Manual correction MVP: selected semantic devices can be overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic review artifact MVP: viewer can export/import `kairo-semantic-review-artifact.json` so manual semantic class, corrected geometry group, and unlink/reject decisions can be persisted as project-side JSON and reloaded against the current semantic extraction. The CLI can also export a blank review artifact from staged scenes or `.kairo` packages through `@kairo/semantic`.
 - Checked-in Scott/P736 semantic seed fixture: `docs/examples/scott-p736-protected-labels.semantic-review.json` imports against the staged Scott scene and protects the known labels `7B-020L-04` as `robot`, `7B-070L-DN1`/`7B-070L-DN2` as `dunnage`, and `7B-060L-1N` as `nest`. The robot/dunnage rows remain `uncertain` because nearby geometry is still ambiguous; the nest row is `accepted` with `insert-906ef-putdownstand`.
-- Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
+- Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through the Project / Library Workbench.
 - Semantic QA export MVP: deterministic Markdown/JSON exports include detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 checklist, unknown labels, duplicates, and missing/uncertain rows.
 - Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
 - Reviewed training workflow MVP: viewer can export a blank review template JSON, import a reviewed review-pack JSON with schema validation, and export merged reviewed training truth as JSON/CSV/Markdown. Corrected rows become trainable truth, rejected rows are excluded, and uncertain rows remain review-only. Saved reviewed truth can be imported later and compared against the current generated package with JSON/CSV/Markdown comparison exports. Trainable truth can now be exported as a reviewed reusable layout library.
 - Project Workbench MVP: toolbar Workbench panel provides in-app review editing. Build Project Package activates a live `LayoutReviewPack`; review table shows all detected records with accept/correct/reject/uncertain actions per row; library preview shows trainable/excluded/review-only counts by type. Export Project JSON writes a single `kairo-project.json` (schema `kairo-project` v1) bundling source metadata, semantic summary, layout package, review pack, and reviewed library. Import Project JSON restores review state. `editableReviewPack` joins the pipeline at lower priority than an explicitly imported pack; zero-edit output is byte-identical to prior behavior. Docs: `docs/FRONTEND_PROJECT_WORKBENCH.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
+- Drawing-first toolbar/workbench consolidation: top toolbar is grouped as file/demo, fit controls, view/orbit controls, Layers/Text, and Semantics/Inspector/Workbench. Text density/readable-label controls are collapsed into a compact Text menu. Semantic panel now keeps only summary/filter lists, device overlay toggle, and semantic-review artifact import/export. Bulk exports for semantic summary/QA, Advanced Layout, Layout Library, review templates, training truth, training comparison, and reviewed library now live in the Workbench.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.

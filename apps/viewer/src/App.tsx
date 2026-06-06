@@ -462,6 +462,7 @@ function Viewport({
   onSelect,
   labelDensity,
   readableOrientation,
+  orbitEnabled,
   semanticOverlayEnabled,
   semanticOverlayModel,
   onSelectSemantic,
@@ -478,6 +479,7 @@ function Viewport({
   onSelect: (selection: ViewerSelection) => void;
   labelDensity: LabelDensityMode;
   readableOrientation: boolean;
+  orbitEnabled: boolean;
   semanticOverlayEnabled: boolean;
   semanticOverlayModel: SemanticOverlayModel;
   onSelectSemantic: (selection: SemanticSelection) => void;
@@ -573,12 +575,12 @@ function Viewport({
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
     controls.screenSpacePanning = true;
-    controls.enableRotate = viewMode !== "top2d";
+    controls.enableRotate = viewMode !== "top2d" && orbitEnabled;
     controls.zoomToCursor = true;
     controls.zoomSpeed = 1.2;
     controls.panSpeed = 1.1;
-    if (viewMode === "top2d") {
-      controls.mouseButtons.LEFT = null;
+    if (viewMode === "top2d" || !orbitEnabled) {
+      controls.mouseButtons.LEFT = viewMode === "top2d" ? null : THREE.MOUSE.PAN;
       controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
       controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
     }
@@ -860,7 +862,7 @@ function Viewport({
       setOverlayCamera(null);
       setOverlayHost(null);
     };
-  }, [scenePackage, viewMode, robustBounds, hiddenOutlierEntityIds]); // hiddenLayerIds/onSelect read via refs; fit handled by separate effect
+  }, [scenePackage, viewMode, orbitEnabled, robustBounds, hiddenOutlierEntityIds]); // hiddenLayerIds/onSelect read via refs; fit handled by separate effect
 
   // Layer visibility: toggle without rebuilding geometry.
   useEffect(() => {
@@ -997,6 +999,7 @@ export function App() {
   const [sceneLoadError, setSceneLoadError] = useState<string | undefined>();
   const [activeSceneName, setActiveSceneName] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<ViewMode>("top2d");
+  const [orbitEnabled, setOrbitEnabled] = useState(true);
   const [fitRequest, setFitRequest] = useState<FitRequest>({ target: "main", serial: 0 });
   const [hiddenLayerIds, setHiddenLayerIds] = useState<Set<string>>(() => new Set());
   const nodeMap = useMemo(() => nodesById(scenePackage), [scenePackage]);
@@ -1479,19 +1482,6 @@ export function App() {
     });
   };
 
-  const copySemanticExport = (format: "json" | "markdown") => {
-    const content =
-      format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
-    const writeText = navigator.clipboard?.writeText;
-    if (!writeText) {
-      setSemanticCopyStatus("Copy failed");
-      return;
-    }
-    void writeText.call(navigator.clipboard, content)
-      .then(() => setSemanticCopyStatus(format === "json" ? "Copied JSON" : "Copied Markdown"))
-      .catch(() => setSemanticCopyStatus("Copy failed"));
-  };
-
   const downloadSemanticExport = (format: "json" | "markdown") => {
     const content =
       format === "json" ? exportSemanticSummaryJson(semanticSummary) : exportSemanticSummaryMarkdown(semanticSummary);
@@ -1547,17 +1537,6 @@ export function App() {
     if (format === "json") return exportAdvancedLayoutJson(advancedLayoutModel);
     if (format === "csv") return exportAdvancedLayoutCsv(advancedLayoutModel);
     return exportAdvancedLayoutMarkdown(advancedLayoutModel);
-  };
-
-  const copyAdvancedLayoutExport = (format: AdvancedLayoutExportFormat) => {
-    const writeText = navigator.clipboard?.writeText;
-    if (!writeText) {
-      setSemanticCopyStatus("Copy failed");
-      return;
-    }
-    void writeText.call(navigator.clipboard, advancedLayoutExportContent(format))
-      .then(() => setSemanticCopyStatus(format === "json" ? "Copied AE JSON" : format === "csv" ? "Copied AE CSV" : "Copied AE Markdown"))
-      .catch(() => setSemanticCopyStatus("Copy failed"));
   };
 
   const downloadAdvancedLayoutExport = (format: AdvancedLayoutExportFormat) => {
@@ -1831,12 +1810,10 @@ export function App() {
             <button onClick={() => requestFit("main")} type="button">
               Fit main
             </button>
-            <button onClick={() => requestFit("raw")} type="button">
-              Fit raw
-            </button>
             <button onClick={() => requestFit("selected")} type="button">
               Fit selected
             </button>
+            <span className="toolbar-divider" aria-hidden="true" />
             <button
               aria-pressed={viewMode === "top2d"}
               className={viewMode === "top2d" ? "active" : ""}
@@ -1853,68 +1830,17 @@ export function App() {
             >
               3D
             </button>
-            <span className="toolbar-divider" aria-hidden="true" />
-            <span className="toolbar-label">Labels</span>
             <button
-              aria-pressed={labelDensity === "auto"}
-              className={labelDensity === "auto" ? "active" : ""}
-              onClick={() => setLabelDensity("auto")}
-              title="Hide labels smaller than ~5px (cleaner fit-scene view)"
-              type="button"
-            >
-              Auto
-            </button>
-            <button
-              aria-pressed={labelDensity === "all"}
-              className={labelDensity === "all" ? "active" : ""}
-              onClick={() => setLabelDensity("all")}
-              title="Show every label, clamping tiny labels up to 2px"
-              type="button"
-            >
-              All
-            </button>
-            <button
-              aria-pressed={labelDensity === "off"}
-              className={labelDensity === "off" ? "active" : ""}
-              onClick={() => setLabelDensity("off")}
-              title="Hide all text labels"
-              type="button"
-            >
-              Off
-            </button>
-            <button
-              aria-pressed={readableOrientation}
-              className={readableOrientation ? "active" : ""}
-              onClick={() => setReadableOrientation((current) => !current)}
-              title="Flip upside-down labels so they read left-to-right"
-              type="button"
-            >
-              Readable
-            </button>
-            <button
-              aria-pressed={showOutliers}
-              className={showOutliers ? "active warning" : ""}
+              aria-pressed={orbitEnabled}
+              className={orbitEnabled ? "active" : ""}
               onClick={() => {
-                setShowOutliers((current) => !current);
-                setFitRequest((current) => ({ target: current.target === "raw" ? "raw" : "main", serial: current.serial + 1 }));
+                setOrbitEnabled((current) => !current);
+                setViewMode("perspective");
               }}
-              title="Show isolated far-away geometry normally hidden from the main layout view"
+              title="Toggle orbit rotation in the 3D view"
               type="button"
             >
-              Show outliers
-            </button>
-            <button
-              aria-pressed={semanticOverlayEnabled}
-              className={semanticOverlayEnabled ? "active" : ""}
-              onClick={() => {
-                const nextEnabled = !semanticOverlayEnabled;
-                setSemanticOverlayEnabled(nextEnabled);
-                if (nextEnabled) setSemanticPanelOpen(true);
-              }}
-              title="Show station markers, device candidate bounds, and association lines"
-              type="button"
-            >
-              Semantic overlay
+              Orbit
             </button>
             <span className="toolbar-divider" aria-hidden="true" />
             <button
@@ -1926,6 +1852,48 @@ export function App() {
             >
               Layers
             </button>
+            <details className="toolbar-menu">
+              <summary title="Text label visibility and orientation">Text</summary>
+              <div className="toolbar-menu-popover" role="group" aria-label="Text label controls">
+                <button
+                  aria-pressed={labelDensity === "auto"}
+                  className={labelDensity === "auto" ? "active" : ""}
+                  onClick={() => setLabelDensity("auto")}
+                  title="Hide labels smaller than ~5px"
+                  type="button"
+                >
+                  Auto
+                </button>
+                <button
+                  aria-pressed={labelDensity === "all"}
+                  className={labelDensity === "all" ? "active" : ""}
+                  onClick={() => setLabelDensity("all")}
+                  title="Show every label"
+                  type="button"
+                >
+                  All
+                </button>
+                <button
+                  aria-pressed={labelDensity === "off"}
+                  className={labelDensity === "off" ? "active" : ""}
+                  onClick={() => setLabelDensity("off")}
+                  title="Hide all text labels"
+                  type="button"
+                >
+                  Off
+                </button>
+                <button
+                  aria-pressed={readableOrientation}
+                  className={readableOrientation ? "active" : ""}
+                  onClick={() => setReadableOrientation((current) => !current)}
+                  title="Flip upside-down labels so they read left-to-right"
+                  type="button"
+                >
+                  Readable
+                </button>
+              </div>
+            </details>
+            <span className="toolbar-divider" aria-hidden="true" />
             <button
               aria-pressed={semanticOverlayEnabled && semanticPanelOpen}
               className={semanticOverlayEnabled && semanticPanelOpen ? "active" : ""}
@@ -1983,6 +1951,7 @@ export function App() {
           onSelect={selectViewport}
           labelDensity={labelDensity}
           readableOrientation={readableOrientation}
+          orbitEnabled={orbitEnabled}
           semanticOverlayEnabled={semanticOverlayEnabled}
           semanticOverlayModel={semanticOverlayModel}
           onSelectSemantic={selectSemantic}
@@ -2181,40 +2150,18 @@ export function App() {
             </label>
           </div>
           <div className="semantic-panel-actions">
-            <button onClick={() => requestFit("main")} type="button">
-              Fit main
-            </button>
-            <button onClick={() => requestFit("raw")} type="button">
-              Fit raw
-            </button>
             <button
-              aria-pressed={showOutliers}
-              className={showOutliers ? "active warning" : ""}
+              aria-pressed={semanticOverlayEnabled}
+              className={semanticOverlayEnabled ? "active" : ""}
               onClick={() => {
-                setShowOutliers((current) => !current);
-                setFitRequest((current) => ({ target: current.target === "raw" ? "raw" : "main", serial: current.serial + 1 }));
+                const nextEnabled = !semanticOverlayEnabled;
+                setSemanticOverlayEnabled(nextEnabled);
+                if (!nextEnabled) setSemanticPanelOpen(false);
               }}
+              title="Show station markers, device candidate bounds, and association lines"
               type="button"
             >
-              Show outliers
-            </button>
-            <button onClick={() => copySemanticExport("json")} type="button">
-              Copy JSON
-            </button>
-            <button onClick={() => copySemanticExport("markdown")} type="button">
-              Copy MD
-            </button>
-            <button onClick={() => downloadSemanticExport("json")} type="button">
-              Download JSON
-            </button>
-            <button onClick={() => downloadSemanticExport("markdown")} type="button">
-              Download MD
-            </button>
-            <button onClick={() => downloadSemanticQaExport("markdown")} type="button">
-              Download QA MD
-            </button>
-            <button onClick={() => downloadSemanticQaExport("json")} type="button">
-              Download QA JSON
+              Device overlay
             </button>
             <button onClick={downloadSemanticReviewArtifact} type="button">
               Download Semantic Review JSON
@@ -2222,77 +2169,6 @@ export function App() {
             <button onClick={openSemanticReviewArtifactPicker} type="button">
               Import Semantic Review JSON
             </button>
-            <span className="semantic-action-divider" aria-hidden="true" />
-            <button onClick={() => copyAdvancedLayoutExport("json")} type="button">
-              Copy AE JSON
-            </button>
-            <button onClick={() => copyAdvancedLayoutExport("csv")} type="button">
-              Copy AE CSV
-            </button>
-            <button onClick={() => copyAdvancedLayoutExport("markdown")} type="button">
-              Copy AE MD
-            </button>
-            <button onClick={() => downloadAdvancedLayoutExport("json")} type="button">
-              Download AE JSON
-            </button>
-            <button onClick={() => downloadAdvancedLayoutExport("csv")} type="button">
-              Download AE CSV
-            </button>
-            <button onClick={() => downloadAdvancedLayoutExport("markdown")} type="button">
-              Download AE MD
-            </button>
-            <span className="semantic-action-divider" aria-hidden="true" />
-            <button onClick={() => downloadLayoutLibraryExport("json")} type="button">
-              Download Library JSON
-            </button>
-            <button onClick={() => downloadLayoutLibraryExport("csv")} type="button">
-              Download Library CSV
-            </button>
-            <button onClick={() => downloadLayoutLibraryExport("markdown")} type="button">
-              Download Library MD
-            </button>
-            <span className="semantic-action-divider" aria-hidden="true" />
-            <button onClick={downloadLayoutReviewTemplate} type="button">
-              Download Review Template
-            </button>
-            <button onClick={openLayoutReviewPackPicker} type="button">
-              Import Review JSON
-            </button>
-            <button onClick={() => downloadReviewedTrainingTruth("json")} type="button">
-              Download Truth JSON
-            </button>
-            <button onClick={() => downloadReviewedTrainingTruth("csv")} type="button">
-              Download Truth CSV
-            </button>
-            <button onClick={() => downloadReviewedTrainingTruth("markdown")} type="button">
-              Download Truth MD
-            </button>
-            <button onClick={openReviewedTrainingTruthPicker} type="button">
-              Import Truth JSON
-            </button>
-            <button onClick={() => downloadTrainingTruthComparison("json")} type="button">
-              Download Compare JSON
-            </button>
-            <button onClick={() => downloadTrainingTruthComparison("csv")} type="button">
-              Download Compare CSV
-            </button>
-            <button onClick={() => downloadTrainingTruthComparison("markdown")} type="button">
-              Download Compare MD
-            </button>
-            <button onClick={() => downloadReviewedLayoutLibrary("json")} type="button">
-              Download Reviewed Library JSON
-            </button>
-            <button onClick={() => downloadReviewedLayoutLibrary("csv")} type="button">
-              Download Reviewed Library CSV
-            </button>
-            <button onClick={() => downloadReviewedLayoutLibrary("markdown")} type="button">
-              Download Reviewed Library MD
-            </button>
-            {layoutReviewStatus ? (
-              <span className="semantic-copy-status" role="status">
-                {layoutReviewStatus}
-              </span>
-            ) : null}
             {semanticCopyStatus ? (
               <span className="semantic-copy-status" role="status">
                 {semanticCopyStatus}
@@ -2433,15 +2309,23 @@ export function App() {
           reviewedLibrary={reviewedLayoutLibrary}
           validationIssues={advancedLayoutModel.validationIssues}
           isEditingLive={editableReviewPack !== undefined && importedLayoutReviewPack === undefined}
+          statusMessage={layoutReviewStatus}
           onClose={() => setWorkbenchOpen(false)}
           onBuildProject={handleBuildProject}
           onExportProjectJson={handleExportProjectJson}
           onImportProjectJson={() => projectInputRef.current?.click()}
           onExportReviewArtifact={downloadSemanticReviewArtifact}
           onImportReviewArtifact={openSemanticReviewArtifactPicker}
-          onBuildTrainingTruth={() => downloadReviewedTrainingTruth("json")}
+          onExportSemanticSummary={downloadSemanticExport}
+          onExportQaReport={downloadSemanticQaExport}
+          onExportAdvancedLayout={downloadAdvancedLayoutExport}
+          onExportLayoutLibrary={downloadLayoutLibraryExport}
+          onExportReviewTemplate={downloadLayoutReviewTemplate}
+          onImportReviewPack={openLayoutReviewPackPicker}
+          onExportTrainingTruth={downloadReviewedTrainingTruth}
+          onImportTrainingTruth={openReviewedTrainingTruthPicker}
+          onExportTrainingTruthComparison={downloadTrainingTruthComparison}
           onExportReviewedLibrary={downloadReviewedLayoutLibrary}
-          onExportQaReport={() => downloadSemanticQaExport("json")}
           onRecordStatusChange={handleRecordStatusChange}
           onRecordTypeCorrection={handleRecordTypeCorrection}
         />
@@ -2765,6 +2649,22 @@ export function App() {
             <span>
               Outliers: {robustBounds.outlierEntityIds.length} ({showOutliers ? "shown" : "hidden from main view"})
             </span>
+            <div className="diagnostics-actions" role="group" aria-label="Diagnostics view controls">
+              <button onClick={() => requestFit("raw")} type="button">
+                Fit raw bounds
+              </button>
+              <button
+                aria-pressed={showOutliers}
+                className={showOutliers ? "active warning" : ""}
+                onClick={() => {
+                  setShowOutliers((current) => !current);
+                  setFitRequest((current) => ({ target: current.target === "raw" ? "raw" : "main", serial: current.serial + 1 }));
+                }}
+                type="button"
+              >
+                {showOutliers ? "Hide outliers" : "Show outliers"}
+              </button>
+            </div>
             <span>Raw bounds: {formatBounds(robustBounds.rawBounds)}</span>
             <span>Fit bounds: {formatBounds(robustBounds.fitBounds)}</span>
             <span>Outlier bounds: {formatBounds(robustBounds.outlierBounds)}</span>
