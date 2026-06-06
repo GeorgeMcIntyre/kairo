@@ -1,19 +1,17 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (Workbench MVP)
+Last updated: 2026-06-06 (first reviewed layout library fixture)
 
 ## Git
 
 - Branch: `codex/kairo-dxf-block-instances`
-- HEAD: includes current semantic review persistence and shared semantic package work after commit.
-- Working tree contains the current Scott/P736 protected-label fixture slice until committed.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 332/332 passed |
+| `pnpm test` | 334/334 passed (1 skipped: generator) |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle ~938 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
@@ -74,6 +72,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
 - Reviewed training workflow MVP: viewer can export a blank review template JSON, import a reviewed review-pack JSON with schema validation, and export merged reviewed training truth as JSON/CSV/Markdown. Corrected rows become trainable truth, rejected rows are excluded, and uncertain rows remain review-only. Saved reviewed truth can be imported later and compared against the current generated package with JSON/CSV/Markdown comparison exports. Trainable truth can now be exported as a reviewed reusable layout library.
 - Project Workbench MVP: toolbar Workbench panel provides in-app review editing. Build Project Package activates a live `LayoutReviewPack`; review table shows all detected records with accept/correct/reject/uncertain actions per row; library preview shows trainable/excluded/review-only counts by type. Export Project JSON writes a single `kairo-project.json` (schema `kairo-project` v1) bundling source metadata, semantic summary, layout package, review pack, and reviewed library. Import Project JSON restores review state. `editableReviewPack` joins the pipeline at lower priority than an explicitly imported pack; zero-edit output is byte-identical to prior behavior. Docs: `docs/FRONTEND_PROJECT_WORKBENCH.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
+- First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.

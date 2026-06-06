@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Scott P736 first-review project fixture > parses the fixture and produces a stable reviewed library > scott-p736-first-review-library-summary 1`] = `
+{
+  "acceptedItems": 28,
+  "correctedItems": 0,
+  "excludedRecords": 0,
+  "itemsByType": {
+    "device_number": 20,
+    "nest": 4,
+    "pdp_panel": 3,
+    "robot": 1,
+  },
+  "reusableItems": 28,
+  "reviewOnlyRecords": 88,
+}
+`;

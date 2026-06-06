@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (Workbench MVP added)
+Last updated: 2026-06-06 (first reviewed layout library fixture)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -105,9 +105,11 @@ Exports are available as JSON, CSV, and Markdown through the semantic panel. P73
 
 ---
 
-### ISSUE-019: Scott DXF semantic association QA pass (P1)
+### ISSUE-019: Scott DXF semantic association QA pass (P1) — partial
 
 **Goal:** Manually inspect the primary Scott DXF staged scene and record whether high-value labels such as `7B-020L-04`, `7B-070L-DN1`, `7B-070L-DN2`, and `7B-060L-1N` link to the expected nearby geometry. Tune only proven association thresholds or layer/block hints.
+
+**Done so far:** Baseline `kairo-project.json` fixture generated from the full Scott scene pipeline (116 records: 28 auto-accepted, 88 uncertain). Checked in at `docs/examples/scott-p736-first-review.kairo-project.json`. Regression test in `scottP736FirstReview.test.ts`. Remaining: human visual QA pass on the ambiguous geometry associations (especially the 4 protected P736 labels) and upgrade to a human-reviewed version of the fixture.
 
 **Not allowed:** Rewrite viewer batching, create per-entity Three.js objects, or hardcode the Scott DXF path into production code.
 
