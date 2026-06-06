@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (Scott `.kairo` package smoke)
+Last updated: 2026-06-06 (CAD GLB probe smoke)
 
 ## Git
 
@@ -29,6 +29,7 @@ Last updated: 2026-06-06 (Scott `.kairo` package smoke)
 | `node tools\glb-probes\inspect-glb-probe.mjs` | Passed; GLB 2.0 header/chunks valid, modes 1/3/4/5 present, far-origin and 0.1 mm line detected |
 | `node tools\glb-probes\build-jt-bridge-part-probe.mjs` | Passed; wrote `tools\glb-probes\jt-bridge-part-output.glb` with one named red 100 x 50 x 25 mm mesh part |
 | `node tools\glb-probes\inspect-jt-bridge-part-probe.mjs` | Passed; GLB 2.0 header/chunks valid, one node/mesh/material, 12 triangles, normals, dimensions, material color, and metadata detected |
+| `pnpm smoke:cad-glb-probes` | Passed; rebuilt and inspected both CAD GLB probes, confirming primitive modes/features and JT bridge part checks. Artifacts: `probe-output.glb` 18,336 bytes; `jt-bridge-part-output.glb` 3,952 bytes. Desktop CAD Exchanger/JT2Go/Process Simulate matrix still pending. |
 | `node tools\precision-audit\scene-float32-precision-audit.mjs` | Passed; Scott p99 coordinate magnitude ~106,758 mm gives 0.0078125 mm Float32 spacing, but far outliers near 955,434 mm give 0.0625 mm spacing |
 | `node packages\cli\dist\index.js inspect-dxf C:\Users\George\Downloads\ScottLayouts\DSP-B-01-7B-0001-24MY-P736-PRO-IMPBASE_20260504_DXF2013.dxf tmp\scott-dxf2013-insert-inventory` | Passed for block-topology inventory: parser OK, 602 INSERT entities, 214 unique INSERT block names, 286 block definitions, 0 missing block definitions, 314 INSERTs inside block definitions. Treat transform-warning output from this compiled CLI run as stale relative to the current staged scene. |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
@@ -103,7 +104,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. The deployed branch alias is `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev`; the latest immutable deployment is `https://b5859425.kairo-viewer-6lh.pages.dev`. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets. The viewer demo action loads the bundled sample scene so the Pages URL has a working demo path without staged public scene assets. Manual public-demo and `.kairo` upload gates are listed in `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md`.
 - CAD Exchanger GLB probe: `tools/glb-probes/build-probe.mjs` writes `tools/glb-probes/probe-output.glb`, covering native `LINES`, `LINE_STRIP`, `TRIANGLES`, `TRIANGLE_STRIP`, a ribbon mesh fallback, red/green/blue material groups, named nodes/meshes, extras metadata, a 0.1 mm line, and a far-origin line near `[110000, 90000, 0]`. `inspect-glb-probe.mjs` validates GLB structure and probe feature presence. Manual CAD Exchanger/JT results still need to be recorded in `docs/CAD_EXCHANGER_GLB_PROBE.md`.
-- CAD Exchanger JT bridge part probe: `tools/glb-probes/build-jt-bridge-part-probe.mjs` writes `tools/glb-probes/jt-bridge-part-output.glb`, a single named red mesh block (`jt_bridge_probe_named_red_block_100x50x25mm`) with 100 x 50 x 25 mm dimensions, normals, material name, part number, and metadata. `inspect-jt-bridge-part-probe.mjs` validates local GLB structure and dimensions. Manual CAD Exchanger, reopened-JT, JT2Go, and Process Simulate results still need to be recorded in `docs/CAD_EXCHANGER_JT_BRIDGE_PROBE.md`.
+- CAD Exchanger JT bridge part probe: `tools/glb-probes/build-jt-bridge-part-probe.mjs` writes `tools/glb-probes/jt-bridge-part-output.glb`, a single named red mesh block (`jt_bridge_probe_named_red_block_100x50x25mm`) with 100 x 50 x 25 mm dimensions, normals, material name, part number, and metadata. `inspect-jt-bridge-part-probe.mjs` validates local GLB structure and dimensions. `pnpm smoke:cad-glb-probes` rebuilds and inspects both CAD probe artifacts as the local preflight. Manual CAD Exchanger, reopened-JT, JT2Go, and Process Simulate results still need to be recorded in `docs/CAD_EXCHANGER_JT_BRIDGE_PROBE.md`.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 

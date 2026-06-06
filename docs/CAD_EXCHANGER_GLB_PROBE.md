@@ -9,8 +9,7 @@ This is a compatibility probe, not a production Kairo exporter. It exists to ans
 From the repo root:
 
 ```powershell
-node tools\glb-probes\build-probe.mjs
-node tools\glb-probes\inspect-glb-probe.mjs
+pnpm smoke:cad-glb-probes
 ```
 
 Expected output:
@@ -18,6 +17,8 @@ Expected output:
 ```text
 tools\glb-probes\probe-output.glb
 ```
+
+The smoke command also rebuilds and inspects the separate JT bridge named-part probe. It is the local preflight before any desktop CAD Exchanger/JT matrix run.
 
 ## Probe Coverage
 

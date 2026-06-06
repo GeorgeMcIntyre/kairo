@@ -11,8 +11,7 @@ Do not treat this as proof that raw JT export, production GLB export, layout exp
 From the repo root:
 
 ```powershell
-node tools\glb-probes\build-jt-bridge-part-probe.mjs
-node tools\glb-probes\inspect-jt-bridge-part-probe.mjs
+pnpm smoke:cad-glb-probes
 ```
 
 Expected output:
@@ -20,6 +19,8 @@ Expected output:
 ```text
 tools\glb-probes\jt-bridge-part-output.glb
 ```
+
+The smoke command also rebuilds and inspects the broader GLB primitive compatibility probe. It is the local preflight before filling in the desktop-tool result matrix.
 
 ## Probe Contents
 
