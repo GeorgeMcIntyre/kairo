@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (drawing-first toolbar/workbench consolidation)
+Last updated: 2026-06-06 (layer isolate workflow)
 
 ## Git
 
@@ -11,9 +11,9 @@ Last updated: 2026-06-06 (drawing-first toolbar/workbench consolidation)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 334/334 passed (1 skipped: generator) |
+| `pnpm test` | 335/335 passed (1 skipped: generator) |
 | `pnpm typecheck` | Clean |
-| `pnpm build` | Clean (viewer bundle ~950 kB, chunk size warning only) |
+| `pnpm build` | Clean (viewer bundle ~951 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -73,6 +73,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Reviewed training workflow MVP: viewer can export a blank review template JSON, import a reviewed review-pack JSON with schema validation, and export merged reviewed training truth as JSON/CSV/Markdown. Corrected rows become trainable truth, rejected rows are excluded, and uncertain rows remain review-only. Saved reviewed truth can be imported later and compared against the current generated package with JSON/CSV/Markdown comparison exports. Trainable truth can now be exported as a reviewed reusable layout library.
 - Project Workbench MVP: toolbar Workbench panel provides in-app review editing. Build Project Package activates a live `LayoutReviewPack`; review table shows all detected records with accept/correct/reject/uncertain actions per row; library preview shows trainable/excluded/review-only counts by type. Export Project JSON writes a single `kairo-project.json` (schema `kairo-project` v1) bundling source metadata, semantic summary, layout package, review pack, and reviewed library. Import Project JSON restores review state. `editableReviewPack` joins the pipeline at lower priority than an explicitly imported pack; zero-edit output is byte-identical to prior behavior. Docs: `docs/FRONTEND_PROJECT_WORKBENCH.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
 - Drawing-first toolbar/workbench consolidation: top toolbar is grouped as file/demo, fit controls, view/orbit controls, Layers/Text, and Semantics/Inspector/Workbench. Text density/readable-label controls are collapsed into a compact Text menu. Semantic panel now keeps only summary/filter lists, device overlay toggle, and semantic-review artifact import/export. Bulk exports for semantic summary/QA, Advanced Layout, Layout Library, review templates, training truth, training comparison, and reviewed library now live in the Workbench.
+- Layer isolate workflow: Layers panel has case-insensitive name/id filtering, match counts, clear filter, Show all, Hide all, and per-layer Show only controls. Active isolate state is highlighted when exactly one layer is visible. Entity counts remain visible per layer, and visibility changes still use the existing `hiddenLayerIds` object-visible path without importer/schema changes.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.

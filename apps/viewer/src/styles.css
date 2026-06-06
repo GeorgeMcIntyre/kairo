@@ -848,6 +848,60 @@ button:hover {
   gap: 12px;
 }
 
+.layer-filter {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+}
+
+.layer-filter label {
+  display: grid;
+  gap: 4px;
+}
+
+.layer-filter label span {
+  color: #6a8499;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.layer-filter input {
+  width: 100%;
+  height: 28px;
+  min-width: 0;
+  border: 1px solid #34445c;
+  border-radius: 4px;
+  background: #111927;
+  color: #c9d4df;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.layer-filter-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.layer-filter-meta span {
+  color: #6a8499;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.layer-filter-meta button {
+  min-height: 22px;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .layer-list {
   max-height: calc(100vh - 132px);
   overflow: auto;
@@ -857,7 +911,7 @@ button:hover {
 
 .layer-row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 48px;
+  grid-template-columns: minmax(0, 1fr) 48px 72px;
   gap: 6px;
   align-items: center;
   min-height: 28px;
@@ -876,6 +930,19 @@ button:hover {
   box-shadow: inset 3px 0 0 #f4a51c;
 }
 
+.layer-row.isolated {
+  background: #102f2b;
+  box-shadow: inset 3px 0 0 #3cc097;
+}
+
+.layer-row label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .layer-row span {
   min-width: 0;
   overflow: hidden;
@@ -887,6 +954,22 @@ button:hover {
   color: #6a8499;
   font-weight: 700;
   text-align: right;
+}
+
+.layer-row button {
+  min-height: 22px;
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.layer-empty {
+  margin: 0;
+  padding: 10px;
+  color: #6a8499;
+  font-size: 12px;
 }
 
 .semantic-filter-grid {

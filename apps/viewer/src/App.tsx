@@ -58,7 +58,7 @@ import {
   resolveViewerSceneRequest,
   sampleScenePackage
 } from "./sceneLoader";
-import { computeLayerEntityCounts, computeSceneStats, type LayerEntityCount } from "./sceneStats";
+import { computeLayerEntityCounts, computeSceneStats, filterLayerEntityCounts, type LayerEntityCount } from "./sceneStats";
 import {
   buildAdvancedLayoutModel,
   exportAdvancedLayoutCsv,
@@ -948,6 +948,8 @@ function LayerPanel({
   hiddenLayerIds,
   onToggleLayer,
   onShowAllLayers,
+  onHideAllLayers,
+  onIsolateLayer,
   onClose
 }: {
   layers: LayerEntityCount[];
@@ -955,8 +957,18 @@ function LayerPanel({
   hiddenLayerIds: Set<string>;
   onToggleLayer: (layerId: string) => void;
   onShowAllLayers: () => void;
+  onHideAllLayers: () => void;
+  onIsolateLayer: (layerId: string) => void;
   onClose: () => void;
 }) {
+  const [layerSearch, setLayerSearch] = useState("");
+  const visibleLayers = useMemo(
+    () => filterLayerEntityCounts(layers, layerSearch),
+    [layers, layerSearch]
+  );
+  const visibleLayerIds = layers.filter((layer) => !hiddenLayerIds.has(layer.id)).map((layer) => layer.id);
+  const isolatedLayerId = visibleLayerIds.length === 1 ? visibleLayerIds[0] : undefined;
+
   return (
     <div className="layer-panel">
       <div className="section-heading">
@@ -965,23 +977,66 @@ function LayerPanel({
           <button type="button" onClick={onShowAllLayers}>
             Show all
           </button>
+          <button type="button" onClick={onHideAllLayers}>
+            Hide all
+          </button>
           <button className="panel-hide-button" type="button" onClick={onClose}>
             Hide
           </button>
         </div>
       </div>
+      <div className="layer-filter">
+        <label>
+          <span>Filter layers</span>
+          <input
+            aria-label="Filter layers by name"
+            onChange={(event) => setLayerSearch(event.target.value)}
+            placeholder="ROBOT"
+            type="search"
+            value={layerSearch}
+          />
+        </label>
+        <div className="layer-filter-meta">
+          <span>
+            {visibleLayers.length} of {layers.length} layers
+          </span>
+          {layerSearch ? (
+            <button aria-label="Clear layer filter" type="button" onClick={() => setLayerSearch("")}>
+              ×
+            </button>
+          ) : null}
+        </div>
+      </div>
       <div className="layer-list">
-        {layers.map((layer) => (
-          <label className={layer.id === selectedLayerId ? "layer-row selected" : "layer-row"} key={layer.id}>
-            <input
-              checked={!hiddenLayerIds.has(layer.id)}
-              onChange={() => onToggleLayer(layer.id)}
-              type="checkbox"
-            />
-            <span>{layer.name}</span>
-            <strong>{layer.entityCount}</strong>
-          </label>
-        ))}
+        {visibleLayers.length === 0 ? (
+          <p className="layer-empty">No matching layers.</p>
+        ) : (
+          visibleLayers.map((layer) => (
+            <div
+              className={[
+                "layer-row",
+                layer.id === selectedLayerId ? "selected" : "",
+                layer.id === isolatedLayerId ? "isolated" : ""
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              key={layer.id}
+            >
+              <label>
+                <input
+                  checked={!hiddenLayerIds.has(layer.id)}
+                  onChange={() => onToggleLayer(layer.id)}
+                  type="checkbox"
+                />
+                <span>{layer.name}</span>
+              </label>
+              <strong>{layer.entityCount}</strong>
+              <button type="button" onClick={() => onIsolateLayer(layer.id)}>
+                Show only
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
@@ -1271,6 +1326,18 @@ export function App() {
       }
       return next;
     });
+  };
+
+  const showAllLayers = () => {
+    setHiddenLayerIds(new Set());
+  };
+
+  const hideAllLayers = () => {
+    setHiddenLayerIds(new Set(layerStats.map((layer) => layer.id)));
+  };
+
+  const isolateLayer = (layerId: string) => {
+    setHiddenLayerIds(new Set(layerStats.filter((layer) => layer.id !== layerId).map((layer) => layer.id)));
   };
 
   // TODO: Add React state transition coverage for overlapping scene loads.
@@ -2029,7 +2096,9 @@ export function App() {
             layers={layerStats}
             selectedLayerId={selectedLayerId}
             onClose={() => setLayersPanelOpen(false)}
-            onShowAllLayers={() => setHiddenLayerIds(new Set())}
+            onShowAllLayers={showAllLayers}
+            onHideAllLayers={hideAllLayers}
+            onIsolateLayer={isolateLayer}
             onToggleLayer={toggleLayer}
           />
         </aside>

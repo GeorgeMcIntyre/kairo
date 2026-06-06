@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (drawing-first toolbar/workbench consolidation)
+Last updated: 2026-06-06 (layer isolate workflow)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -155,9 +155,11 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 
 ## LATER
 
-### ISSUE-006: Layer controls and isolate workflow (P1)
+### ISSUE-006: Layer controls and isolate workflow (P1) — partial
 
 **Goal:** Layer search/filter, isolate layer, show all, hide all except selected, counts visible.
+
+**Done so far:** Layers panel now has case-insensitive name/id filtering, match count, clear button, Show all, Hide all, per-layer Show only, active isolate highlight, and per-layer entity counts. Filter logic is covered in `apps/viewer/src/sceneStats.test.ts`; `pnpm typecheck`, `pnpm test --run`, and `pnpm --filter @kairo/viewer build` pass. Remaining: browser visual QA on the Scott scene for real layer terms such as `7B`/`FOOTPRINT` and isolate/show-all behavior. Note: current staged Scott `layers.json` has 160 layers and 0 `ROBOT` layer names, so `ROBOT` is not a valid verification term for this asset.
 
 **Not allowed:** Change importer, redesign full viewer.
 

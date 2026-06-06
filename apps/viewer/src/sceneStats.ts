@@ -72,3 +72,15 @@ export function computeLayerEntityCounts(scenePackage: ScenePackage): LayerEntit
     geometryCount: counts.get(layer.id)?.geometryCount ?? 0
   }));
 }
+
+export function filterLayerEntityCounts(layers: readonly LayerEntityCount[], query: string): LayerEntityCount[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return [...layers];
+  }
+  return layers.filter(
+    (layer) =>
+      layer.name.toLowerCase().includes(normalizedQuery) ||
+      layer.id.toLowerCase().includes(normalizedQuery)
+  );
+}
