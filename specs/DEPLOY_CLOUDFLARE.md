@@ -3,6 +3,7 @@
 Last updated: 2026-06-06
 
 Use this as the short operational checklist. See `specs/KAIRO_CLOUDFLARE_DEPLOYMENT.md` for security, Access, rollback, and future R2/D1 notes.
+For browser smoke and `.kairo` upload QA, use `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md`.
 
 ## Local Verification
 
