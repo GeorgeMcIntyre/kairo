@@ -363,7 +363,7 @@ pnpm build
 
 ## ISSUE-009 — Render performance / batching baseline
 
-- **Status:** LATER
+- **Status:** DONE
 - **Priority:** P2
 
 **Goal:**
@@ -386,6 +386,9 @@ Scott DXF2013 now has ~245k curve entities + 1092 text entities. Phase 10P estab
 - Bottlenecks ranked
 - Next optimization step clearly described
 - `pnpm test`, `pnpm typecheck`, `pnpm build` pass
+
+**Completed 2026-06-06:**
+Baseline documented in `docs/VIEWER_PERFORMANCE_BASELINE.md`. No viewer behavior changed.
 
 **Verification commands:**
 ```
@@ -660,5 +663,5 @@ Before any exporter work, prove what CAD Exchanger preserves from a tiny GLB pro
 | ISSUE-012 | Claude skills for Kairo | LATER | P2 |
 | ISSUE-007 | Nested INSERT investigation | DONE | P2 |
 | ISSUE-008 | Complex POLYLINE / spline-fit policy | DONE | P2 |
-| ISSUE-009 | Render performance / batching baseline | LATER | P2 |
+| ISSUE-009 | Render performance / batching baseline | DONE | P2 |
 | ISSUE-013 | JT export future roadmap | LATER (PARKED) | P3 |

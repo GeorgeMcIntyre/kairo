@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (DXF POLYLINE policy)
+Last updated: 2026-06-06 (Viewer performance baseline)
 
 ## Git
 
@@ -90,6 +90,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Coordinate precision audit: `docs/COORDINATE_PRECISION_AUDIT.md` records current Scott Float32 spacing. Rebase is not required before current drawing-first/manual review work, but viewer-only render-origin rebasing should be planned before high-zoom sub-millimeter inspection, outlier-geometry review, or production CAD-review claims.
 - Nested INSERT depth audit: `docs/NESTED_INSERT_DEPTH_AUDIT.md` records the current depth-3 guard, staged-scene evidence boundary, block-inventory topology, implementation plan, tests, risks, and stop rule. No importer behavior changed; implementation still requires explicit approval and a fresh capture of the exact 14 current depth-guard warning rows.
 - DXF POLYLINE policy: `docs/DXF_POLYLINE_POLICY.md` records current support for simple legacy POLYLINE chains and deterministic pre-sampled spline/curve-fit vertices, keeps mesh/polyface/arbitrary 3D/bulged variants unsupported without a separate audit, and defines future acceptance/stop rules.
+- Viewer performance baseline: `docs/VIEWER_PERFORMANCE_BASELINE.md` records current Scott entity counts, ~198 MiB uncompressed staged payload size, batched `THREE.LineSegments` architecture, ranked bottlenecks, next optimization order, and performance invariants. Browser Diagnostics capture remains a manual gate.
 - Repo-local Claude skill guidance: `.claude/skills/kairo-main-workflow.md`, `kairo-viewer-ui.md`, `kairo-dxf-importer.md`, and `kairo-planning.md` capture current allowed/not-allowed rules, verification gates, blockers, and stop rules for future Kairo coding sessions.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.

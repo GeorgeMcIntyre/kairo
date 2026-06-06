@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (DXF POLYLINE policy)
+Last updated: 2026-06-06 (Viewer performance baseline)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -18,6 +18,14 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-009: Render performance / batching baseline - DONE
+
+**Completed:** 2026-06-06
+
+Added `docs/VIEWER_PERFORMANCE_BASELINE.md`. The baseline records current Scott scene counts, static payload size (~198 MiB uncompressed: ~114 MiB geometry JSON and ~84 MiB source map), current batched `THREE.LineSegments` architecture, the last recorded ~5 second Phase 10P load baseline, ranked bottlenecks, next optimization order, and performance invariants. No viewer behavior changed.
+
+---
 
 ### ISSUE-008: Complex POLYLINE / spline-fit policy - DONE
 
@@ -204,12 +212,6 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 **Done so far:** Layers panel now has case-insensitive name/id filtering, match count, clear button, Show all, Hide all, per-layer Show only, active isolate highlight, and per-layer entity counts. Filter logic is covered in `apps/viewer/src/sceneStats.test.ts`; `pnpm typecheck`, `pnpm test --run`, and `pnpm --filter @kairo/viewer build` pass. Remaining: browser visual QA on the Scott scene for real layer terms such as `7B`/`FOOTPRINT` and isolate/show-all behavior. Note: current staged Scott `layers.json` has 160 layers and 0 `ROBOT` layer names, so `ROBOT` is not a valid verification term for this asset.
 
 **Not allowed:** Change importer, redesign full viewer.
-
----
-
-### ISSUE-009: Render performance / batching baseline (P2)
-
-**Goal:** Document performance baseline at current entity counts. Identify next bottleneck if entity count grows.
 
 ---
 
