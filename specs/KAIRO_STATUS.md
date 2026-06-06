@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (Kairo Claude skills)
+Last updated: 2026-06-06 (Nested INSERT depth audit)
 
 ## Git
 
@@ -25,6 +25,7 @@ Last updated: 2026-06-06 (Kairo Claude skills)
 | `node tools\glb-probes\build-jt-bridge-part-probe.mjs` | Passed; wrote `tools\glb-probes\jt-bridge-part-output.glb` with one named red 100 x 50 x 25 mm mesh part |
 | `node tools\glb-probes\inspect-jt-bridge-part-probe.mjs` | Passed; GLB 2.0 header/chunks valid, one node/mesh/material, 12 triangles, normals, dimensions, material color, and metadata detected |
 | `node tools\precision-audit\scene-float32-precision-audit.mjs` | Passed; Scott p99 coordinate magnitude ~106,758 mm gives 0.0078125 mm Float32 spacing, but far outliers near 955,434 mm give 0.0625 mm spacing |
+| `node packages\cli\dist\index.js inspect-dxf C:\Users\George\Downloads\ScottLayouts\DSP-B-01-7B-0001-24MY-P736-PRO-IMPBASE_20260504_DXF2013.dxf tmp\scott-dxf2013-insert-inventory` | Passed for block-topology inventory: parser OK, 602 INSERT entities, 214 unique INSERT block names, 286 block definitions, 0 missing block definitions, 314 INSERTs inside block definitions. Treat transform-warning output from this compiled CLI run as stale relative to the current staged scene. |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -87,6 +88,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Layer isolate workflow: Layers panel has case-insensitive name/id filtering, match counts, clear filter, Show all, Hide all, and per-layer Show only controls. Active isolate state is highlighted when exactly one layer is visible. Entity counts remain visible per layer, and visibility changes still use the existing `hiddenLayerIds` object-visible path without importer/schema changes.
 - Viewer QA workflow: `specs/VIEWER_QA_WORKFLOW.md` now tracks the current Scott scene counts, known import warning buckets, drawing-first toolbar checks, exact picking, zoom-to-cursor, layer filter/isolate, text/MTEXT density modes, Diagnostics, Workbench fixture smoke, and `.kairo` package smoke.
 - Coordinate precision audit: `docs/COORDINATE_PRECISION_AUDIT.md` records current Scott Float32 spacing. Rebase is not required before current drawing-first/manual review work, but viewer-only render-origin rebasing should be planned before high-zoom sub-millimeter inspection, outlier-geometry review, or production CAD-review claims.
+- Nested INSERT depth audit: `docs/NESTED_INSERT_DEPTH_AUDIT.md` records the current depth-3 guard, staged-scene evidence boundary, block-inventory topology, implementation plan, tests, risks, and stop rule. No importer behavior changed; implementation still requires explicit approval and a fresh capture of the exact 14 current depth-guard warning rows.
 - Repo-local Claude skill guidance: `.claude/skills/kairo-main-workflow.md`, `kairo-viewer-ui.md`, `kairo-dxf-importer.md`, and `kairo-planning.md` capture current allowed/not-allowed rules, verification gates, blockers, and stop rules for future Kairo coding sessions.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
@@ -108,7 +110,7 @@ Known visual issues still requiring work:
 
 ## What Is Broken / Missing
 
-- 14 INSERT instances still blocked by depth-3+ nested INSERTs (depth guard limit).
+- 14 INSERT instances are still recorded as blocked by depth-3+ nested INSERTs (depth guard limit). Planning audit is complete; implementation requires explicit approval and a fresh exact-warning capture.
 - ATTRIB (attribute overrides): not imported; ATTDEF default value used instead.
 - MTEXT inside block definitions: not expanded during INSERT expansion (only direct ENTITIES-section MTEXT is imported via scanner).
 - Mirror-aware text rotation: text rotation does NOT reflect under mirrored INSERT (AutoCAD MIRRTEXT=0 default semantics). Position is mirror-correct. Acceptable v1 limitation.

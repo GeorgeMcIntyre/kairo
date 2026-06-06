@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (Kairo Claude skills)
+Last updated: 2026-06-06 (Nested INSERT depth audit)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -18,6 +18,14 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 ---
 
 ## DONE
+
+### ISSUE-007: Nested INSERT investigation - DONE
+
+**Completed:** 2026-06-06
+
+Added planning audit `docs/NESTED_INSERT_DEPTH_AUDIT.md`. The audit records the current depth guard behavior, staged-scene evidence boundary, block-inventory topology, why skipped depth-3 handles cannot be reconstructed from checked-in staged artifacts alone, and a safe implementation/test plan for depth-3 expansion. No importer behavior changed. Stop rule remains: do not implement depth-3 expansion without explicit approval and a fresh capture of the exact 14 current `DXF_BLOCK_INSERT_NESTED_UNSUPPORTED` warning rows.
+
+---
 
 ### ISSUE-012: Claude skills for Kairo - DONE
 
@@ -188,12 +196,6 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 **Done so far:** Layers panel now has case-insensitive name/id filtering, match count, clear button, Show all, Hide all, per-layer Show only, active isolate highlight, and per-layer entity counts. Filter logic is covered in `apps/viewer/src/sceneStats.test.ts`; `pnpm typecheck`, `pnpm test --run`, and `pnpm --filter @kairo/viewer build` pass. Remaining: browser visual QA on the Scott scene for real layer terms such as `7B`/`FOOTPRINT` and isolate/show-all behavior. Note: current staged Scott `layers.json` has 160 layers and 0 `ROBOT` layer names, so `ROBOT` is not a valid verification term for this asset.
 
 **Not allowed:** Change importer, redesign full viewer.
-
----
-
-### ISSUE-007: Nested INSERT investigation (P2)
-
-**Goal:** Audit and plan safe depth-3 expansion for the 14 remaining depth-guard-blocked INSERTs. Plan only — do not implement without approval.
 
 ---
 
