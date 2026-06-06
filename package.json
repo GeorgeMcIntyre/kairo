@@ -10,6 +10,7 @@
     "review:first-check": "node scripts/check-first-review-completion.mjs",
     "review:first-queue": "node scripts/export-first-review-queue.mjs",
     "review:first-require-complete": "node scripts/check-first-review-completion.mjs --require-complete",
+    "smoke:kairo-package": "node scripts/smoke-kairo-package.mjs",
     "smoke:pages": "node scripts/smoke-pages-demo.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"

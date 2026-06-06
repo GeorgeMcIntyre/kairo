@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (Scott first-review completion gate)
+Last updated: 2026-06-06 (Scott `.kairo` package smoke)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -151,7 +151,7 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 
 **Goal:** Use `pack-scene` to create a `.kairo` package from the primary Scott import, open it through the viewer, and confirm it is practical for internal sharing without restaging public scene assets.
 
-**Done so far:** `pack-scene` produced `tmp\scott-dxf2013-import.kairo` from the staged Scott scene (9,884,877 bytes). `validate tmp\scott-dxf2013-import.kairo --json` passed with 29 nodes, 28 geometry documents, and 0 findings. Docs updated in `specs/KAIRO_PACKAGE_FORMAT.md`; manual browser checks are listed in `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md`. Remaining: browser/file-picker QA to open the `.kairo` in the deployed viewer.
+**Done so far:** `pack-scene` produced `tmp\scott-dxf2013-import.kairo` from the staged Scott scene (9,884,877 bytes). `validate tmp\scott-dxf2013-import.kairo --json` passed with 29 nodes, 28 geometry documents, and 0 findings. Added `pnpm smoke:kairo-package`, which recreates the Scott package, validates it, inspects the ZIP/package index, and reports archive/scene counts (34 entries, 28 geometry entries, 160 layers, 246,046 source-map rows, 244,953 curve entities, 1,092 text entities). Docs updated in `specs/KAIRO_PACKAGE_FORMAT.md`; manual browser checks are listed in `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md`. Remaining: browser/file-picker QA to open the `.kairo` in the deployed viewer.
 
 **Not allowed:** Replace raw DXF import, add 7z/WASM tooling, or change the neutral scene schema unless package QA proves a missing field.
 

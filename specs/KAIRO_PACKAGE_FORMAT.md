@@ -75,8 +75,7 @@ Current `.kairo` packages contain the neutral scene package only. Persisted sema
 Current package-sharing verification:
 
 ```powershell
-node packages\cli\dist\index.js pack-scene apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-dxf2013-import.kairo
-node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json
+pnpm smoke:kairo-package
 ```
 
 2026-06-06 result:
@@ -86,6 +85,12 @@ node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json
 - Scene root: `DSP-B-01-7B-0001-24MY-P736-PRO-IMPBASE_20260504_DXF2013.dxf`
 - Nodes: 29
 - Geometry documents: 28
+- Archive entries: 34
+- Geometry entries: 28
+- Layers: 160
+- Source-map rows: 246,046
+- Curve entities: 244,953
+- Text entities: 1,092
 - Validation findings: 0 errors / 0 warnings / 0 infos
 
 Use this `.kairo` package for internal sharing instead of publishing the generated staged scene payload as Pages static assets.

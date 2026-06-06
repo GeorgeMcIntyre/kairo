@@ -75,8 +75,7 @@ If `?scene=scott-dxf2013-import` is opened on the public Pages URL, the viewer s
 First create and validate the Scott package locally:
 
 ```powershell
-node packages\cli\dist\index.js pack-scene apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-dxf2013-import.kairo
-node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json
+pnpm smoke:kairo-package
 ```
 
 Known 2026-06-06 result:
@@ -86,6 +85,12 @@ tmp\scott-dxf2013-import.kairo
 9,884,877 bytes
 29 nodes
 28 geometry documents
+34 archive entries
+28 geometry entries
+160 layers
+246,046 source-map rows
+244,953 curve entities
+1,092 text entities
 0 validation findings
 ```
 
