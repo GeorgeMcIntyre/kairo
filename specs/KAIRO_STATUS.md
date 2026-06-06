@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (viewer QA workflow refresh)
+Last updated: 2026-06-06 (CAD Exchanger JT bridge part probe)
 
 ## Git
 
@@ -22,6 +22,8 @@ Last updated: 2026-06-06 (viewer QA workflow refresh)
 | `node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json` | Passed; 29 nodes, 28 geometry documents, 0 findings |
 | `node tools\glb-probes\build-probe.mjs` | Passed; wrote `tools\glb-probes\probe-output.glb` with 10 nodes, 10 meshes, 3 materials |
 | `node tools\glb-probes\inspect-glb-probe.mjs` | Passed; GLB 2.0 header/chunks valid, modes 1/3/4/5 present, far-origin and 0.1 mm line detected |
+| `node tools\glb-probes\build-jt-bridge-part-probe.mjs` | Passed; wrote `tools\glb-probes\jt-bridge-part-output.glb` with one named red 100 x 50 x 25 mm mesh part |
+| `node tools\glb-probes\inspect-jt-bridge-part-probe.mjs` | Passed; GLB 2.0 header/chunks valid, one node/mesh/material, 12 triangles, normals, dimensions, material color, and metadata detected |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -87,6 +89,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
 - Cloudflare Pages deploy: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. The deployed branch alias is `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev`; the latest immutable deployment is `https://b5859425.kairo-viewer-6lh.pages.dev`. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets. The viewer demo action loads the bundled sample scene so the Pages URL has a working demo path without staged public scene assets. Manual public-demo and `.kairo` upload gates are listed in `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md`.
 - CAD Exchanger GLB probe: `tools/glb-probes/build-probe.mjs` writes `tools/glb-probes/probe-output.glb`, covering native `LINES`, `LINE_STRIP`, `TRIANGLES`, `TRIANGLE_STRIP`, a ribbon mesh fallback, red/green/blue material groups, named nodes/meshes, extras metadata, a 0.1 mm line, and a far-origin line near `[110000, 90000, 0]`. `inspect-glb-probe.mjs` validates GLB structure and probe feature presence. Manual CAD Exchanger/JT results still need to be recorded in `docs/CAD_EXCHANGER_GLB_PROBE.md`.
+- CAD Exchanger JT bridge part probe: `tools/glb-probes/build-jt-bridge-part-probe.mjs` writes `tools/glb-probes/jt-bridge-part-output.glb`, a single named red mesh block (`jt_bridge_probe_named_red_block_100x50x25mm`) with 100 x 50 x 25 mm dimensions, normals, material name, part number, and metadata. `inspect-jt-bridge-part-probe.mjs` validates local GLB structure and dimensions. Manual CAD Exchanger, reopened-JT, JT2Go, and Process Simulate results still need to be recorded in `docs/CAD_EXCHANGER_JT_BRIDGE_PROBE.md`.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 
