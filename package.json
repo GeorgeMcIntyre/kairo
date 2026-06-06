@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @kairo/viewer dev",
     "build": "pnpm -r build",
+    "build:cloudflare": "pnpm --filter @kairo/viewer build && node scripts/prepare-cloudflare-pages-dist.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

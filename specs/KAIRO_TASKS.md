@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (layer isolate workflow)
+Last updated: 2026-06-06 (Cloudflare slim build and package QA)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -97,9 +97,11 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 
 ## NEXT
 
-### ISSUE-020: `.kairo` package QA and sharing workflow (P1)
+### ISSUE-020: `.kairo` package QA and sharing workflow (P1) — partial
 
 **Goal:** Use `pack-scene` to create a `.kairo` package from the primary Scott import, open it through the viewer, and confirm it is practical for internal sharing without restaging public scene assets.
+
+**Done so far:** `pack-scene` produced `tmp\scott-dxf2013-import.kairo` from the staged Scott scene (9,884,877 bytes). `validate tmp\scott-dxf2013-import.kairo --json` passed with 29 nodes, 28 geometry documents, and 0 findings. Docs updated in `specs/KAIRO_PACKAGE_FORMAT.md`. Remaining: browser/file-picker QA to open the `.kairo` in the viewer.
 
 **Not allowed:** Replace raw DXF import, add 7z/WASM tooling, or change the neutral scene schema unless package QA proves a missing field.
 
@@ -139,9 +141,11 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 
 ---
 
-### ISSUE-016: Cloudflare deploy check (P1)
+### ISSUE-016: Cloudflare deploy check (P1) — partial
 
 **Goal:** Confirm Pages settings, local build output, `_redirects`, and staged scene payload. This is a deploy/config/doc check, not a viewer rewrite.
+
+**Done so far:** Added `pnpm run build:cloudflare`, backed by `scripts/prepare-cloudflare-pages-dist.mjs`, to build the viewer and prune local staged-scene assets from `apps/viewer/dist/scenes`. The script verifies `_redirects` and fails oversized remaining static assets. `pnpm run build:cloudflare` passed and left only `index.html`, `assets/`, and `_redirects` in `apps/viewer/dist`. Added short checklist `specs/DEPLOY_CLOUDFLARE.md`; updated canonical deployment docs. Wrangler is installed and `npx wrangler whoami` succeeds, but `npx wrangler pages project list` currently fails with a Cloudflare API authentication error against a different account context. Remaining: fix Wrangler Pages account/auth context, actual Cloudflare Pages deploy, and browser smoke test against the Pages URL.
 
 ---
 

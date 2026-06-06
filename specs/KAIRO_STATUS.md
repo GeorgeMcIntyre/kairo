@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (layer isolate workflow)
+Last updated: 2026-06-06 (Cloudflare slim build and package QA)
 
 ## Git
 
@@ -14,6 +14,9 @@ Last updated: 2026-06-06 (layer isolate workflow)
 | `pnpm test` | 335/335 passed (1 skipped: generator) |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle ~951 kB, chunk size warning only) |
+| `pnpm run build:cloudflare` | Clean; prepared `apps/viewer/dist` with `index.html`, `assets/`, `_redirects`; `dist/scenes` pruned |
+| `node packages\cli\dist\index.js pack-scene apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-dxf2013-import.kairo` | Passed; package size 9,884,877 bytes |
+| `node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json` | Passed; 29 nodes, 28 geometry documents, 0 findings |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
 | `node packages\cli\dist\index.js validate apps\viewer\public\scenes\scott-dxf2013-import` | Passed, 0 errors / 0 warnings |
 | Scott DXF2013 staged scene | Loads from `apps/viewer/public/scenes/scott-dxf2013-import` |
@@ -39,7 +42,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Shared semantic package: `@kairo/semantic` owns text safety, device dictionary matching, layout semantics, semantic QA reports, semantic review artifacts, semantic summaries, and semantic validation filters. The viewer and CLI both import this package instead of sharing through `apps/viewer`.
 - CLI commands: `validate`, `import-dxf`, `pack-scene`, `inspect-dxf`, `stage-viewer-scene`, `scene-outliers`.
 - CLI semantic review export: `export-semantic-review <scene-path|package.kairo> <output.json>` writes deterministic `kairo-semantic-review-artifact` JSON for Git-based review.
-- `.kairo` package format: standard deflated ZIP container with custom extension. `pack-scene` writes packages, `validate` reads packages, and the viewer opens `.kairo` files through the same local file picker/drop path as raw DXF.
+- `.kairo` package format: standard deflated ZIP container with custom extension. `pack-scene` writes packages, `validate` reads packages, and the viewer opens `.kairo` files through the same local file picker/drop path as raw DXF. Scott P736 package QA produced `tmp\scott-dxf2013-import.kairo` at 9,884,877 bytes with 0 validation findings.
 - DXF import: LINE, LWPOLYLINE, CIRCLE, ARC, LAYER, simple POLYLINE vertex chains, TEXT, ATTDEF (default value or tag fallback), MTEXT (via direct ENTITIES-section scanner).
 - DXF pre-clean: removes scoped ACAD_REACTORS groups; appends missing EOF.
 - INSERT expansion: up to two levels deep (parent + one nested child), curve-only blocks, uniform scale (positive or negative mirror), Z-axis rotation, z-offset flattening.
@@ -76,7 +79,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Layer isolate workflow: Layers panel has case-insensitive name/id filtering, match counts, clear filter, Show all, Hide all, and per-layer Show only controls. Active isolate state is highlighted when exactly one layer is visible. Entity counts remain visible per layer, and visibility changes still use the existing `hiddenLayerIds` object-visible path without importer/schema changes.
 - First reviewed layout library fixture: `docs/examples/scott-p736-first-review.kairo-project.json` is checked in as the baseline kairo-project for the Scott P736 layout. Generated from the staged Scott scene pipeline (116 records total: 28 auto-accepted high-confidence devices by type — 20 device_number, 4 nest, 3 pdp_panel, 1 robot — and 88 uncertain needing human review). Regression coverage in `apps/viewer/src/project/scottP736FirstReview.test.ts` (2 tests: pipeline counts snapshot + round-trip). Generator script at `generateScottFirstReviewFixture.test.ts` for future regeneration.
 - Viewer responsiveness follow-up: pointer picking reuses cached pickable objects and scratch math objects, and cursor coordinate readout is throttled to avoid React rerenders on every pointer move.
-- Cloudflare Pages deploy config: static SPA build uses `pnpm --filter @kairo/viewer build`, output directory `apps/viewer/dist`, repo-root `_redirects` exists, and scene assets are staged under the viewer public scene path.
+- Cloudflare Pages deploy config: static SPA build uses `pnpm run build:cloudflare`, output directory `apps/viewer/dist`, and `_redirects` is copied with `/* /index.html 200`. The Cloudflare prep step removes local staged scene payloads from `dist/scenes` and fails oversized remaining assets. Large Scott scene sharing uses `.kairo` packages instead of Pages static assets.
 - Scene outliers: `scene-outliers` CLI command lists entities >3× median distance from scene centroid.
 - Validated DXF files: DXF2013, DXF2010, DXFR12LT2 (Scott layout files).
 

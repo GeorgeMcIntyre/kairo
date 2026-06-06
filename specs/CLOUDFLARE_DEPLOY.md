@@ -14,7 +14,7 @@ If you set it to `dist` (the Vite default), Pages will look in the wrong place a
 
 **Cloudflare Pages dashboard settings:**
 
-- Build command: `pnpm --filter @kairo/viewer build`
+- Build command: `pnpm run build:cloudflare`
 - Build output directory: `apps/viewer/dist`
 - Root directory: leave blank / repo root
 - Framework preset: None / manual config
@@ -53,10 +53,11 @@ Sensitive DXF policy:
 Before deploying, verify the output directory contains the expected app shell files:
 
 ```powershell
+pnpm run build:cloudflare
 dir apps\viewer\dist
 ```
 
-Expected slim `dist` contents: `index.html`, `assets/`, `_redirects`.
+Expected slim `dist` contents: `index.html`, `assets/`, `_redirects`. The `scripts/prepare-cloudflare-pages-dist.mjs` step removes local staged-scene payloads from `dist/scenes` and fails if any remaining static asset exceeds the Pages single-file asset budget.
 
 For local staged-scene development only, `apps/viewer/public/scenes/scott-dxf2013-import` may exist and should contain:
 

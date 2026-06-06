@@ -1,6 +1,6 @@
 # Kairo Cloudflare Deployment
 
-Last updated: 2026-05-10
+Last updated: 2026-06-06
 
 This is the canonical deployment checklist for the Kairo viewer on Cloudflare Pages. The deployment target is the static Vite app in `apps/viewer`; exporter code, CAD Exchanger probe tools, importer code, and schema code are not part of the cloud runtime.
 
@@ -13,7 +13,7 @@ This is the canonical deployment checklist for the Kairo viewer on Cloudflare Pa
 | Frontend package | `@kairo/viewer` |
 | App path | `apps/viewer` |
 | Package manager | `pnpm@10.17.0` |
-| Build command | `pnpm --filter @kairo/viewer build` |
+| Build command | `pnpm run build:cloudflare` |
 | Output directory | `apps/viewer/dist` |
 | SPA fallback | `apps/viewer/public/_redirects` copied to `apps/viewer/dist/_redirects` |
 | Root config | `wrangler.toml` with `pages_build_output_dir = "apps/viewer/dist"` |
@@ -22,7 +22,7 @@ Cloudflare dashboard settings:
 
 - Framework preset: `None` / manual config
 - Root directory: blank / repo root
-- Build command: `pnpm --filter @kairo/viewer build`
+- Build command: `pnpm run build:cloudflare`
 - Build output directory: `apps/viewer/dist`
 - Environment variables:
   - `NODE_VERSION=20`
@@ -77,11 +77,19 @@ Run local viewer dev server:
 pnpm --filter @kairo/viewer dev
 ```
 
-Build production assets:
+Build production assets for local viewer validation:
 
 ```powershell
 pnpm --filter @kairo/viewer build
 ```
+
+Build production assets for Cloudflare Pages:
+
+```powershell
+pnpm run build:cloudflare
+```
+
+This runs the viewer build and then `scripts/prepare-cloudflare-pages-dist.mjs`, which removes `apps/viewer/dist/scenes`, verifies `_redirects`, and fails if any remaining static asset is too large for Pages direct upload.
 
 Full local verification:
 
@@ -101,7 +109,7 @@ The normal path should be Cloudflare Pages Git deploys from GitHub. Use direct u
 
 ## Expected Build Output
 
-After `pnpm build`, confirm:
+After `pnpm run build:cloudflare`, confirm:
 
 ```powershell
 Test-Path apps\viewer\dist\index.html
@@ -126,13 +134,22 @@ The slim Cloudflare deploy should not include the Scott staged scene payload bec
 - `validation-report.json`
 - `geometry/`
 
-If the scene payload is missing, stage it before building:
+If the local development scene payload is missing, stage it before running the local viewer build:
 
 ```powershell
 node packages/cli/dist/index.js stage-viewer-scene ".\tmp\scott-dxf2013-import" scott-dxf2013-import
 ```
 
 There is no `stage` script in `apps/viewer/package.json`.
+
+Current Scott package-sharing QA:
+
+```powershell
+node packages\cli\dist\index.js pack-scene apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-dxf2013-import.kairo
+node packages\cli\dist\index.js validate tmp\scott-dxf2013-import.kairo --json
+```
+
+As of 2026-06-06 this produced a valid `.kairo` package at `tmp\scott-dxf2013-import.kairo` (9,884,877 bytes), with 29 scene nodes, 28 geometry documents, and 0 validation findings. Use this package for internal sharing instead of publishing the large staged scene payload to Pages.
 
 ## Branch Deploy Strategy
 
@@ -204,5 +221,5 @@ Cloudflare will build the reverted `main` commit.
 - The Vite viewer bundle currently triggers a chunk-size warning.
 - No auth exists; deploy only scenes intended for public/demo access.
 - Cloudflare will not deploy local commits until pushed.
-- Scene assets under `apps/viewer/public/scenes` are bundled into the Pages deploy.
+- Local scene assets under `apps/viewer/public/scenes` are copied by the raw viewer build, then removed by `pnpm run build:cloudflare` before Pages deploy.
 - Future exporter/CAD Exchanger probe work is unrelated to this deployment path and must stay out of runtime dependencies.
