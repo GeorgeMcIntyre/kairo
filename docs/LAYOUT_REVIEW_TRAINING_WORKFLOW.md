@@ -1,6 +1,6 @@
 # Layout Review Training Workflow
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## Purpose
 
@@ -11,6 +11,9 @@ No model training happens in this slice. The output is boring JSON/CSV/Markdown 
 Semantic review corrections can now be persisted before the Layout Library package is generated. Use
 `kairo-semantic-review-artifact.json` when the viewer's manual class, geometry, or unlink decisions need to be reloaded
 against the same staged scene. See `docs/SEMANTIC_REVIEW_ARTIFACT.md`.
+
+The first checked-in Scott/P736 semantic seed fixture is `docs/examples/scott-p736-protected-labels.semantic-review.json`.
+It protects known P736 label classifications before full Layout Library training truth is approved.
 
 ## Workflow
 
@@ -133,3 +136,4 @@ Schema:
 - Corrected geometry is captured as an id/note; it does not rewrite CAD geometry.
 - Training truth is a data artifact only. No AI/model logic consumes it yet.
 - Comparison reports are deterministic QA gates, not automatic correction logic.
+- The current Scott/P736 semantic seed fixture is classification-focused; ambiguous geometry rows still need visual CAD review before they are trainable truth.

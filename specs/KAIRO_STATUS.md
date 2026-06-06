@@ -1,19 +1,19 @@
 # Kairo Status
 
-Last updated: 2026-06-05
+Last updated: 2026-06-06
 
 ## Git
 
 - Branch: `codex/kairo-dxf-block-instances`
-- HEAD: includes current semantic review persistence work after commit.
-- Working tree contains the current semantic review artifact MVP slice until committed.
+- HEAD: includes current semantic review persistence and shared semantic package work after commit.
+- Working tree contains the current Scott/P736 protected-label fixture slice until committed.
 - Pre-existing local/untracked deploy/demo files remain present and were not cleaned up: `.claude/`, `gem.ps1`, `tmp/`, `tools/`, `wrangler.toml`, and several deploy/demo spec files.
 
 ## Verification (current branch)
 
 | Check | Result |
 |---|---|
-| `pnpm test` | 322/322 passed |
+| `pnpm test` | 323/323 passed |
 | `pnpm typecheck` | Clean |
 | `pnpm build` | Clean (viewer bundle ~938 kB, chunk size warning only) |
 | `node packages\cli\dist\index.js export-semantic-review apps\viewer\public\scenes\scott-dxf2013-import tmp\scott-semantic-review-artifact.json` | Passed; 116 devices, 14 stations, 948 unknown labels, 36 accepted, 80 uncertain |
@@ -68,6 +68,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Text readability follow-up: dense drawing labels and semantic overlay labels are capped more aggressively with a stronger dark halo so long yellow labels remain readable without taking over the canvas.
 - Manual correction MVP: selected semantic devices can be overridden for class and geometry association, or manually unlinked. Overrides are applied to the visible summary/export without mutating the detected baseline.
 - Semantic review artifact MVP: viewer can export/import `kairo-semantic-review-artifact.json` so manual semantic class, corrected geometry group, and unlink/reject decisions can be persisted as project-side JSON and reloaded against the current semantic extraction. The CLI can also export a blank review artifact from staged scenes or `.kairo` packages through `@kairo/semantic`.
+- Checked-in Scott/P736 semantic seed fixture: `docs/examples/scott-p736-protected-labels.semantic-review.json` imports against the staged Scott scene and protects the known labels `7B-020L-04` as `robot`, `7B-070L-DN1`/`7B-070L-DN2` as `dunnage`, and `7B-060L-1N` as `nest`. The robot/dunnage rows remain `uncertain` because nearby geometry is still ambiguous; the nest row is `accepted` with `insert-906ef-putdownstand`.
 - Semantic summary/export MVP: viewer summary counts stations, devices, linked/ambiguous/unlinked devices, unknown labels, and low-confidence devices. JSON and Markdown exports are available through copy/download actions.
 - Semantic QA export MVP: deterministic Markdown/JSON exports include detected labels, classified device type, linked/candidate geometry entities, confidence/evidence reasons, required P736 checklist, unknown labels, duplicates, and missing/uncertain rows.
 - Layout Library package MVP: viewer can export `kairo-layout-library-package` JSON/CSV/Markdown containing source metadata, extracted labels, device classifications, geometry associations, station/cell grouping candidates, reusable library item candidates, training-pack records, and BOM rows. Docs: `docs/LAYOUT_LIBRARY_PLAN.md` and `docs/LAYOUT_PACKAGE_FORMAT.md`.
@@ -97,6 +98,7 @@ Known visual issues still requiring work:
 - Direct raw DXF browser upload and `.kairo` package upload are implemented; staged public scenes are still useful for fixed demos.
 - Semantic device association is an assistive proximity/provenance heuristic, not authoritative CAD assembly ownership.
 - Protected P736 labels are currently exact-match code rules, not an external project configuration.
+- The checked-in Scott/P736 semantic seed fixture is classification-focused, not full geometry-approved training truth.
 - Semantic review artifacts are keyed by current semantic device and geometry group IDs; stale artifacts fail import until reconciled.
 - Hatches, dimensions, splines are not imported.
 - DXF export, GLB export, JT export: not implemented as production features. Raw JT 8.1 spike is documented as unreadable; CAD Exchanger is the temporary JT bridge direction only.
@@ -106,7 +108,7 @@ Known visual issues still requiring work:
 ## Recommended Next Phase
 
 See `specs/NEXT_PHASE_RECOMMENDATION.md`. Priority order:
-1. Export a real P736/Scott semantic review artifact, review/correct high-value labels, and check in the first project-side semantic truth fixture.
+1. Visually review the ambiguous geometry associations in the checked-in Scott/P736 protected-label fixture and convert approved rows into accepted/corrected training truth.
 2. Export a real P736/Scott Layout Library review template, complete the review pack, and save the reviewed training truth artifact as the first live-layout training fixture.
 3. Semantic association QA on the Scott DXF using the QA Markdown/JSON/Layout Library/reviewed library exports.
 4. Promote protected layout-specific labels into data/config.

@@ -68,7 +68,26 @@ During local verification on 2026-06-05, the staged Scott/P736 scene exported:
 | Rejected records | 0 |
 | Uncertain records | 80 |
 
-The generated file in `tmp/` is smoke-test output only. A checked-in reviewed truth fixture should be created after George reviews and corrects the artifact.
+The generated file in `tmp/` is smoke-test output only. Reviewed, checked-in fixtures should stay small and focused until full project geometry review is complete.
+
+## Checked-In Scott/P736 Seed Fixture
+
+The first checked-in Scott/P736 semantic fixture is:
+
+```text
+docs/examples/scott-p736-protected-labels.semantic-review.json
+```
+
+It is intentionally small. It captures four protected P736 labels from the staged Scott scene:
+
+| Label | Expected type | Review state |
+|---|---|---|
+| `7B-020L-04` | `robot` | `uncertain` because nearby geometry is ambiguous |
+| `7B-070L-DN1` | `dunnage` | `uncertain` because nearby geometry is ambiguous |
+| `7B-070L-DN2` | `dunnage` | `uncertain` because nearby geometry is ambiguous |
+| `7B-060L-1N` | `nest` | `accepted` with linked group `insert-906ef-putdownstand` |
+
+This fixture is seed review data for protected-label classification and import stability. It is not full project training truth yet, because three rows still need visual CAD geometry review before they should become trainable accepted/corrected records.
 
 ## Record Contract
 
@@ -116,9 +135,8 @@ Accepted and uncertain rows are preserved in the file but do not create active o
 
 ## Next Recommended Slice
 
-Use the semantic review artifact and reviewed Layout Library truth together to create the first checked-in P736/Scott training fixture:
+Use the semantic review artifact and reviewed Layout Library truth together to create the first checked-in P736/Scott training truth fixture:
 
-- export the generated semantic review artifact from the real Scott/P736 scene
-- review and correct high-value labels
+- visually review and correct geometry associations for the protected-label seed fixture
 - import it back into the viewer
 - regenerate QA, Layout Library, training truth, and reviewed reusable library exports

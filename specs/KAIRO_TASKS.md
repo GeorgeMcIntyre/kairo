@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-05-12
+Last updated: 2026-06-06
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -17,6 +17,22 @@ Use this file instead of GitHub Issues for now (ChatGPT connector issue creation
 
 ## DONE
 
+### Scott/P736 protected-label semantic fixture - DONE
+
+**Completed:** 2026-06-06
+
+Kairo now has a first checked-in Scott/P736 semantic review fixture at `docs/examples/scott-p736-protected-labels.semantic-review.json`.
+It keeps the fixture intentionally narrow: `7B-020L-04` is protected as `robot`, `7B-070L-DN1` and `7B-070L-DN2` as `dunnage`, and `7B-060L-1N` as `nest`.
+
+The fixture imports against the staged Scott scene and is covered by a regression test in `packages/semantic/src/scottP736ReviewFixture.test.ts`.
+The robot and dunnage rows remain `uncertain` because generated nearby geometry is ambiguous; the nest row is `accepted` with `insert-906ef-putdownstand`.
+
+This is classification-focused seed review data, not full geometry-approved training truth. The next pass should visually review the ambiguous geometry associations and then create the first reviewed Layout Library training truth fixture.
+
+**Docs:** See `docs/SEMANTIC_REVIEW_ARTIFACT.md`.
+
+---
+
 ### ISSUE-018: Persist reviewed semantic devices and overrides - DONE
 
 **Completed:** 2026-06-05
@@ -25,7 +41,7 @@ Kairo now exports and imports `kairo-semantic-review-artifact.json` from the vie
 
 The CLI can also export a blank semantic review artifact from an exploded scene or `.kairo` package with `kairo export-semantic-review <scene-path|package.kairo> <output.json>`. This path now uses the shared `@kairo/semantic` package instead of importing viewer-only modules. The staged Scott/P736 scene smoke test produced 116 devices, 14 stations, 948 unknown labels, 36 accepted rows, and 80 uncertain rows.
 
-This is the first project-side persistence layer for semantic review decisions. Next pass should use the real Scott/P736 staged scene to create the first checked-in reviewed artifact.
+This is the first project-side persistence layer for semantic review decisions. The first checked-in Scott/P736 protected-label fixture now exists; the remaining follow-up is visual geometry review and reviewed Layout Library training truth.
 
 **Docs:** See `docs/SEMANTIC_REVIEW_ARTIFACT.md`.
 

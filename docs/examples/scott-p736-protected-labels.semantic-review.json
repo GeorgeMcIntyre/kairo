@@ -1,0 +1,168 @@
+{
+  "schema": "kairo-semantic-review-artifact",
+  "schemaVersion": 1,
+  "source": {
+    "id": "semantic-source-dsp-b-01-7b-0001-24my-p736-pro-impbase_20260504_dxf2013.dxf",
+    "name": "DSP-B-01-7B-0001-24MY-P736-PRO-IMPBASE_20260504_DXF2013.dxf",
+    "path": "C:\\Users\\George\\Downloads\\ScottLayouts\\DSP-B-01-7B-0001-24MY-P736-PRO-IMPBASE_20260504_DXF2013.dxf"
+  },
+  "createdAt": "2026-06-06T00:00:00.000Z",
+  "reviewVersion": 1,
+  "records": [
+    {
+      "id": "semantic-review-semantic-device-robot-dxf-mtext-1709d",
+      "deviceId": "semantic-device-robot-dxf-mtext-1709d",
+      "detectedLabel": "7B-020L-04",
+      "detectedDeviceType": "robot",
+      "detectedGeometryAssociation": {
+        "status": "ambiguous",
+        "linkedEntityIds": [],
+        "candidateGroupIds": [
+          "cluster-layer-0-q-genro-wrk-37-47",
+          "cluster-layer-0-q-genro-wrk-38-47",
+          "insert-174ed-u36",
+          "insert-176e6-u36",
+          "insert-176f6-u15"
+        ]
+      },
+      "unlink": false,
+      "confidence": 0.97,
+      "evidence": [
+        "centroid distance 359 mm",
+        "distance to group 0 mm",
+        "known P736 robot tag",
+        "multiple nearby geometry groups score similarly",
+        "nearby geometry cluster",
+        "parent station 7B-020L",
+        "robot layer/block hint",
+        "station-device suffix pattern",
+        "suffix 04"
+      ],
+      "reviewStatus": "uncertain",
+      "reviewerNote": "Protected P736 label classification matches robot; nearby geometry remains ambiguous and needs visual CAD review before training truth.",
+      "reviewedAt": "2026-06-06T00:00:00.000Z",
+      "reviewVersion": 1,
+      "sourceTextEntityIds": [
+        "dxf-mtext-1709d"
+      ]
+    },
+    {
+      "id": "semantic-review-semantic-device-dunnage-dxf-mtext-17092",
+      "deviceId": "semantic-device-dunnage-dxf-mtext-17092",
+      "detectedLabel": "7B-070L-DN1",
+      "detectedDeviceType": "dunnage",
+      "detectedGeometryAssociation": {
+        "status": "ambiguous",
+        "linkedEntityIds": [],
+        "candidateGroupIds": [
+          "insert-1713b-7g-080-1dr-2d",
+          "insert-1744e-210l",
+          "insert-1b2ea-rbrkt-2004-topview",
+          "insert-1b2eb-rbrkt-2001-topview",
+          "insert-1d8ac-u141"
+        ]
+      },
+      "unlink": false,
+      "confidence": 0.97,
+      "evidence": [
+        "block insert 7g-080-1dr-2d",
+        "centroid distance 1063 mm",
+        "distance to group 0 mm",
+        "known P736 dunnage station tag",
+        "multiple nearby geometry groups score similarly",
+        "parent station 7B-070L",
+        "station-device suffix pattern",
+        "suffix DN1"
+      ],
+      "reviewStatus": "uncertain",
+      "reviewerNote": "Protected P736 label classification matches dunnage; nearby geometry remains ambiguous and needs visual CAD review before training truth.",
+      "reviewedAt": "2026-06-06T00:00:00.000Z",
+      "reviewVersion": 1,
+      "sourceTextEntityIds": [
+        "dxf-mtext-17092"
+      ]
+    },
+    {
+      "id": "semantic-review-semantic-device-dunnage-dxf-mtext-17093",
+      "deviceId": "semantic-device-dunnage-dxf-mtext-17093",
+      "detectedLabel": "7B-070L-DN2",
+      "detectedDeviceType": "dunnage",
+      "detectedGeometryAssociation": {
+        "status": "ambiguous",
+        "linkedEntityIds": [],
+        "candidateGroupIds": [
+          "cluster-layer-0-a-annot-t-27-50",
+          "insert-17138-7g-080-1dr-2d",
+          "insert-1744e-210l",
+          "insert-1b2ea-rbrkt-2004-topview",
+          "insert-1b2eb-rbrkt-2001-topview"
+        ]
+      },
+      "unlink": false,
+      "confidence": 0.97,
+      "evidence": [
+        "block insert 7g-080-1dr-2d",
+        "centroid distance 1005 mm",
+        "distance to group 0 mm",
+        "known P736 dunnage station tag",
+        "multiple nearby geometry groups score similarly",
+        "parent station 7B-070L",
+        "station-device suffix pattern",
+        "suffix DN2"
+      ],
+      "reviewStatus": "uncertain",
+      "reviewerNote": "Protected P736 label classification matches dunnage; nearby geometry remains ambiguous and needs visual CAD review before training truth.",
+      "reviewedAt": "2026-06-06T00:00:00.000Z",
+      "reviewVersion": 1,
+      "sourceTextEntityIds": [
+        "dxf-mtext-17093"
+      ]
+    },
+    {
+      "id": "semantic-review-semantic-device-nest-dxf-mtext-17091",
+      "deviceId": "semantic-device-nest-dxf-mtext-17091",
+      "detectedLabel": "7B-060L-1N",
+      "detectedDeviceType": "nest",
+      "detectedGeometryAssociation": {
+        "status": "linked",
+        "geometryGroupId": "insert-906ef-putdownstand",
+        "linkedEntityIds": [
+          "dxf-polyline-insert-906ef-child-8f7cd"
+        ],
+        "candidateGroupIds": [
+          "insert-1744e-210l",
+          "insert-174dd-u36",
+          "insert-1773a-7b060-spac",
+          "insert-1789d-7b-040-01n",
+          "insert-906ef-putdownstand"
+        ]
+      },
+      "unlink": false,
+      "confidence": 0.98,
+      "evidence": [
+        "block insert putdownstand",
+        "centroid distance 692 mm",
+        "distance to group 0 mm",
+        "known P736 nest tag",
+        "parent station 7B-060L",
+        "station-device suffix pattern",
+        "suffix 1N"
+      ],
+      "reviewStatus": "accepted",
+      "reviewerNote": "Protected P736 label classification matches nest and generated geometry links to insert-906ef-putdownstand.",
+      "reviewedAt": "2026-06-06T00:00:00.000Z",
+      "reviewVersion": 1,
+      "sourceTextEntityIds": [
+        "dxf-mtext-17091"
+      ]
+    }
+  ],
+  "summary": {
+    "totalRecords": 4,
+    "acceptedRecords": 1,
+    "correctedRecords": 0,
+    "rejectedRecords": 0,
+    "uncertainRecords": 3,
+    "overrideRecords": 0
+  }
+}
