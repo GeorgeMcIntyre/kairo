@@ -1,6 +1,6 @@
 # Kairo Status
 
-Last updated: 2026-06-06 (current automated gate smoke)
+Last updated: 2026-06-06 (Pages deployed bundle label smoke)
 
 ## Git
 
@@ -18,9 +18,9 @@ Last updated: 2026-06-06 (current automated gate smoke)
 | `npx wrangler pages project list` | Passed after clearing stale local Wrangler account cache; `kairo-viewer` exists at `kairo-viewer-6lh.pages.dev` |
 | `npx wrangler pages deploy apps/viewer/dist --project-name kairo-viewer --commit-dirty=true` | Passed; immutable URL `https://b5859425.kairo-viewer-6lh.pages.dev`, branch alias `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev` |
 | Pages HTTP smoke | Passed; immutable URL, branch alias, SPA fallback route, JS bundle, and CSS bundle returned 200. Browser/canvas smoke still pending. |
-| `pnpm smoke:pages` | Passed against `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev/`; app shell, JS/CSS assets, SPA fallback, and Scott staged-manifest pruning verified. Browser/canvas smoke still pending. |
+| `pnpm smoke:pages` | Passed against `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev/`; app shell, JS/CSS assets, deployed viewer control labels (`Open DXF / Kairo`, `Load Demo Layout`, `Fit main`, `Top 2D`, `Workbench`), SPA fallback, and Scott staged-manifest pruning verified. Browser/canvas smoke still pending. |
 | `pnpm smoke:kairo-package` | Passed; recreated `tmp\scott-dxf2013-import.kairo`, validated 29 nodes / 28 geometry documents / 0 findings, inspected 34 archive entries / 28 geometry entries, and counted 160 layers / 246,046 source-map rows / 244,953 curve entities / 1,092 text entities. Browser file-picker/canvas smoke still pending. |
-| `pnpm smoke:current-gates` | Passed; runs Pages HTTP smoke, `.kairo` package smoke, CAD GLB probe smoke, first-review completion report, and Scott first-review regression test. Reports remaining manual gates: public Pages browser/canvas QA, deployed viewer `.kairo` file-picker QA, 88-row human first-review pass, and CAD Exchanger/JT2Go/Process Simulate desktop matrix. |
+| `pnpm smoke:current-gates` | Passed; runs Pages smoke, `.kairo` package smoke, CAD GLB probe smoke, first-review completion report, and Scott first-review regression test. Reports remaining manual gates: public Pages browser/canvas QA, deployed viewer `.kairo` file-picker QA, 88-row human first-review pass, and CAD Exchanger/JT2Go/Process Simulate desktop matrix. |
 | `pnpm test --run apps/viewer/src/project/scottP736FirstReview.test.ts` | Passed; 3 tests covering fixture parse/library summary, project round-trip, and generated review queue alignment |
 | `pnpm review:first-check` | Passed as a reporting command; current fixture is incomplete with 88 unresolved generated-uncertain rows |
 | `pnpm review:first-require-complete` | Expected fail until human review is complete; currently exits 1 because 88 generated-uncertain rows lack reviewer evidence |
@@ -98,7 +98,7 @@ Source: `apps/viewer/public/scenes/scott-dxf2013-import`
 - Nested INSERT depth audit: `docs/NESTED_INSERT_DEPTH_AUDIT.md` records the current depth-3 guard, staged-scene evidence boundary, block-inventory topology, implementation plan, tests, risks, and stop rule. No importer behavior changed; implementation still requires explicit approval and a fresh capture of the exact 14 current depth-guard warning rows.
 - DXF POLYLINE policy: `docs/DXF_POLYLINE_POLICY.md` records current support for simple legacy POLYLINE chains and deterministic pre-sampled spline/curve-fit vertices, keeps mesh/polyface/arbitrary 3D/bulged variants unsupported without a separate audit, and defines future acceptance/stop rules.
 - Viewer performance baseline: `docs/VIEWER_PERFORMANCE_BASELINE.md` records current Scott entity counts, ~198 MiB uncompressed staged payload size, batched `THREE.LineSegments` architecture, ranked bottlenecks, next optimization order, and performance invariants. Browser Diagnostics capture remains a manual gate.
-- Pages HTTP smoke script: `scripts/smoke-pages-demo.mjs` verifies the public Pages app shell, linked JS/CSS assets, SPA fallback route, and that the heavy Scott staged scene manifest is not publicly deployed as JSON. Exposed as `pnpm smoke:pages`.
+- Pages smoke script: `scripts/smoke-pages-demo.mjs` verifies the public Pages app shell, linked JS/CSS assets, current viewer control labels in the deployed JS bundle, SPA fallback route, and that the heavy Scott staged scene manifest is not publicly deployed as JSON. Exposed as `pnpm smoke:pages`.
 - `.kairo` package smoke script: `scripts/smoke-kairo-package.mjs` recreates the Scott package, runs CLI validation, inspects the ZIP/package index, and reports archive/scene counts. Exposed as `pnpm smoke:kairo-package`.
 - Current automated gate smoke: `scripts/smoke-current-gates.mjs` runs the current non-manual gate set (`pnpm smoke:pages`, `pnpm smoke:kairo-package`, `pnpm smoke:cad-glb-probes`, `pnpm review:first-check`, and the Scott first-review regression test) and prints the remaining manual gates.
 - Repo-local Claude skill guidance: `.claude/skills/kairo-main-workflow.md`, `kairo-viewer-ui.md`, `kairo-dxf-importer.md`, and `kairo-planning.md` capture current allowed/not-allowed rules, verification gates, blockers, and stop rules for future Kairo coding sessions.

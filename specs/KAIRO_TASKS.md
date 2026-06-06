@@ -1,6 +1,6 @@
 # Kairo Tasks
 
-Last updated: 2026-06-06 (current automated gate smoke)
+Last updated: 2026-06-06 (Pages deployed bundle label smoke)
 Use this file instead of GitHub Issues for now (ChatGPT connector issue creation blocked). Update section headers as tasks move. See also `specs/ISSUE_BACKLOG.md` for full issue details.
 
 ---
@@ -191,7 +191,7 @@ Exports are available as JSON, CSV, and Markdown through the Project / Library W
 
 **Goal:** Confirm Pages settings, local build output, `_redirects`, and staged scene payload. This is a deploy/config/doc check, not a viewer rewrite.
 
-**Done so far:** Added `pnpm run build:cloudflare`, backed by `scripts/prepare-cloudflare-pages-dist.mjs`, to build the viewer and prune local staged-scene assets from `apps/viewer/dist/scenes`. The script verifies `_redirects` and fails oversized remaining static assets. `pnpm run build:cloudflare` passed and left only `index.html`, `assets/`, and `_redirects` in `apps/viewer/dist`. Added short checklist `specs/DEPLOY_CLOUDFLARE.md`; updated canonical deployment docs. Cleared stale local Wrangler cache files that pointed Pages commands at the wrong account; `npx wrangler pages project list` now succeeds. Direct upload deployed `apps/viewer/dist` to `kairo-viewer`: immutable URL `https://b5859425.kairo-viewer-6lh.pages.dev`, branch alias `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev`. HTTP smoke passed for the URL, SPA fallback, JS bundle, and CSS bundle. Added `pnpm smoke:pages` (`scripts/smoke-pages-demo.mjs`) and verified the branch alias app shell, JS/CSS assets, SPA fallback, and Scott staged-manifest pruning. The viewer demo action now loads the bundled sample scene instead of a pruned staged Scott asset. `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md` lists the remaining public-demo and `.kairo` upload browser gates. Remaining: browser/canvas smoke test against the Pages URL.
+**Done so far:** Added `pnpm run build:cloudflare`, backed by `scripts/prepare-cloudflare-pages-dist.mjs`, to build the viewer and prune local staged-scene assets from `apps/viewer/dist/scenes`. The script verifies `_redirects` and fails oversized remaining static assets. `pnpm run build:cloudflare` passed and left only `index.html`, `assets/`, and `_redirects` in `apps/viewer/dist`. Added short checklist `specs/DEPLOY_CLOUDFLARE.md`; updated canonical deployment docs. Cleared stale local Wrangler cache files that pointed Pages commands at the wrong account; `npx wrangler pages project list` now succeeds. Direct upload deployed `apps/viewer/dist` to `kairo-viewer`: immutable URL `https://b5859425.kairo-viewer-6lh.pages.dev`, branch alias `https://codex-kairo-dxf-block-instan.kairo-viewer-6lh.pages.dev`. HTTP smoke passed for the URL, SPA fallback, JS bundle, and CSS bundle. Added `pnpm smoke:pages` (`scripts/smoke-pages-demo.mjs`) and verified the branch alias app shell, JS/CSS assets, current viewer control labels in the deployed JS bundle, SPA fallback, and Scott staged-manifest pruning. The viewer demo action now loads the bundled sample scene instead of a pruned staged Scott asset. `specs/KAIRO_PUBLIC_DEMO_CHECKLIST.md` lists the remaining public-demo and `.kairo` upload browser gates. Remaining: browser/canvas smoke test against the Pages URL.
 
 ---
 

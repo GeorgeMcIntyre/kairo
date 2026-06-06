@@ -70,6 +70,7 @@ await record("root app shell returns HTML", async () => {
 
 const scriptAssets = extractAssets(rootHtml, /<script[^>]+src="([^"]+)"/g).filter((asset) => asset.includes("/assets/"));
 const cssAssets = extractAssets(rootHtml, /<link[^>]+href="([^"]+\.css[^"]*)"/g).filter((asset) => asset.includes("/assets/"));
+const scriptAssetText = new Map();
 
 await record("root references built JS and CSS assets", async () => {
   assert(scriptAssets.length > 0, "Root HTML did not reference any built JS assets");
@@ -81,8 +82,19 @@ for (const asset of [...scriptAssets, ...cssAssets]) {
     const { response, text } = await fetchText(absoluteAssetUrl(asset));
     assert(response.ok, `${asset} returned ${response.status}`);
     assert(text.length > 0, `${asset} response was empty`);
+    if (scriptAssets.includes(asset)) {
+      scriptAssetText.set(asset, text);
+    }
   });
 }
+
+await record("deployed JS contains current viewer controls", async () => {
+  const jsText = [...scriptAssetText.values()].join("\n");
+  const expectedLabels = ["Open DXF / Kairo", "Load Demo Layout", "Fit main", "Top 2D", "Workbench"];
+  for (const label of expectedLabels) {
+    assert(jsText.includes(label), `Deployed JS did not include expected viewer label: ${label}`);
+  }
+});
 
 await record("SPA fallback route returns app shell", async () => {
   const fallbackUrl = new URL("/nonexistent-route", baseUrl);

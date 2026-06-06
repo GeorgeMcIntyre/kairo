@@ -47,7 +47,7 @@ Run the non-browser HTTP smoke first:
 pnpm smoke:pages
 ```
 
-This verifies the Pages app shell, linked JS/CSS assets, SPA fallback route, and that the heavy Scott staged manifest is not deployed as public JSON. It does not verify canvas rendering, toolbar interaction, file-picker upload, or browser console state.
+This verifies the Pages app shell, linked JS/CSS assets, current viewer control labels in the deployed JS bundle, SPA fallback route, and that the heavy Scott staged manifest is not deployed as public JSON. It does not verify canvas rendering, toolbar interaction, file-picker upload, or browser console state.
 
 Run in Chrome or Edge.
 
